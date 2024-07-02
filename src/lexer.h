@@ -11,16 +11,22 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications
+// -------------
+// The following modifications have been made to `lexer.h` and `lexer.cc`,
+// they are specified here in accordance with the Apache License 2.0
+// requirement.  The modifications themselves are also released under
+// Apache License 2.0.
+//
+//   * Replace `StringPiece` by `std::string_view`
+//   * Replace `EvalString` with `std::string`
 
 #ifndef NINJA_LEXER_H_
 #define NINJA_LEXER_H_
 
-#include "string_piece.h"
-
-// Windows may #define ERROR.
-#ifdef ERROR
-#undef ERROR
-#endif
+#include <string>
+#include <string_view>
 
 struct EvalString;
 
@@ -56,10 +62,10 @@ struct Lexer {
 
   /// If the last token read was an ERROR token, provide more info
   /// or the empty string.
-  std::string DescribeLastError();
+  std::string_view DescribeLastError();
 
   /// Start parsing some input.
-  void Start(StringPiece filename, StringPiece input);
+  void Start(std::string_view filename, std::string_view input);
 
   /// Read a Token from the Token enum.
   Token ReadToken();
@@ -77,28 +83,29 @@ struct Lexer {
   /// Read a path (complete with $escapes).
   /// Returns false only on error, returned path may be empty if a delimiter
   /// (space, newline) is hit.
-  bool ReadPath(EvalString* path, std::string* err) {
+  bool ReadPath(std::string* path, std::string* err) {
     return ReadEvalString(path, true, err);
   }
 
   /// Read the value side of a var = value line (complete with $escapes).
   /// Returns false only on error.
   bool ReadVarValue(EvalString* value, std::string* err) {
-    return ReadEvalString(value, false, err);
+    throw false;
+    //return ReadEvalString(value, false, err);
   }
 
   /// Construct an error message with context.
-  bool Error(const std::string& message, std::string* err);
+  bool Error(const std::string_view& message, std::string* err);
 
 private:
   /// Skip past whitespace (called after each read token/ident/etc.).
   void EatWhitespace();
 
   /// Read a $-escaped string.
-  bool ReadEvalString(EvalString* eval, bool path, std::string* err);
+  bool ReadEvalString(std::string* eval, bool path, std::string* err);
 
-  StringPiece filename_;
-  StringPiece input_;
+  std::string_view filename_;
+  std::string_view input_;
   const char* ofs_;
   const char* last_token_;
 };

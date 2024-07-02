@@ -15,18 +15,11 @@
 
 #include "lexer.h"
 
-#include <stdio.h>
-
-#include "eval_env.h"
-#include "util.h"
-
-using namespace std;
-
-bool Lexer::Error(const string& message, string* err) {
+bool Lexer::Error(const std::string_view& message, std::string* err) {
   // Compute line/column.
   int line = 1;
-  const char* line_start = input_.str_;
-  for (const char* p = input_.str_; p < last_token_; ++p) {
+  const char* line_start = input_.data();
+  for (const char* p = input_.data(); p < last_token_; ++p) {
     if (*p == '\n') {
       ++line;
       line_start = p + 1;
@@ -35,9 +28,10 @@ bool Lexer::Error(const string& message, string* err) {
   int col = last_token_ ? (int)(last_token_ - line_start) : 0;
 
   char buf[1024];
-  snprintf(buf, sizeof(buf), "%s:%d: ", filename_.AsString().c_str(), line);
+  snprintf(buf, sizeof(buf), "%s:%d: ", std::string(filename_).c_str(), line);
   *err = buf;
-  *err += message + "\n";
+  *err += message;
+  *err += "\n";
 
   // Add some context to the message.
   const int kTruncateColumn = 72;
@@ -50,11 +44,11 @@ bool Lexer::Error(const string& message, string* err) {
         break;
       }
     }
-    *err += string(line_start, len);
+    *err += std::string_view(line_start, len);
     if (truncated)
       *err += "...";
     *err += "\n";
-    *err += string(col, ' ');
+    *err += std::string(col, ' ');
     *err += "^ near here";
   }
 
@@ -65,10 +59,10 @@ Lexer::Lexer(const char* input) {
   Start("input", input);
 }
 
-void Lexer::Start(StringPiece filename, StringPiece input) {
+void Lexer::Start(std::string_view filename, std::string_view input) {
   filename_ = filename;
   input_ = input;
-  ofs_ = input_.str_;
+  ofs_ = input_.data();
   last_token_ = NULL;
 }
 
@@ -103,7 +97,7 @@ const char* Lexer::TokenErrorHint(Token expected) {
   }
 }
 
-string Lexer::DescribeLastError() {
+std::string_view Lexer::DescribeLastError() {
   if (last_token_) {
     switch (last_token_[0]) {
     case '\t':
@@ -551,7 +545,7 @@ yy89:
   }
 }
 
-bool Lexer::ReadIdent(string* out) {
+bool Lexer::ReadIdent(std::string* out) {
   const char* p = ofs_;
   const char* start;
   for (;;) {
@@ -620,7 +614,7 @@ yy95:
   return true;
 }
 
-bool Lexer::ReadEvalString(EvalString* eval, bool path, string* err) {
+bool Lexer::ReadEvalString(std::string* eval, bool path, std::string* err) {
   const char* p = ofs_;
   const char* q;
   const char* start;
@@ -688,7 +682,7 @@ yy102:
 		goto yy102;
 	}
 	{
-      eval->AddText(StringPiece(start, p - start));
+      eval->append(start, p - start);
       continue;
     }
 yy105:
@@ -700,7 +694,7 @@ yy105:
       } else {
         if (*start == '\n')
           break;
-        eval->AddText(StringPiece(start, 1));
+        eval->append(start, 1);
         continue;
       }
     }
@@ -765,13 +759,13 @@ yy117:
 yy118:
 	++p;
 	{
-      eval->AddText(StringPiece(" ", 1));
+      eval->append(" ");
       continue;
     }
 yy120:
 	++p;
 	{
-      eval->AddText(StringPiece("$", 1));
+      eval->append("$");
       continue;
     }
 yy122:
@@ -780,13 +774,14 @@ yy122:
 		goto yy122;
 	}
 	{
-      eval->AddSpecial(StringPiece(start + 1, p - start - 1));
+	// TODO:
+      eval->append(start + 1, p - start - 1);
       continue;
     }
 yy125:
 	++p;
 	{
-      eval->AddText(StringPiece(":", 1));
+      eval->append(":");
       continue;
     }
 yy127:
@@ -812,7 +807,7 @@ yy131:
 yy134:
 	++p;
 	{
-      eval->AddSpecial(StringPiece(start + 2, p - start - 3));
+      eval->append(start + 2, p - start - 3);
       continue;
     }
 }
@@ -825,3 +820,4 @@ yy134:
   // Non-path strings end in newlines, so there's no whitespace to eat.
   return true;
 }
+
