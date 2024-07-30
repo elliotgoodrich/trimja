@@ -1,0 +1,6 @@
+build c2: copy d4 d5
+build b1: copy c2 c3
+build a0: copy b0 b1
+build d0: copy e0 e1
+build c0: copy d0 d1
+build b0: copy c0 c1

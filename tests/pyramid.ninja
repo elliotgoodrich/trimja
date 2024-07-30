@@ -1,0 +1,15 @@
+build a0: copy b0 b1
+build b0: copy c0 c1
+build b1: copy c2 c3
+build c0: copy d0 d1
+build c1: copy d2 d3
+build c2: copy d4 d5
+build c3: copy d6 d7
+build d0: copy e0 e1
+build d1: copy e2 e3
+build d2: copy e4 e5
+build d3: copy e6 e7
+build d5: copy e8 e9
+build d6: copy e10 e11
+build d7: copy e12 e13
+build d8: copy e14 e15

@@ -21,6 +21,13 @@
 //
 //   * Replace `StringPiece` by `std::string_view`
 //   * Replace `EvalString` with `std::string`
+//   * Duplicate `ReadIdent` to `SkipIdent` and modify it so it doesn't
+//     output to any `std::string`
+//   * Create `SkipVarValue`, that creates a temporary `std::string` and
+//     calls `ReadEvalString`
+//   * Run clang-format across `lexer.h` and `lexer.cc`
+//   * Add `const char* position()` to return the current position in the
+//     ninja file
 
 #ifndef NINJA_LEXER_H_
 #define NINJA_LEXER_H_
@@ -33,7 +40,7 @@ struct EvalString;
 struct Lexer {
   Lexer() {}
   /// Helper ctor useful for tests.
-  explicit Lexer(const char* input);
+  explicit Lexer(const char *input);
 
   enum Token {
     ERROR,
@@ -55,10 +62,10 @@ struct Lexer {
   };
 
   /// Return a human-readable form of a token, used in error messages.
-  static const char* TokenName(Token t);
+  static const char *TokenName(Token t);
 
   /// Return a human-readable token hint, used in error messages.
-  static const char* TokenErrorHint(Token expected);
+  static const char *TokenErrorHint(Token expected);
 
   /// If the last token read was an ERROR token, provide more info
   /// or the empty string.
@@ -78,36 +85,39 @@ struct Lexer {
 
   /// Read a simple identifier (a rule or variable name).
   /// Returns false if a name can't be read.
-  bool ReadIdent(std::string* out);
+  bool ReadIdent(std::string *out);
+  bool SkipIdent();
 
   /// Read a path (complete with $escapes).
   /// Returns false only on error, returned path may be empty if a delimiter
   /// (space, newline) is hit.
-  bool ReadPath(std::string* path, std::string* err) {
+  bool ReadPath(std::string *path, std::string *err) {
     return ReadEvalString(path, true, err);
   }
 
   /// Read the value side of a var = value line (complete with $escapes).
   /// Returns false only on error.
-  bool ReadVarValue(EvalString* value, std::string* err) {
-    throw false;
-    //return ReadEvalString(value, false, err);
+  bool SkipVarValue(std::string *err) {
+    std::string tmp;
+    return ReadEvalString(&tmp, false, err);
   }
 
   /// Construct an error message with context.
-  bool Error(const std::string_view& message, std::string* err);
+  bool Error(const std::string_view &message, std::string *err);
+
+  const char *position() const { return ofs_; }
 
 private:
   /// Skip past whitespace (called after each read token/ident/etc.).
   void EatWhitespace();
 
   /// Read a $-escaped string.
-  bool ReadEvalString(std::string* eval, bool path, std::string* err);
+  bool ReadEvalString(std::string *eval, bool path, std::string *err);
 
   std::string_view filename_;
   std::string_view input_;
-  const char* ofs_;
-  const char* last_token_;
+  const char *ofs_;
+  const char *last_token_;
 };
 
 #endif // NINJA_LEXER_H_

@@ -1,0 +1,4 @@
+build out6: copy in6
+build out3b: copy in3
+build out3a: copy in3
+build out1: copy in1

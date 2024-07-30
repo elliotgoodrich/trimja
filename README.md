@@ -1,5 +1,7 @@
 # trimja
 
+## Introduction
+
 `trimja` is a command line utility to trim down
 [ninja](https://ninja-build.org/) to a subset of input files.
 

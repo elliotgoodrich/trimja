@@ -1,0 +1,11 @@
+build a: copy b
+build b: copy c
+build c: copy d
+build d: copy e
+build e: copy f
+
+build z: copy y
+build y: copy x
+build x: copy w
+build w: copy v
+build v: copy u

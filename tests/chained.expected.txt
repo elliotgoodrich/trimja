@@ -1,0 +1,5 @@
+build a: copy b
+build b: copy c
+build c: copy d
+build d: copy e
+build e: copy f
