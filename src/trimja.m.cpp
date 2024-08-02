@@ -22,7 +22,7 @@
 
 #include "trimutil.h"
 #ifdef _WIN32
-#include "getopt.h"
+#include <ninja/getopt.h>
 #else
 #include <getopt.h>
 #endif

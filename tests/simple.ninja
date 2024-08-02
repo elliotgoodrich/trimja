@@ -1,7 +1,0 @@
-build out1: copy in1
-build out2: copy in2
-build out3a: copy in3
-build out3b: copy in3
-build out4: copy in4
-build out5: copy in5
-build out6: copy in6

@@ -1,0 +1,5 @@
+rule copy
+  command = cp $in $out
+  deps = msvc
+  description = Copying $out
+build out2.txt: cp in.txt

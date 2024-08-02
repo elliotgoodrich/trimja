@@ -1,0 +1,4 @@
+build a: copy b
+build out: concat changed a c
+build c: copy d
+build out2: copy out

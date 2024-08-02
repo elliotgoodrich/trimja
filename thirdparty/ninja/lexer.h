@@ -97,6 +97,9 @@ struct Lexer {
 
   /// Read the value side of a var = value line (complete with $escapes).
   /// Returns false only on error.
+  bool ReadVarValue(std::string *value, std::string *err) {
+    return ReadEvalString(value, false, err);
+  }
   bool SkipVarValue(std::string *err) {
     std::string tmp;
     return ReadEvalString(&tmp, false, err);

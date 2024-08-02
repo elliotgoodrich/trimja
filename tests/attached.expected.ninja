@@ -1,4 +1,0 @@
-build out: concat changed a c
-build a: copy b
-build out2: copy out
-build c: copy d

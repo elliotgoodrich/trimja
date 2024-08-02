@@ -11,7 +11,8 @@ it is unnecessary to build and run any of the other unit tests that are
 independent.
 
 ```bash
-trimja -f build.ninja foo.cpp > trim.ninja
+echo "main.cpp" > changed.txt
+trimja -f build.ninja -c changed.txt > trim.ninja
 ninja trim.ninja
 ```
 
@@ -33,4 +34,15 @@ working directory so we can omit passing `-f build.ninja` in these cases,
 
 ```bash
 git diff main --name-only | trimja - > trim.ninja
+```
+
+## kinja
+
+`kinja` is a command line application to write a ninja dependency file.
+
+```bash
+kinja -i dependencies.json -o .ninja_deps
+kinja -i dependencies.json -f build.ninja
+kinja -f build.ninja --generate-from-include-paths
+kinja -f build.ninja --generate-from-preprocessor
 ```
