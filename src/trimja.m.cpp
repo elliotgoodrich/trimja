@@ -38,7 +38,7 @@ namespace {
 static const option g_longOptions[] = {
     {"changed", required_argument, nullptr, 'c'},
     {"expected", required_argument, nullptr, 'e'},
-    {"file", required_argument, nullptr, 'f'},
+    {"file", OPTIONAL_ARG, nullptr, 'f'},
     {"help", no_argument, nullptr, 'h'},
     {"version", no_argument, nullptr, 'v'},
     {},
@@ -53,7 +53,7 @@ int main(int argc, char** argv) try {
 
   std::string changedFile;
   std::optional<std::string> expectedFile;
-  std::string ninjaFile;
+  std::string ninjaFile = "build.ninja";
   for (int ch = 0; ch != -1;
        ch = getopt_long(argc, argv, "c:e:f:h", g_longOptions, nullptr)) {
     switch (ch) {

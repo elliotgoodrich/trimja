@@ -53,6 +53,16 @@ foreach(TEST passthrough simple simple_reversed chained fan pyramid dependencies
     )
 endforeach()
 
+# Check we can avoid passing `-f`
+add_test(
+    NAME trimja.snapshot.no-f
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/
+    COMMAND trimja
+    --expected expected.ninja
+    --changed changed.txt
+)
+
+
 ###############################################################################
 # kinja                                                                       #
 ###############################################################################
