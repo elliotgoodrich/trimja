@@ -47,9 +47,9 @@ static const option g_longOptions[] = {
     {},
 };
 
-} // namespace
+}  // namespace
 
-int main(int argc, char **argv) try {
+int main(int argc, char** argv) try {
   using namespace trimja;
   std::at_quick_exit([] { std::cout.flush(); });
 
@@ -59,29 +59,29 @@ int main(int argc, char **argv) try {
   for (int ch = 0; ch != -1;
        ch = getopt_long(argc, argv, "hi:o:p:", g_longOptions, nullptr)) {
     switch (ch) {
-    case 0:
-      break;
-    case 'h':
-      std::cout << "Help\n";
-      std::quick_exit(EXIT_SUCCESS);
-    case 'i':
-      inJSONFile = optarg;
-      break;
-    case 'o':
-      outFile = optarg;
-      break;
-    case 'p':
-      printFile = optarg;
-      break;
-    case 'v':
-      std::cout << KINJA_VERSION << "\n";
-      std::quick_exit(EXIT_SUCCESS);
-    case '?':
-      std::cout << "Unknown option\n";
-      std::quick_exit(EXIT_FAILURE);
-    default:
-      std::cout << "Unknown command line parsing error\n";
-      std::quick_exit(EXIT_FAILURE);
+      case 0:
+        break;
+      case 'h':
+        std::cout << "Help\n";
+        std::quick_exit(EXIT_SUCCESS);
+      case 'i':
+        inJSONFile = optarg;
+        break;
+      case 'o':
+        outFile = optarg;
+        break;
+      case 'p':
+        printFile = optarg;
+        break;
+      case 'v':
+        std::cout << KINJA_VERSION << "\n";
+        std::quick_exit(EXIT_SUCCESS);
+      case '?':
+        std::cout << "Unknown option\n";
+        std::quick_exit(EXIT_FAILURE);
+      default:
+        std::cout << "Unknown command line parsing error\n";
+        std::quick_exit(EXIT_FAILURE);
     }
   }
 
@@ -90,40 +90,40 @@ int main(int argc, char **argv) try {
     std::ofstream out(*outFile, std::ios::out | std::ios::trunc);
     out << "[\n";
 
-    const char *newLine = "";
+    const char* newLine = "";
     DepsReader reader(f);
     std::vector<std::string> paths;
     while (true) {
       const auto record = reader.read();
       switch (record.index()) {
-      case 0: {
-        const PathRecordView &view = std::get<PathRecordView>(record);
-        out << newLine
-            << "    { \"type\": \"addFile\", \"index\": " << view.index
-            << ", \"file\": \"" << view.path << "\" }";
-        newLine = ",\n";
-        paths.emplace_back(view.path);
-        break;
-      }
-      case 1: {
-        const DepsRecordView &view = std::get<DepsRecordView>(record);
-        out << newLine << "    { \"type\": \"addDep\", \"out\": \""
-            << paths[view.outIndex] << "\", \"datetime\": \"" << view.mtime
-            << "\", \"deps\": [";
-        newLine = ",\n";
-        const char *sep = "";
-        for (const std::int32_t dep : view.deps) {
-          out << sep << "\"" << paths[dep] << "\"";
-          sep = ", ";
+        case 0: {
+          const PathRecordView& view = std::get<PathRecordView>(record);
+          out << newLine
+              << "    { \"type\": \"addFile\", \"index\": " << view.index
+              << ", \"file\": \"" << view.path << "\" }";
+          newLine = ",\n";
+          paths.emplace_back(view.path);
+          break;
         }
-        out << "] }";
-        break;
-      }
-      case 2: {
-        out << "\n]\n";
-        out.flush();
-        std::quick_exit(EXIT_SUCCESS);
-      }
+        case 1: {
+          const DepsRecordView& view = std::get<DepsRecordView>(record);
+          out << newLine << "    { \"type\": \"addDep\", \"out\": \""
+              << paths[view.outIndex] << "\", \"datetime\": \"" << view.mtime
+              << "\", \"deps\": [";
+          newLine = ",\n";
+          const char* sep = "";
+          for (const std::int32_t dep : view.deps) {
+            out << sep << "\"" << paths[dep] << "\"";
+            sep = ", ";
+          }
+          out << "] }";
+          break;
+        }
+        case 2: {
+          out << "\n]\n";
+          out.flush();
+          std::quick_exit(EXIT_SUCCESS);
+        }
       }
     }
   } else {
@@ -133,7 +133,7 @@ int main(int argc, char **argv) try {
     std::ifstream f(*inJSONFile);
     nlohmann::json data = nlohmann::json::parse(f);
     std::unordered_map<std::string, std::int32_t> pathLookup;
-    for (const nlohmann::json &element : data) {
+    for (const nlohmann::json& element : data) {
       if (element["type"] == "addFile") {
         const std::string_view path = element["file"].get<std::string_view>();
         pathLookup.emplace(path, writer.recordPath(path));
@@ -144,7 +144,7 @@ int main(int argc, char **argv) try {
           throw std::runtime_error("Missing 'out' property");
         }
         std::vector<std::int32_t> dependencies;
-        for (const nlohmann::json &dep : element["deps"]) {
+        for (const nlohmann::json& dep : element["deps"]) {
           const auto depIt = pathLookup.find(dep.get<std::string>());
           if (depIt == pathLookup.end()) {
             throw std::runtime_error("Missing 'deps' property");
@@ -163,7 +163,7 @@ int main(int argc, char **argv) try {
     out.flush();
     std::quick_exit(EXIT_SUCCESS);
   }
-} catch (const std::exception &e) {
+} catch (const std::exception& e) {
   std::cout << e.what();
   std::quick_exit(EXIT_FAILURE);
 }

@@ -31,28 +31,29 @@ namespace {
 // Ninja's maximum record size, we will try and respect it
 const std::size_t NINJA_MAX_RECORD_SIZE = 0b11'1111'1111'1111'1111;
 
-template <typename TYPE> void writeBinary(std::ostream *out, const TYPE &t) {
-  out->write(reinterpret_cast<const char *>(&t), sizeof(t));
+template <typename TYPE>
+void writeBinary(std::ostream* out, const TYPE& t) {
+  out->write(reinterpret_cast<const char*>(&t), sizeof(t));
 }
 
-void writeMTime(std::ostream *out,
-                const std::chrono::file_clock::time_point &t) {
+void writeMTime(std::ostream* out,
+                const std::chrono::file_clock::time_point& t) {
 #ifdef _WIN32
   // ninja subtracts the number below to shift the epoch from 1601 to 2001
   const std::uint64_t ticks =
       t.time_since_epoch().count() - 126'227'704'000'000'000;
   writeBinary<std::uint32_t>(out,
                              static_cast<std::uint32_t>(ticks) & 0xffffffff);
-  writeBinary<std::uint32_t>(out, static_cast<std::uint32_t>(ticks >> 32) &
-                                      0xffffffff);
+  writeBinary<std::uint32_t>(
+      out, static_cast<std::uint32_t>(ticks >> 32) & 0xffffffff);
 #else
 #error "TODO
 #endif
 }
 
-} // namespace
+}  // namespace
 
-DepsWriter::DepsWriter(std::ostream &out) : m_out(&out), m_nextNode(0) {
+DepsWriter::DepsWriter(std::ostream& out) : m_out(&out), m_nextNode(0) {
   const std::string_view signature = "# ninjadeps\n";
   m_out->write(signature.data(), signature.size());
   writeBinary<std::int32_t>(m_out, 4);
@@ -88,8 +89,8 @@ void DepsWriter::recordDependencies(std::int32_t out,
   writeBinary<std::uint32_t>(m_out, size | (1u << 31));
   writeBinary<std::int32_t>(m_out, out);
   writeMTime(m_out, mtime);
-  m_out->write(reinterpret_cast<const char *>(nodes.data()),
+  m_out->write(reinterpret_cast<const char*>(nodes.data()),
                nodes.size() * sizeof(nodes[0]));
 }
 
-} // namespace trimja
+}  // namespace trimja

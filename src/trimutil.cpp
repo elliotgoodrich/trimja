@@ -120,7 +120,7 @@ class Parser {
     }
   }
 
-  void collectPaths(std::vector<std::string> &result, std::string *err) {
+  void collectPaths(std::vector<std::string>& result, std::string* err) {
     while (true) {
       std::string out;
       if (!m_lexer.ReadPath(&out, err)) {
@@ -133,10 +133,10 @@ class Parser {
     }
   }
 
-  void handleEdge(const char *start) {
+  void handleEdge(const char* start) {
     std::vector<std::string> outs;
     std::string errStorage;
-    std::string *err = &errStorage;
+    std::string* err = &errStorage;
 
     {
       std::string out;
@@ -200,7 +200,7 @@ class Parser {
     // Set up the mapping from each output index to the corresponding
     // entry in `m_parts`
     std::vector<std::size_t> outIndices;
-    for (const std::string &out : outs) {
+    for (const std::string& out : outs) {
       const std::size_t outIndex = getPathIndex(out);
       outIndices.push_back(outIndex);
       if (outIndex >= m_nodeToParts.size()) {
@@ -210,7 +210,7 @@ class Parser {
     }
 
     // Add all in edges and connect them with all output edges
-    for (const std::string &in : ins) {
+    for (const std::string& in : ins) {
       const std::size_t inIndex = getPathIndex(in);
       for (const std::size_t outIndex : outIndices) {
         m_graph.addEdge(inIndex, outIndex);
@@ -218,9 +218,9 @@ class Parser {
     }
   }
 
-  void handleDefault(const char *start) {
+  void handleDefault(const char* start) {
     std::string errStorage;
-    std::string *err = &errStorage;
+    std::string* err = &errStorage;
     std::string path;
     if (!m_lexer.ReadPath(&path, err)) {
       throw std::runtime_error(*err);
@@ -238,8 +238,8 @@ class Parser {
     expectToken(Lexer::NEWLINE);
   }
 
-public:
-  Parser(Graph &graph) : m_graph(graph) {}
+ public:
+  Parser(Graph& graph) : m_graph(graph) {}
 
   void parse(std::string_view filename, std::string_view input) {
     m_lexer.Start(filename, input);
@@ -247,52 +247,52 @@ public:
     std::string builddir;
 
     while (true) {
-      const char *start = m_lexer.position();
+      const char* start = m_lexer.position();
       const Lexer::Token token = m_lexer.ReadToken();
       switch (token) {
-      case Lexer::POOL:
-        skipPool();
-        m_parts.emplace_back(std::piecewise_construct,
-                             std::make_tuple(start, m_lexer.position()),
-                             std::make_tuple(true));
-        break;
-      case Lexer::BUILD:
-        handleEdge(start);
-        break;
-      case Lexer::RULE:
-        skipRule();
-        m_parts.emplace_back(std::piecewise_construct,
-                             std::make_tuple(start, m_lexer.position()),
-                             std::make_tuple(true));
-        break;
-      case Lexer::DEFAULT:
-        handleDefault(start);
-        break;
-      case Lexer::IDENT:
-        m_lexer.UnreadToken();
-        skipLet();
-        m_parts.emplace_back(std::piecewise_construct,
-                             std::make_tuple(start, m_lexer.position()),
-                             std::make_tuple(true));
-        break;
-      case Lexer::INCLUDE:
-      case Lexer::SUBNINJA:
-        skipInclude();
-        m_parts.emplace_back(std::piecewise_construct,
-                             std::make_tuple(start, m_lexer.position()),
-                             std::make_tuple(true));
-        break;
-      case Lexer::ERROR:
-        throw std::runtime_error("Parsing error");
-      case Lexer::TEOF:
-        return;
-      case Lexer::NEWLINE:
-        break;
-      default: {
-        std::stringstream msg;
-        msg << "Unexpected token " << Lexer::TokenName(token) << '\0';
-        throw std::runtime_error(msg.view().data());
-      }
+        case Lexer::POOL:
+          skipPool();
+          m_parts.emplace_back(std::piecewise_construct,
+                               std::make_tuple(start, m_lexer.position()),
+                               std::make_tuple(true));
+          break;
+        case Lexer::BUILD:
+          handleEdge(start);
+          break;
+        case Lexer::RULE:
+          skipRule();
+          m_parts.emplace_back(std::piecewise_construct,
+                               std::make_tuple(start, m_lexer.position()),
+                               std::make_tuple(true));
+          break;
+        case Lexer::DEFAULT:
+          handleDefault(start);
+          break;
+        case Lexer::IDENT:
+          m_lexer.UnreadToken();
+          skipLet();
+          m_parts.emplace_back(std::piecewise_construct,
+                               std::make_tuple(start, m_lexer.position()),
+                               std::make_tuple(true));
+          break;
+        case Lexer::INCLUDE:
+        case Lexer::SUBNINJA:
+          skipInclude();
+          m_parts.emplace_back(std::piecewise_construct,
+                               std::make_tuple(start, m_lexer.position()),
+                               std::make_tuple(true));
+          break;
+        case Lexer::ERROR:
+          throw std::runtime_error("Parsing error");
+        case Lexer::TEOF:
+          return;
+        case Lexer::NEWLINE:
+          break;
+        default: {
+          std::stringstream msg;
+          msg << "Unexpected token " << Lexer::TokenName(token) << '\0';
+          throw std::runtime_error(msg.view().data());
+        }
       }
     }
     throw std::logic_error("Not reachable");
@@ -312,13 +312,14 @@ enum Requirement : char {
 
 };
 
-Requirement &operator&=(Requirement &lhs, const Requirement &rhs) {
+Requirement& operator&=(Requirement& lhs, const Requirement& rhs) {
   lhs = static_cast<Requirement>(static_cast<int>(lhs) & static_cast<int>(rhs));
   return lhs;
 }
 
-void markOutputsAsRequired(Graph &graph, std::size_t index,
-                           std::vector<Requirement> &requirement) {
+void markOutputsAsRequired(Graph& graph,
+                           std::size_t index,
+                           std::vector<Requirement>& requirement) {
   for (const std::size_t out : graph.out(index)) {
     if (requirement[out] != Requirement::InputsAndOutputs) {
       requirement[out] = Requirement::InputsAndOutputs;
@@ -327,8 +328,9 @@ void markOutputsAsRequired(Graph &graph, std::size_t index,
   }
 }
 
-void markInputsAsRequired(Graph &graph, std::size_t index,
-                          std::vector<Requirement> &requirement) {
+void markInputsAsRequired(Graph& graph,
+                          std::size_t index,
+                          std::vector<Requirement>& requirement) {
   for (const std::size_t in : graph.in(index)) {
     if (requirement[in] == Requirement::Unknown) {
       requirement[in] = Requirement::Inputs;

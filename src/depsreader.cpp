@@ -35,21 +35,22 @@ namespace {
 // Ninja's maximum record size, we will try and respect it
 const std::size_t NINJA_MAX_RECORD_SIZE = 0b11'1111'1111'1111'1111;
 
-template <typename TYPE> TYPE readBinary(std::istream &in) {
+template <typename TYPE>
+TYPE readBinary(std::istream& in) {
   TYPE value;
-  if (!in.read(reinterpret_cast<char *>(&value), sizeof(value))) {
+  if (!in.read(reinterpret_cast<char*>(&value), sizeof(value))) {
     if (in.rdstate() == std::ios::badbit) {
       throw std::runtime_error("Logical error reading stream");
     } else if (in.rdstate() == std::ios::failbit) {
       throw std::runtime_error("Error reading stream");
     } else {
-      throw std::runtime_error("Unknown error reading reading file");
+      throw std::runtime_error("Unknown error reading file");
     }
   }
   return value;
 }
 
-std::chrono::file_clock::time_point readMTime(std::istream &in) {
+std::chrono::file_clock::time_point readMTime(std::istream& in) {
 #ifdef _WIN32
   const std::uint64_t low = readBinary<std::uint32_t>(in);
   const std::uint64_t high = readBinary<std::uint32_t>(in);
@@ -64,9 +65,9 @@ std::chrono::file_clock::time_point readMTime(std::istream &in) {
 #endif
 }
 
-} // namespace
+}  // namespace
 
-DepsReader::DepsReader(std::istream &deps)
+DepsReader::DepsReader(std::istream& deps)
     : m_deps(&deps), m_storage(), m_depsStorage() {
   std::getline(*m_deps, m_storage);
   if (m_storage != "# ninjadeps") {
@@ -118,4 +119,4 @@ DepsReader::read() {
   }
 }
 
-} // namespace trimja
+}  // namespace trimja
