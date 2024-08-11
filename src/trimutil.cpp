@@ -45,11 +45,11 @@ namespace {
 static std::string_view alwaysEmpty = "";
 
 class Parser {
-public:
+ public:
   // Split up the parts of the build file and whether we need to print it
   std::vector<std::pair<std::string_view, bool>> m_parts;
 
-private:
+ private:
   // Map each output index to the index within `m_parts`
   std::vector<std::optional<std::size_t>> m_nodeToParts;
 
@@ -57,7 +57,7 @@ private:
   Lexer m_lexer;
 
   // Our graph
-  Graph &m_graph;
+  Graph& m_graph;
 
   std::size_t getPathIndex(std::string_view path) {
     const std::size_t index = m_graph.addPath(std::string(path));
@@ -337,10 +337,12 @@ void markInputsAsRequired(Graph &graph, std::size_t index,
   }
 }
 
-} // namespace
+}  // namespace
 
-void TrimUtil::trim(std::ostream &output, std::string_view filename,
-                    std::istream &ninja, std::istream &changed) {
+void TrimUtil::trim(std::ostream& output,
+                    const std::filesystem::path& ninjaFile,
+                    const std::string& ninjaFileContents,
+                    std::istream& changed) {
   // Add all our of changes files to the graph and mark them as required
   Graph graph;
   for (std::string line; std::getline(changed, line);) {
@@ -350,8 +352,8 @@ void TrimUtil::trim(std::ostream &output, std::string_view filename,
                                         Requirement::InputsAndOutputs);
 
   Parser parser(graph);
-  const std::filesystem::path ninjaDeps =
-      std::filesystem::path(filename).replace_filename(".ninja_deps");
+  std::filesystem::path ninjaDeps = ninjaFile;
+  ninjaDeps.replace_filename(".ninja_deps");
   if (std::filesystem::exists(ninjaDeps)) {
     std::ifstream deps(ninjaDeps.string());
     DepsReader reader(deps);
@@ -360,34 +362,30 @@ void TrimUtil::trim(std::ostream &output, std::string_view filename,
     while (!exit) {
       const auto record = reader.read();
       switch (record.index()) {
-      case 0: {
-        const PathRecordView &view = std::get<PathRecordView>(record);
-        if (view.index >= lookup.size()) {
-          lookup.resize(view.index + 1);
+        case 0: {
+          const PathRecordView& view = std::get<PathRecordView>(record);
+          if (view.index >= lookup.size()) {
+            lookup.resize(view.index + 1);
+          }
+          lookup[view.index] = graph.addPath(std::string(view.path));
+          break;
         }
-        lookup[view.index] = graph.addPath(std::string(view.path));
-        break;
-      }
-      case 1: {
-        const DepsRecordView &view = std::get<DepsRecordView>(record);
-        for (const std::int32_t dep : view.deps) {
-          graph.addEdge(lookup[view.outIndex], lookup[dep]);
+        case 1: {
+          const DepsRecordView& view = std::get<DepsRecordView>(record);
+          for (const std::int32_t dep : view.deps) {
+            graph.addEdge(lookup[view.outIndex], lookup[dep]);
+          }
+          break;
         }
-        break;
-      }
-      case 2: {
-        exit = true;
-        break;
-      }
+        case 2: {
+          exit = true;
+          break;
+        }
       }
     }
   }
 
-  // As we use `view()` and not `str()`, append '\0' to make sure it
-  // is null terminated.
-  std::stringstream buffer;
-  buffer << ninja.rdbuf() << '\0';
-  parser.parse(filename, buffer.view());
+  parser.parse(ninjaFile.string(), ninjaFileContents);
 
   requirements.resize(graph.size(), Requirement::Unknown);
 
@@ -413,11 +411,11 @@ void TrimUtil::trim(std::ostream &output, std::string_view filename,
 
   // DFS through our graph and then call `markForPrinting` on each required node
   // then output all parts to
-  for (const auto &[text, required] : parser.m_parts) {
+  for (const auto& [text, required] : parser.m_parts) {
     if (required) {
       output << text;
     }
   }
 }
 
-} // namespace trimja
+}  // namespace trimja

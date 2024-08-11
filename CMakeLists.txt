@@ -20,7 +20,6 @@ add_executable(
 )
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
 target_include_directories(trimja PRIVATE thirdparty)
-target_compile_definitions(trimja PRIVATE JSON_DIAGNOSTICS=1)
 
 # --version
 add_test(NAME trimja.--version COMMAND trimja --version)
@@ -32,15 +31,45 @@ set_property(
 
 # --help
 add_test(NAME trimja.--help COMMAND trimja --help)
-set_property(TEST trimja.--help PROPERTY PASS_REGULAR_EXPRESSION "Help")
+set_property(TEST trimja.--help PROPERTY PASS_REGULAR_EXPRESSION "Usage:")
 add_test(NAME trimja.-h COMMAND trimja -h)
-set_property(TEST trimja.-h PROPERTY PASS_REGULAR_EXPRESSION "Help")
+set_property(TEST trimja.-h PROPERTY PASS_REGULAR_EXPRESSION "Usage:")
 
 # --unknown
 add_test(NAME trimja.--unknown COMMAND trimja --unknown)
 set_property(TEST trimja.--unknown PROPERTY WILL_FAIL true)
 add_test(NAME trimja.-u COMMAND trimja -u)
 set_property(TEST trimja.-u PROPERTY WILL_FAIL true)
+
+# too many arguments
+add_test(NAME trimja.--write_and_--output COMMAND trimja --write --output ${CMAKE_CURRENT_BINARY_DIR}/foo.ninja)
+set_property(TEST trimja.--write_and_--output PROPERTY WILL_FAIL true)
+add_test(NAME trimja.--output_and_--write COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/foo.ninja --write)
+set_property(TEST trimja.--output_and_--write PROPERTY WILL_FAIL true)
+
+# Check we can avoid passing `-f`
+add_test(
+    NAME trimja.snapshot.no-f
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/
+    COMMAND trimja
+    --expected expected.ninja
+    --restrict changed.txt
+)
+
+# Check we can write to the same file we read
+add_test(
+    NAME trimja.big-in-out
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/bigpassthrough/
+    COMMAND trimja --write --restrict changed.txt
+)
+
+# Check redirection from a file
+add_test(
+    NAME trimja.stdin
+    COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/simple/ $ENV{ComSpec} /c
+    $<TARGET_FILE:trimja> < changed.txt
+)
+set_property(TEST trimja.stdin PROPERTY PASS_REGULAR_EXPRESSION "build out1")
 
 # Snapshot tests
 foreach(TEST passthrough simple simple_reversed chained fan pyramid dependencies attached basic_dyndep)
@@ -49,19 +78,9 @@ foreach(TEST passthrough simple simple_reversed chained fan pyramid dependencies
         COMMAND trimja
         -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/build.ninja
         --expected ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/expected.ninja
-        --changed ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/changed.txt
+        --restrict ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/changed.txt
     )
 endforeach()
-
-# Check we can avoid passing `-f`
-add_test(
-    NAME trimja.snapshot.no-f
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/
-    COMMAND trimja
-    --expected expected.ninja
-    --changed changed.txt
-)
-
 
 ###############################################################################
 # kinja                                                                       #
