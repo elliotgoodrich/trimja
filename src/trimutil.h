@@ -23,15 +23,16 @@
 #ifndef TRIMJA_TRIMUTIL
 #define TRIMJA_TRIMUTIL
 
+#include <filesystem>
 #include <iosfwd>
-#include <string_view>
+#include <string>
 
 namespace trimja {
 
 struct TrimUtil {
   static void trim(std::ostream& output,
-                   std::string_view filename,
-                   std::istream& ninja,
+                   const std::filesystem::path& ninjaFile,
+                   const std::string& ninjaFileContents,
                    std::istream& changed);
 };
 
