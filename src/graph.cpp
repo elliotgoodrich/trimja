@@ -29,20 +29,19 @@ namespace trimja {
 Graph::Graph() = default;
 
 std::size_t Graph::addPath(const std::string& path) {
-    const std::size_t nextIndex = size();
-    const auto [it, inserted] = m_pathToIndex.emplace(path, nextIndex);
-    if (inserted) {
-      m_inputToOutput.emplace_back();
-      m_outputToInput.emplace_back();
-    }
-    return it->second;
+  const std::size_t nextIndex = size();
+  const auto [it, inserted] = m_pathToIndex.emplace(path, nextIndex);
+  if (inserted) {
+    m_inputToOutput.emplace_back();
+    m_outputToInput.emplace_back();
+  }
+  return it->second;
 }
 
-void Graph::addEdge(std::size_t index, std::size_t dependsOn)
-{
-    assert(index != dependsOn);
-    m_inputToOutput[index].insert(dependsOn);
-    m_outputToInput[dependsOn].insert(index);
+void Graph::addEdge(std::size_t index, std::size_t dependsOn) {
+  assert(index != dependsOn);
+  m_inputToOutput[index].insert(dependsOn);
+  m_outputToInput[dependsOn].insert(index);
 }
 
 const std::set<std::size_t>& Graph::out(std::size_t pathIndex) const {

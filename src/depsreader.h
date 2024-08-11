@@ -44,16 +44,16 @@ struct DepsRecordView {
 };
 
 class DepsReader {
-  std::istream *m_deps;
+  std::istream* m_deps;
   std::string m_storage;
   std::vector<std::int32_t> m_depsStorage;
 
-public:
-  explicit DepsReader(std::istream &deps);
+ public:
+  explicit DepsReader(std::istream& deps);
 
   std::variant<PathRecordView, DepsRecordView, std::monostate> read();
 };
 
-} // namespace trimja
+}  // namespace trimja
 
-#endif // TRIMJA_DEPSREADER
+#endif  // TRIMJA_DEPSREADER
