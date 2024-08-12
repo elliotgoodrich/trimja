@@ -21,6 +21,7 @@
 // SOFTWARE.
 
 #include "depswriter.h"
+#include "ninja_clock.h"
 
 #include <iostream>
 
@@ -36,21 +37,6 @@ void writeBinary(std::ostream* out, const TYPE& t) {
   out->write(reinterpret_cast<const char*>(&t), sizeof(t));
 }
 
-void writeMTime(std::ostream* out,
-                const std::chrono::file_clock::time_point& t) {
-#ifdef _WIN32
-  // ninja subtracts the number below to shift the epoch from 1601 to 2001
-  const std::uint64_t ticks =
-      t.time_since_epoch().count() - 126'227'704'000'000'000;
-  writeBinary<std::uint32_t>(out,
-                             static_cast<std::uint32_t>(ticks) & 0xffffffff);
-  writeBinary<std::uint32_t>(
-      out, static_cast<std::uint32_t>(ticks >> 32) & 0xffffffff);
-#else
-#error "TODO
-#endif
-}
-
 }  // namespace
 
 DepsWriter::DepsWriter(std::ostream& out) : m_out(&out), m_nextNode(0) {
@@ -62,8 +48,8 @@ DepsWriter::DepsWriter(std::ostream& out) : m_out(&out), m_nextNode(0) {
 std::int32_t DepsWriter::recordPath(std::string_view path) {
   const std::uint32_t checksum = ~static_cast<std::uint32_t>(m_nextNode);
   if (path.size() > NINJA_MAX_RECORD_SIZE - sizeof(checksum)) {
-    // Substract from `kMaxRecordSize` instead of adding to `paddedSize` since
-    // we could end up overflowing
+    // Substract from `NINJA_MAX_RECORD_SIZE` instead of adding to `paddedSize`
+    // since we could end up overflowing
     throw std::runtime_error("Record size exceeded");
   }
 
@@ -88,7 +74,7 @@ void DepsWriter::recordDependencies(std::int32_t out,
   // Set the high-bit to indicate a dependency record
   writeBinary<std::uint32_t>(m_out, size | (1u << 31));
   writeBinary<std::int32_t>(m_out, out);
-  writeMTime(m_out, mtime);
+  writeBinary(m_out, std::chrono::clock_cast<ninja_clock>(mtime));
   m_out->write(reinterpret_cast<const char*>(nodes.data()),
                nodes.size() * sizeof(nodes[0]));
 }

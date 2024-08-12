@@ -14,6 +14,7 @@ add_executable(
     src/trimja.m.cpp
     src/depsreader.cpp
     src/graph.cpp
+    src/ninja_clock.cpp
     src/trimutil.cpp
     thirdparty/ninja/lexer.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
@@ -92,6 +93,7 @@ add_executable(
     src/depsreader.cpp
     src/depswriter.cpp
     src/graph.cpp
+    src/ninja_clock.cpp
     src/trimutil.cpp
     thirdparty/ninja/lexer.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>

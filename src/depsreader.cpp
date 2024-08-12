@@ -22,6 +22,7 @@
 
 #include "depsreader.h"
 #include "graph.h"
+#include "ninja_clock.h"
 
 #include <algorithm>
 #include <ios>
@@ -48,21 +49,6 @@ TYPE readBinary(std::istream& in) {
     }
   }
   return value;
-}
-
-std::chrono::file_clock::time_point readMTime(std::istream& in) {
-#ifdef _WIN32
-  const std::uint64_t low = readBinary<std::uint32_t>(in);
-  const std::uint64_t high = readBinary<std::uint32_t>(in);
-
-  // ninja subtracts the number below to shift the
-  // epoch from 1601 to 2001
-  const std::uint64_t ticks = (high << 32) + low + 126'227'704'000'000'000;
-  return std::chrono::file_clock::time_point(
-      std::chrono::file_clock::duration(ticks));
-#else
-#error "TODO"
-#endif
 }
 
 }  // namespace
@@ -98,24 +84,22 @@ DepsReader::read() {
     const std::size_t padding =
         (end[-1] == '\0') + (end[-2] == '\0') + (end[-3] == '\0');
     m_storage.erase(m_storage.size() - padding);
-
-    // Check that the expected index matches the actual index. This can only
-    // happen if two ninja processes write to the same deps log concurrently.
-    // (This uses unary complement to make the checksum look less like a
-    // dependency record entry.)
     const std::uint32_t checksum = readBinary<std::uint32_t>(*m_deps);
     const std::int32_t id = ~checksum;
     return PathRecordView{id, m_storage};
   } else {
     const std::int32_t outIndex = readBinary<std::int32_t>(*m_deps);
-    const std::chrono::file_clock::time_point mtime = readMTime(*m_deps);
+    const ninja_clock::time_point mtime =
+        readBinary<ninja_clock::time_point>(*m_deps);
     const std::uint32_t numDependencies =
         (recordSize - sizeof(std::int32_t) - 2 * sizeof(std::uint32_t)) /
         sizeof(std::int32_t);
     m_depsStorage.resize(numDependencies);
     std::generate_n(m_depsStorage.begin(), numDependencies,
                     [&] { return readBinary<std::int32_t>(*m_deps); });
-    return DepsRecordView{outIndex, mtime, m_depsStorage};
+    return DepsRecordView{
+        outIndex, std::chrono::clock_cast<std::chrono::file_clock>(mtime),
+        m_depsStorage};
   }
 }
 
