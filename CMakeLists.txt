@@ -127,7 +127,7 @@ foreach(TEST basic)
     add_test(
         NAME kinja.snapshot.${TEST}
         COMMAND kinja
-        --input ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/in.json
+        --input ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.json
         --output ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.dat
     )
     add_test(
@@ -153,7 +153,7 @@ foreach(TEST basic)
     add_test(
         NAME kinja.snapshot.prettyprint.${TEST}.cmp
         COMMAND ${CMAKE_COMMAND} -E compare_files
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/in.json
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.json
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.json
     )
     set_tests_properties(
