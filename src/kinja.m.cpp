@@ -51,7 +51,6 @@ static const option g_longOptions[] = {
 
 int main(int argc, char** argv) try {
   using namespace trimja;
-  std::at_quick_exit([] { std::cout.flush(); });
 
   std::optional<std::string> inJSONFile;
   std::optional<std::string> outFile;
@@ -62,7 +61,7 @@ int main(int argc, char** argv) try {
       case 0:
         break;
       case 'h':
-        std::cout << "Help\n";
+        std::cout << "Help" << std::endl;
         std::quick_exit(EXIT_SUCCESS);
       case 'i':
         inJSONFile = optarg;
@@ -74,13 +73,13 @@ int main(int argc, char** argv) try {
         printFile = optarg;
         break;
       case 'v':
-        std::cout << KINJA_VERSION << "\n";
+        std::cout << KINJA_VERSION << std::endl;
         std::quick_exit(EXIT_SUCCESS);
       case '?':
-        std::cout << "Unknown option\n";
+        std::cout << "Unknown option" << std::endl;
         std::quick_exit(EXIT_FAILURE);
       default:
-        std::cout << "Unknown command line parsing error\n";
+        std::cout << "Unknown command line parsing error" << std::endl;
         std::quick_exit(EXIT_FAILURE);
     }
   }
@@ -107,9 +106,16 @@ int main(int argc, char** argv) try {
         }
         case 1: {
           const DepsRecordView& view = std::get<DepsRecordView>(record);
+
+          // The precision differs between platforms so make sure we truncate or
+          // pad "0" to achieve nanosecond precision
+          std::string formattedMTime = std::format("{:L%F %T}", view.mtime);
+          formattedMTime.resize(
+              sizeof("YYYY-MM-DD HH:MM:SS.012345678") - sizeof(""), '0');
+
           out << newLine << "    { \"type\": \"addDep\", \"out\": \""
-              << paths[view.outIndex] << "\", \"datetime\": \"" << view.mtime
-              << "\", \"deps\": [";
+              << paths[view.outIndex] << "\", \"datetime\": \""
+              << formattedMTime << "\", \"deps\": [";
           newLine = ",\n";
           const char* sep = "";
           for (const std::int32_t dep : view.deps) {
@@ -164,6 +170,6 @@ int main(int argc, char** argv) try {
     std::quick_exit(EXIT_SUCCESS);
   }
 } catch (const std::exception& e) {
-  std::cout << e.what();
+  std::cout << e.what() << std::endl;
   std::quick_exit(EXIT_FAILURE);
 }

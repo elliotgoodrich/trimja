@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <fstream>
 #include <list>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -418,6 +419,8 @@ void TrimUtil::trim(std::ostream& output,
       output << text;
     }
   }
+
+  output.flush();
 }
 
 }  // namespace trimja
