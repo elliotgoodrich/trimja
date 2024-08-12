@@ -12,7 +12,7 @@ jobs:
       matrix:
         os: [windows-latest]
         build_type: [Debug, Release]
-        c_compiler: [cl]
+        c_compiler: [cl, clang]
     steps:
     - uses: actions/checkout@v4
     - name: Set reusable strings
