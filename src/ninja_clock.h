@@ -20,6 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#ifndef TRIMJA_NINJA_CLOCK
+#define TRIMJA_NINJA_CLOCK
+
 #include <chrono>
 
 namespace trimja {
@@ -52,3 +55,5 @@ struct clock_time_conversion<file_clock, trimja::ninja_clock> {
 
 }  // namespace chrono
 }  // namespace std
+
+#endif

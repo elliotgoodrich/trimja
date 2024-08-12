@@ -27,6 +27,7 @@
 #include <iosfwd>
 #include <span>
 #include <variant>
+#include <vector>
 
 namespace trimja {
 

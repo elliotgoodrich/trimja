@@ -65,11 +65,17 @@ add_test(
 )
 
 # Check redirection from a file
-add_test(
-    NAME trimja.stdin
-    COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/simple/ $ENV{ComSpec} /c
-    $<TARGET_FILE:trimja> < changed.txt
-)
+if (WIN32)
+    add_test(
+        NAME trimja.stdin
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/simple/ $ENV{ComSpec} /c $<TARGET_FILE:trimja> < changed.txt
+    )
+else()
+    add_test(
+        NAME trimja.stdin
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/simple/ sh -c "$<TARGET_FILE:trimja> < changed.txt"
+    )
+endif()
 set_property(TEST trimja.stdin PROPERTY PASS_REGULAR_EXPRESSION "build out1")
 
 # Snapshot tests
@@ -124,21 +130,24 @@ set_property(TEST kinja.-u PROPERTY WILL_FAIL true)
 
 # Snapshot tests
 foreach(TEST basic)
+    set(NINJA_JSON_INPUT ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.crlf.json)
+    set(NINJA_JSON_ACTUAL ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.json)
+    set(NINJA_JSON_EXPECTED ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.$<IF:$<BOOL:${WIN32}>,crlf,lf>.json)
+    set(NINJA_DEPS_ACTUAL ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.dat)
+    # .ninja_deps files differ based on platform so our expected file is different
+    set(NINJA_DEPS_EXPECTED ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.$<IF:$<BOOL:${WIN32}>,win,posix>.dat)
+
     add_test(
         NAME kinja.snapshot.${TEST}
-        COMMAND kinja
-        --input ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.json
-        --output ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.dat
+        COMMAND kinja --input ${NINJA_JSON_INPUT} --output ${NINJA_DEPS_ACTUAL}
     )
     add_test(
         NAME kinja.snapshot.${TEST}.cmp
-        COMMAND ${CMAKE_COMMAND} -E compare_files
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.dat
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.dat
+        COMMAND ${CMAKE_COMMAND} -E compare_files ${NINJA_DEPS_ACTUAL} ${NINJA_DEPS_EXPECTED}
     )
     set_tests_properties(
         kinja.snapshot.${TEST}.cmp
-        PROPERTIES FIXTURES_REQUIRED kinja.snapshot.${TEST}.fixture
+        PROPERTIES FIXTURES_REQUIRED kinja.snapshot.prettyprint.${TEST}.fixture
     )
     set_tests_properties(kinja.snapshot.${TEST}
         PROPERTIES FIXTURES_SETUP kinja.snapshot.${TEST}.fixture
@@ -146,15 +155,11 @@ foreach(TEST basic)
 
     add_test(
         NAME kinja.snapshot.prettyprint.${TEST}
-        COMMAND kinja
-        --print ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/basic/actual.dat
-        --output ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/basic/actual.json
+        COMMAND kinja --print ${NINJA_DEPS_EXPECTED} --output ${NINJA_JSON_ACTUAL}
     )
     add_test(
         NAME kinja.snapshot.prettyprint.${TEST}.cmp
-        COMMAND ${CMAKE_COMMAND} -E compare_files
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.json
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.json
+        COMMAND ${CMAKE_COMMAND} -E compare_files ${NINJA_JSON_ACTUAL} ${NINJA_JSON_EXPECTED}
     )
     set_tests_properties(
         kinja.snapshot.prettyprint.${TEST}.cmp

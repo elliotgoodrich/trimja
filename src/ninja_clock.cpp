@@ -22,21 +22,27 @@
 
 #include "ninja_clock.h"
 
-namespace std {
-namespace chrono {
-
-#if defined(_MSC_VER)
-
 namespace {
 
+#if defined(_MSC_VER)
 // The `file_clock::time_point` in Visual Studio is the same as the `FILETIME`
 // struct.
 // https://learn.microsoft.com/en-us/cpp/standard-library/file-clock-class
-
 // ninja subtracts the number below to shift the epoch from 1601 to 2001
 const std::uint64_t offset = 126'227'704'000'000'000;
+#else
+// For other platforms (we're assuming POSIX) the `file_clock::time_point` is
+// nanoseconds past the unix epoch and ninja doesn't adjust this at all. There's
+// some complications such as libc++ using __int128_t
+// (https://libcxx.llvm.org/DesignDocs/FileTimeType.html) but we will truncate
+// in the exact same way that ninja will
+const std::uint64_t offset = 0;
+#endif
 
 }  // namespace
+
+namespace std {
+namespace chrono {
 
 trimja::ninja_clock::time_point
 clock_time_conversion<trimja::ninja_clock, file_clock>::operator()(
@@ -51,9 +57,6 @@ clock_time_conversion<file_clock, trimja::ninja_clock>::operator()(
   return file_clock::time_point(
       file_clock::duration(t.time_since_epoch().count() + offset));
 }
-#else
-#error "TODO"
-#endif
 
 }  // namespace chrono
 }  // namespace std

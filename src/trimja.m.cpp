@@ -88,6 +88,8 @@ template <class... Ts>
 struct overloaded : Ts... {
   using Ts::operator()...;
 };
+template <class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
 
 }  // namespace
 
@@ -128,7 +130,7 @@ int main(int argc, char** argv) try {
         ninjaFile = optarg;
         break;
       case 'h':
-        std::cout << g_helpText;
+        std::cout << g_helpText << std::endl;
         std::quick_exit(EXIT_SUCCESS);
       case 'o':
         if (std::get_if<Stdout>(&outputFile)) {
