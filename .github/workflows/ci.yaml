@@ -9,11 +9,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
+        os: [macos-latest, ubuntu-24.04, windows-latest]
         build_type: [Debug, Release]
         compiler: [{cpp: clang++, c: clang}, {cpp: cl, c: cl}]
         exclude:
           - os: ubuntu-24.04
+            compiler: {cpp: cl, c: cl}
+          - os: macos-latest
             compiler: {cpp: cl, c: cl}
     runs-on: ${{ matrix.os }}
     steps:
