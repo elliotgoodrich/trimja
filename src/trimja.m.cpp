@@ -204,7 +204,7 @@ int main(int argc, char** argv) try {
                    return outStream.emplace<std::stringstream>();
                  },
                  [&](const std::filesystem::path& out) -> std::ostream& {
-                   return outStream.emplace<std::ofstream>(ninjaFile);
+                   return outStream.emplace<std::ofstream>(out);
                  }},
       outputFile);
 

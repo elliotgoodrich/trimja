@@ -64,6 +64,25 @@ add_test(
     COMMAND trimja --write --restrict changed.txt
 )
 
+# Check we can write to a different file
+add_test(
+    NAME trimja.--write
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/
+    COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja --restrict changed.txt
+)
+add_test(
+    NAME trimja.--write.cmp
+    COMMAND ${CMAKE_COMMAND} -E compare_files ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/build.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
+)
+set_tests_properties(
+    trimja.--write.cmp
+    PROPERTIES FIXTURES_REQUIRED trimja.--write.fixture
+)
+set_tests_properties(
+    trimja.--write
+    PROPERTIES FIXTURES_SETUP trimja.--write.fixture
+)
+
 # Check redirection from a file
 if (WIN32)
     add_test(
