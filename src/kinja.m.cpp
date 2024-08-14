@@ -62,7 +62,7 @@ int main(int argc, char** argv) try {
         break;
       case 'h':
         std::cout << "Help" << std::endl;
-        std::quick_exit(EXIT_SUCCESS);
+        std::_Exit(EXIT_SUCCESS);
       case 'i':
         inJSONFile = optarg;
         break;
@@ -74,13 +74,13 @@ int main(int argc, char** argv) try {
         break;
       case 'v':
         std::cout << KINJA_VERSION << std::endl;
-        std::quick_exit(EXIT_SUCCESS);
+        std::_Exit(EXIT_SUCCESS);
       case '?':
         std::cout << "Unknown option" << std::endl;
-        std::quick_exit(EXIT_FAILURE);
+        std::_Exit(EXIT_FAILURE);
       default:
         std::cout << "Unknown command line parsing error" << std::endl;
-        std::quick_exit(EXIT_FAILURE);
+        std::_Exit(EXIT_FAILURE);
     }
   }
 
@@ -128,7 +128,7 @@ int main(int argc, char** argv) try {
         case 2: {
           out << "\n]\n";
           out.flush();
-          std::quick_exit(EXIT_SUCCESS);
+          std::_Exit(EXIT_SUCCESS);
         }
       }
     }
@@ -167,9 +167,9 @@ int main(int argc, char** argv) try {
     }
 
     out.flush();
-    std::quick_exit(EXIT_SUCCESS);
+    std::_Exit(EXIT_SUCCESS);
   }
 } catch (const std::exception& e) {
   std::cout << e.what() << std::endl;
-  std::quick_exit(EXIT_FAILURE);
+  std::_Exit(EXIT_FAILURE);
 }
