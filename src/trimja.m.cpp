@@ -116,14 +116,14 @@ int main(int argc, char** argv) try {
         } else if (std::get_if<std::filesystem::path>(&outputFile)) {
           std::cerr << "Cannot specify --expected when --output was given"
                     << std::endl;
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         } else if (std::get_if<Write>(&outputFile)) {
           std::cerr << "Cannot specify --expected when --write was given"
                     << std::endl;
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         } else {
           assert(false);
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         }
         break;
       case 'f':
@@ -131,21 +131,21 @@ int main(int argc, char** argv) try {
         break;
       case 'h':
         std::cout << g_helpText << std::endl;
-        std::quick_exit(EXIT_SUCCESS);
+        std::_Exit(EXIT_SUCCESS);
       case 'o':
         if (std::get_if<Stdout>(&outputFile)) {
           outputFile.emplace<std::filesystem::path>(optarg);
         } else if (std::get_if<Write>(&outputFile)) {
           std::cerr << "Cannot specify --output when --write was given"
                     << std::endl;
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         } else if (std::get_if<Expected>(&outputFile)) {
           std::cerr << "Cannot specify --output when --expected was given"
                     << std::endl;
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         } else {
           assert(false);
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         }
         break;
       case 'r':
@@ -153,29 +153,29 @@ int main(int argc, char** argv) try {
         break;
       case 'v':
         std::cout << TRIMJA_VERSION << "" << std::endl;
-        std::quick_exit(EXIT_SUCCESS);
+        std::_Exit(EXIT_SUCCESS);
       case 'w':
         if (std::get_if<Stdout>(&outputFile)) {
           outputFile.emplace<Write>();
         } else if (std::get_if<std::filesystem::path>(&outputFile)) {
           std::cerr << "Cannot specify --write when --output was given"
                     << std::endl;
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         } else if (std::get_if<Expected>(&outputFile)) {
           std::cerr << "Cannot specify --write when --expected was given"
                     << std::endl;
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         } else {
           assert(false);
-          std::quick_exit(EXIT_FAILURE);
+          std::_Exit(EXIT_FAILURE);
         }
         break;
       case '?':
         std::cerr << "Unknown option" << std::endl;
-        std::quick_exit(EXIT_FAILURE);
+        std::_Exit(EXIT_FAILURE);
       default:
         std::cerr << "Unknown command line parsing error" << std::endl;
-        std::quick_exit(EXIT_FAILURE);
+        std::_Exit(EXIT_FAILURE);
     }
   }
 
@@ -210,7 +210,7 @@ int main(int argc, char** argv) try {
 
   TrimUtil::trim(output, ninjaFile, ninjaFileContents, changed);
   if (!expectedFile.has_value()) {
-    std::quick_exit(EXIT_SUCCESS);
+    std::_Exit(EXIT_SUCCESS);
   }
 
   const std::string_view actual = std::get<std::stringstream>(outStream).view();
@@ -224,16 +224,16 @@ int main(int argc, char** argv) try {
               << actual << "---\n"
               << "expected:\n"
               << expectedBuffer.view() << std::endl;
-    std::quick_exit(EXIT_FAILURE);
+    std::_Exit(EXIT_FAILURE);
   } else {
     std::cout << "Files are equal!\n"
               << "actual:\n"
               << actual << "---\n"
               << "expected:\n"
               << expectedBuffer.view() << std::endl;
-    std::quick_exit(EXIT_SUCCESS);
+    std::_Exit(EXIT_SUCCESS);
   }
 } catch (const std::exception& e) {
   std::cout << e.what() << std::endl;
-  std::quick_exit(EXIT_FAILURE);
+  std::_Exit(EXIT_FAILURE);
 }
