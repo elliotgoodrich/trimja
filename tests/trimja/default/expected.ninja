@@ -1,0 +1,4 @@
+build a_out: phony a_in
+build b_out: phony b_in
+build c_out: phony c_in
+default a_out b_out c_out

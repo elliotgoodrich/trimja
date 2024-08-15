@@ -220,23 +220,29 @@ class Parser {
   }
 
   void handleDefault(const char* start) {
-    std::string errStorage;
-    std::string* err = &errStorage;
-    std::string path;
-    if (!m_lexer.ReadPath(&path, err)) {
-      throw std::runtime_error(*err);
-    }
-    if (path.empty()) {
+    std::vector<std::string> ins;
+    std::string err;
+    collectPaths(ins, &err);
+    if (ins.empty()) {
       throw std::runtime_error("Expected path");
     }
 
-    while (m_lexer.ReadPath(&path, err)) {
-      if (path.empty()) {
-        throw std::runtime_error("Empty path");
-      }
-    }
-
     expectToken(Lexer::NEWLINE);
+
+    // Add the build command to `m_parts`
+    const std::size_t partsIndex = m_parts.size();
+    m_parts.emplace_back(std::piecewise_construct,
+                         std::make_tuple(start, m_lexer.position()),
+                         std::make_tuple(false));
+
+    const std::size_t outIndex = m_graph.addDefault();
+    if (outIndex >= m_nodeToParts.size()) {
+      m_nodeToParts.resize(outIndex + 1);
+    }
+    m_nodeToParts[outIndex] = partsIndex;
+    for (const std::string& in : ins) {
+      m_graph.addEdge(getPathIndex(in), outIndex);
+    }
   }
 
  public:

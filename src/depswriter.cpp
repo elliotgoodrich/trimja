@@ -23,6 +23,7 @@
 #include "depswriter.h"
 #include "ninja_clock.h"
 
+#include <cassert>
 #include <iostream>
 
 namespace trimja {
@@ -56,6 +57,7 @@ std::int32_t DepsWriter::recordPath(std::string_view path) {
   const std::size_t paddedSize = ((path.size() + 3) / 4) * 4;
   writeBinary<std::uint32_t>(m_out, paddedSize + sizeof(checksum));
   m_out->write(path.data(), path.size());
+  assert(paddedSize - path.size() <= sizeof("\0\0"));
   m_out->write("\0\0", paddedSize - path.size());
   writeBinary<std::uint32_t>(m_out, checksum);
   return m_nextNode++;

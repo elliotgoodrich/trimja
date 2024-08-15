@@ -46,7 +46,9 @@ class Graph {
 
   std::size_t addPath(const std::string& path);
 
-  void addEdge(std::size_t index, std::size_t dependsOn);
+  std::size_t addDefault();
+
+  void addEdge(std::size_t in, std::size_t out);
 
   const std::set<std::size_t>& out(std::size_t pathIndex) const;
   const std::set<std::size_t>& in(std::size_t pathIndex) const;
