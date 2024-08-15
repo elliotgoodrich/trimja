@@ -201,7 +201,10 @@ int main(int argc, char** argv) try {
                    return outStream.emplace<std::ofstream>(ninjaFile);
                  },
                  [&](Expected) -> std::ostream& {
-                   return outStream.emplace<std::stringstream>();
+                   // Open the expected stream in binary mode so we don't worry
+                   // about line ending differences between platforms
+                   return outStream.emplace<std::stringstream>(
+                       std::ios_base::out | std::ios_base::binary);
                  },
                  [&](const std::filesystem::path& out) -> std::ostream& {
                    return outStream.emplace<std::ofstream>(out);
@@ -215,14 +218,14 @@ int main(int argc, char** argv) try {
 
   const std::string_view actual = std::get<std::stringstream>(outStream).view();
 
-  std::ifstream expected(*expectedFile);
+  std::ifstream expected(*expectedFile, std::ios_base::binary);
   std::stringstream expectedBuffer;
   expectedBuffer << expected.rdbuf();
   if (actual != expectedBuffer.view()) {
     std::cout << "Output is different to expected\n"
-              << "actual:\n"
+              << "actual (size " << actual.size() << "):\n"
               << actual << "---\n"
-              << "expected:\n"
+              << "expected (size " << expectedBuffer.view().size() << "):\n"
               << expectedBuffer.view() << std::endl;
     std::_Exit(EXIT_FAILURE);
   } else {

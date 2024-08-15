@@ -29,7 +29,7 @@ namespace trimja {
 Graph::Graph() = default;
 
 std::size_t Graph::addPath(const std::string& path) {
-  const std::size_t nextIndex = size();
+  const std::size_t nextIndex = m_inputToOutput.size();
   const auto [it, inserted] = m_pathToIndex.emplace(path, nextIndex);
   if (inserted) {
     m_inputToOutput.emplace_back();
@@ -38,10 +38,17 @@ std::size_t Graph::addPath(const std::string& path) {
   return it->second;
 }
 
-void Graph::addEdge(std::size_t index, std::size_t dependsOn) {
-  assert(index != dependsOn);
-  m_inputToOutput[index].insert(dependsOn);
-  m_outputToInput[dependsOn].insert(index);
+std::size_t Graph::addDefault() {
+  const std::size_t nextIndex = m_inputToOutput.size();
+  m_inputToOutput.emplace_back();
+  m_outputToInput.emplace_back();
+  return nextIndex;
+}
+
+void Graph::addEdge(std::size_t in, std::size_t out) {
+  assert(in != out);
+  m_inputToOutput[in].insert(out);
+  m_outputToInput[out].insert(in);
 }
 
 const std::set<std::size_t>& Graph::out(std::size_t pathIndex) const {
@@ -57,7 +64,7 @@ std::size_t Graph::getPath(const std::string& path) const {
 }
 
 std::size_t Graph::size() const {
-  return m_pathToIndex.size();
+  return m_inputToOutput.size();
 }
 
 }  // namespace trimja
