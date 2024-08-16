@@ -29,9 +29,8 @@
 
 #include <cassert>
 #include <filesystem>
+#include <forward_list>
 #include <fstream>
-#include <list>
-#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -51,8 +50,12 @@ class Parser {
   std::vector<std::pair<std::string_view, bool>> m_parts;
 
  private:
-  // Map each output index to the index within `m_parts`
-  std::vector<std::optional<std::size_t>> m_nodeToParts;
+  // Map each output index to the index within `m_parts`.  Use -1 for a
+  // value that isn't an output to a build command (i.e. a source file)
+  std::vector<std::size_t> m_nodeToParts;
+
+  // Storage (and reference stability) for any phony commands we need
+  std::forward_list<std::string> m_phonyCommands;
 
   // Our lexer
   Lexer m_lexer;
@@ -63,7 +66,7 @@ class Parser {
   std::size_t getPathIndex(std::string_view path) {
     const std::size_t index = m_graph.addPath(std::string(path));
     if (index >= m_nodeToParts.size()) {
-      m_nodeToParts.resize(index + 1);
+      m_nodeToParts.resize(index + 1, -1);
     }
     return index;
   }
@@ -205,7 +208,7 @@ class Parser {
       const std::size_t outIndex = getPathIndex(out);
       outIndices.push_back(outIndex);
       if (outIndex >= m_nodeToParts.size()) {
-        m_nodeToParts.resize(outIndex + 1);
+        m_nodeToParts.resize(outIndex + 1, -1);
       }
       m_nodeToParts[outIndex] = partsIndex;
     }
@@ -237,7 +240,7 @@ class Parser {
 
     const std::size_t outIndex = m_graph.addDefault();
     if (outIndex >= m_nodeToParts.size()) {
-      m_nodeToParts.resize(outIndex + 1);
+      m_nodeToParts.resize(outIndex + 1, -1);
     }
     m_nodeToParts[outIndex] = partsIndex;
     for (const std::string& in : ins) {
@@ -306,31 +309,62 @@ class Parser {
   }
 
   void markForPrinting(std::size_t index) {
-    if (m_nodeToParts[index].has_value()) {
-      m_parts[*m_nodeToParts[index]].second = true;
+    if (m_nodeToParts[index] != -1) {
+      m_parts[m_nodeToParts[index]].second = true;
+    }
+  }
+
+  void printPhonyEdge(std::size_t index) {
+    // No need to add anything if `index` represents a path that isn't built
+    // by ninja.
+    if (m_nodeToParts[index] != -1) {
+      std::string& phony = m_phonyCommands.emplace_front("build ");
+      phony += m_graph.path(index);
+      phony += ": phony\n";
+      m_parts[m_nodeToParts[index]].first = phony;
+      m_parts[m_nodeToParts[index]].second = true;
+    }
+  }
+
+  void print(std::ostream& output) const {
+    for (const auto& [text, required] : m_parts) {
+      if (required) {
+        output << text;
+      }
     }
   }
 };
 
 enum Requirement : char {
-  Unknown = 0b00,
-  Inputs = 0b01,
-  InputsAndOutputs = 0b11,
+  // Not known yet whether this build command is needed. At the end all
+  // `Unknown` commands won't be printed.
+  Unknown,
 
+  // This build command is needed only by `default` and has no inputs marked as
+  // required so instead of modifying the `default` statement we instead create
+  // a build statement that is an empty `phony`.
+  CreatePhony,
+
+  // We need all inputs of this build command, but not necessarily all of the
+  // outputs.
+  Inputs,
+
+  // We need both inputs and outputs of this command.
+  InputsAndOutputs,
 };
-
-Requirement& operator&=(Requirement& lhs, const Requirement& rhs) {
-  lhs = static_cast<Requirement>(static_cast<int>(lhs) & static_cast<int>(rhs));
-  return lhs;
-}
 
 void markOutputsAsRequired(Graph& graph,
                            std::size_t index,
                            std::vector<Requirement>& requirement) {
   for (const std::size_t out : graph.out(index)) {
-    if (requirement[out] != Requirement::InputsAndOutputs) {
-      requirement[out] = Requirement::InputsAndOutputs;
-      markOutputsAsRequired(graph, out, requirement);
+    switch (requirement[out]) {
+      case Requirement::Unknown:
+      case Requirement::CreatePhony:
+      case Requirement::Inputs:
+        requirement[out] = Requirement::InputsAndOutputs;
+        markOutputsAsRequired(graph, out, requirement);
+      case Requirement::InputsAndOutputs:
+        break;
     }
   }
 }
@@ -339,9 +373,15 @@ void markInputsAsRequired(Graph& graph,
                           std::size_t index,
                           std::vector<Requirement>& requirement) {
   for (const std::size_t in : graph.in(index)) {
-    if (requirement[in] == Requirement::Unknown) {
-      requirement[in] = Requirement::Inputs;
-      markInputsAsRequired(graph, in, requirement);
+    switch (requirement[in]) {
+      case Requirement::Unknown:
+      case Requirement::CreatePhony:
+        requirement[in] = Requirement::Inputs;
+        markInputsAsRequired(graph, in, requirement);
+        break;
+      case Requirement::Inputs:
+      case Requirement::InputsAndOutputs:
+        break;
     }
   }
 }
@@ -407,25 +447,38 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all inputs as required or not
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    if (requirements[index] & Requirement::Inputs) {
+    if (graph.isDefault(index)) {
+      for (const std::size_t in : graph.in(index)) {
+        switch (requirements[in]) {
+          case Requirement::Unknown:
+            requirements[in] = Requirement::CreatePhony;
+            break;
+          case Requirement::CreatePhony:
+          case Requirement::Inputs:
+          case Requirement::InputsAndOutputs:
+            break;
+        }
+      }
+    } else if (requirements[index] != Requirement::Unknown) {
       markInputsAsRequired(graph, index, requirements);
     }
   }
 
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    if (requirements[index] != Unknown) {
-      parser.markForPrinting(index);
+    switch (requirements[index]) {
+      case Requirement::CreatePhony:
+        parser.printPhonyEdge(index);
+        break;
+      case Requirement::Inputs:
+      case Requirement::InputsAndOutputs:
+        parser.markForPrinting(index);
+        break;
+      case Requirement::Unknown:
+        break;
     }
   }
 
-  // DFS through our graph and then call `markForPrinting` on each required node
-  // then output all parts to
-  for (const auto& [text, required] : parser.m_parts) {
-    if (required) {
-      output << text;
-    }
-  }
-
+  parser.print(output);
   output.flush();
 }
 

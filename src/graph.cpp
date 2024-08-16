@@ -34,14 +34,18 @@ std::size_t Graph::addPath(const std::string& path) {
   if (inserted) {
     m_inputToOutput.emplace_back();
     m_outputToInput.emplace_back();
+    m_path.push_back(path);
   }
   return it->second;
 }
 
 std::size_t Graph::addDefault() {
+  assert(m_defaultIndex == -1);
   const std::size_t nextIndex = m_inputToOutput.size();
   m_inputToOutput.emplace_back();
   m_outputToInput.emplace_back();
+  m_path.push_back("default");
+  m_defaultIndex = nextIndex;
   return nextIndex;
 }
 
@@ -49,6 +53,14 @@ void Graph::addEdge(std::size_t in, std::size_t out) {
   assert(in != out);
   m_inputToOutput[in].insert(out);
   m_outputToInput[out].insert(in);
+}
+
+bool Graph::isDefault(std::size_t pathIndex) const {
+  return pathIndex == m_defaultIndex;
+}
+
+std::string_view Graph::path(std::size_t pathIndex) const {
+  return m_path[pathIndex];
 }
 
 const std::set<std::size_t>& Graph::out(std::size_t pathIndex) const {
