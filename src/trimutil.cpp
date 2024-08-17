@@ -448,7 +448,13 @@ void TrimUtil::trim(std::ostream& output,
   // Mark all inputs as required or not
   for (std::size_t index = 0; index < graph.size(); ++index) {
     if (graph.isDefault(index)) {
+      // Mark the default node as anything other than `Unknown` so it
+      // always gets printed
+      requirements[index] = Requirement::Inputs;
       for (const std::size_t in : graph.in(index)) {
+        // Mark all `Unknown` direct inputs to create phony build commands
+        // since we only want to build those inputs to `default` that
+        // are required
         switch (requirements[in]) {
           case Requirement::Unknown:
             requirements[in] = Requirement::CreatePhony;

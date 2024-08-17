@@ -98,7 +98,7 @@ endif()
 set_property(TEST trimja.stdin PROPERTY PASS_REGULAR_EXPRESSION "build out1")
 
 # Snapshot tests
-foreach(TEST default passthrough simple simple_reversed chained fan pyramid dependencies attached basic_dyndep)
+foreach(TEST default default_unused passthrough simple simple_reversed chained fan pyramid dependencies attached basic_dyndep)
     add_test(
         NAME trimja.snapshot.${TEST}
         COMMAND trimja
