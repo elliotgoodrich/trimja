@@ -59,6 +59,10 @@ bool Graph::isDefault(std::size_t pathIndex) const {
   return pathIndex == m_defaultIndex;
 }
 
+std::size_t Graph::defaultIndex() const {
+  return m_defaultIndex;
+}
+
 std::string_view Graph::path(std::size_t pathIndex) const {
   return m_path[pathIndex];
 }

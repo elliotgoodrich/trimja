@@ -2,11 +2,14 @@ build b1: copy a1
 build b2: copy a1
 build c1: copy b1
 build c2: copy b1
+build c3: phony
 build c4: copy b2
 build d1: copy c1
 build d2: copy c1
 build d3: copy c2
 build d4: copy c2
+build d5: phony
+build d6: phony
 build d7: copy c4
 build d8: copy c4
 build e1: copy d1
@@ -17,6 +20,10 @@ build e5: copy d3
 build e6: copy d3
 build e7: copy d4
 build e8: copy d4
+build e9: phony
+build e10: phony
+build e11: phony
+build e12: phony
 build e13: copy d7
 build e14: copy d7
 build e15: copy d8

@@ -201,10 +201,7 @@ int main(int argc, char** argv) try {
                    return outStream.emplace<std::ofstream>(ninjaFile);
                  },
                  [&](Expected) -> std::ostream& {
-                   // Open the expected stream in binary mode so we don't worry
-                   // about line ending differences between platforms
-                   return outStream.emplace<std::stringstream>(
-                       std::ios_base::out | std::ios_base::binary);
+                   return outStream.emplace<std::stringstream>();
                  },
                  [&](const std::filesystem::path& out) -> std::ostream& {
                    return outStream.emplace<std::ofstream>(out);
@@ -216,17 +213,30 @@ int main(int argc, char** argv) try {
     std::_Exit(EXIT_SUCCESS);
   }
 
+  // Remove CR characters on Windows from the output so that we can cleanly
+  // compare the output to the expected file on disk without worrying about
+  // different line endings
+#if _WIN32
+  std::string actual = std::get<std::stringstream>(outStream).str();
+  actual.erase(std::remove(actual.begin(), actual.end(), '\r'), actual.end());
+#else
   const std::string_view actual = std::get<std::stringstream>(outStream).view();
+#endif
 
-  std::ifstream expected(*expectedFile, std::ios_base::binary);
+  std::ifstream expectedStream(*expectedFile);
   std::stringstream expectedBuffer;
-  expectedBuffer << expected.rdbuf();
-  if (actual != expectedBuffer.view()) {
-    std::cout << "Output is different to expected\n"
+  expectedBuffer << expectedStream.rdbuf();
+  const std::string_view expected = expectedBuffer.view();
+  if (actual != expected) {
+    const std::ptrdiff_t pos = std::mismatch(actual.begin(), actual.end(),
+                                             expected.begin(), expected.end())
+                                   .first -
+                               actual.begin();
+    std::cout << "Output is different to expected at position " << pos << "\n"
               << "actual (size " << actual.size() << "):\n"
               << actual << "---\n"
-              << "expected (size " << expectedBuffer.view().size() << "):\n"
-              << expectedBuffer.view() << std::endl;
+              << "expected (size " << expected.size() << "):\n"
+              << expected << std::endl;
     std::_Exit(EXIT_FAILURE);
   } else {
     std::cout << "Files are equal!\n"
