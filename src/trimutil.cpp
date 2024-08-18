@@ -336,14 +336,14 @@ class Parser {
 };
 
 enum Requirement : char {
-  // Not known yet whether this build command is needed. At the end all
-  // `Unknown` commands won't be printed.
-  Unknown,
-
   // This build command is needed only by `default` and has no inputs marked as
   // required so instead of modifying the `default` statement we instead create
   // a build statement that is an empty `phony`.
   CreatePhony,
+
+  // This build command should be printed as-is, but it doesn't require inputs
+  // or outputs (e.g. `default` statement)
+  None,
 
   // We need all inputs of this build command, but not necessarily all of the
   // outputs.
@@ -358,13 +358,15 @@ void markOutputsAsRequired(Graph& graph,
                            std::vector<Requirement>& requirement) {
   for (const std::size_t out : graph.out(index)) {
     switch (requirement[out]) {
-      case Requirement::Unknown:
       case Requirement::CreatePhony:
       case Requirement::Inputs:
         requirement[out] = Requirement::InputsAndOutputs;
         markOutputsAsRequired(graph, out, requirement);
+        break;
       case Requirement::InputsAndOutputs:
         break;
+      case Requirement::None:
+        assert(!"Should not have 'None' at this point");
     }
   }
 }
@@ -374,7 +376,6 @@ void markInputsAsRequired(Graph& graph,
                           std::vector<Requirement>& requirement) {
   for (const std::size_t in : graph.in(index)) {
     switch (requirement[in]) {
-      case Requirement::Unknown:
       case Requirement::CreatePhony:
         requirement[in] = Requirement::Inputs;
         markInputsAsRequired(graph, in, requirement);
@@ -382,6 +383,8 @@ void markInputsAsRequired(Graph& graph,
       case Requirement::Inputs:
       case Requirement::InputsAndOutputs:
         break;
+      case Requirement::None:
+        assert(!"Should not get 'None' as an input");
     }
   }
 }
@@ -436,7 +439,7 @@ void TrimUtil::trim(std::ostream& output,
 
   parser.parse(ninjaFile.string(), ninjaFileContents);
 
-  requirements.resize(graph.size(), Requirement::Unknown);
+  requirements.resize(graph.size(), Requirement::CreatePhony);
 
   // Mark all outputs as required or not
   for (std::size_t index = 0; index < graph.size(); ++index) {
@@ -445,28 +448,26 @@ void TrimUtil::trim(std::ostream& output,
     }
   }
 
-  // Mark all inputs as required or not
+  // Regardless of what the default index was set to, we set it to `None` so
+  // that we don't require any of its inputs
+  if (const std::size_t defaultIndex = graph.defaultIndex();
+      defaultIndex != -1) {
+    requirements[defaultIndex] = Requirement::None;
+  }
+
+  // Mark all inputs as required.  The only time we don't do this
+  // is for the default rule since this is just a nice way for users to
+  // build a set of output files and when we're using `trimja` we only
+  // want to build what has changed.
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    if (graph.isDefault(index)) {
-      // Mark the default node as anything other than `Unknown` so it
-      // always gets printed
-      requirements[index] = Requirement::Inputs;
-      for (const std::size_t in : graph.in(index)) {
-        // Mark all `Unknown` direct inputs to create phony build commands
-        // since we only want to build those inputs to `default` that
-        // are required
-        switch (requirements[in]) {
-          case Requirement::Unknown:
-            requirements[in] = Requirement::CreatePhony;
-            break;
-          case Requirement::CreatePhony:
-          case Requirement::Inputs:
-          case Requirement::InputsAndOutputs:
-            break;
-        }
-      }
-    } else if (requirements[index] != Requirement::Unknown) {
-      markInputsAsRequired(graph, index, requirements);
+    switch (requirements[index]) {
+      case Requirement::CreatePhony:
+      case Requirement::None:
+        break;
+      case Requirement::Inputs:
+      case Requirement::InputsAndOutputs:
+        markInputsAsRequired(graph, index, requirements);
+        break;
     }
   }
 
@@ -475,11 +476,10 @@ void TrimUtil::trim(std::ostream& output,
       case Requirement::CreatePhony:
         parser.printPhonyEdge(index);
         break;
+      case Requirement::None:
       case Requirement::Inputs:
       case Requirement::InputsAndOutputs:
         parser.markForPrinting(index);
-        break;
-      case Requirement::Unknown:
         break;
     }
   }

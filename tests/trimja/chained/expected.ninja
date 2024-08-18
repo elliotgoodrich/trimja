@@ -3,3 +3,8 @@ build b: copy c
 build c: copy d
 build d: copy e
 build e: copy f
+build z: phony
+build y: phony
+build x: phony
+build w: phony
+build v: phony

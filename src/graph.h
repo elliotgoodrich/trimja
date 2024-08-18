@@ -56,6 +56,7 @@ class Graph {
   void addEdge(std::size_t in, std::size_t out);
 
   bool isDefault(std::size_t pathIndex) const;
+  std::size_t defaultIndex() const;
 
   std::string_view path(std::size_t pathIndex) const;
   const std::set<std::size_t>& out(std::size_t pathIndex) const;

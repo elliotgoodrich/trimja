@@ -1,6 +1,7 @@
 build intermediate_a0: touch a_in
 build intermediate_a1: touch a_in
 build a_out: fiddle intermediate_a0 intermediate_a0
+build intermediate_b: phony
 build b_out: phony
 default a_out b_out c_out d_in
 build c_out: touch c_in
