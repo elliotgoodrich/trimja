@@ -1,0 +1,8 @@
+build outa: touch in |@ ignored
+build outb: phony
+build tmpa: touch in
+build tmpb: phony
+build tmpc: touch in
+build tmpd: phony
+build outc: touch tmpa |@ tmpb
+build outd: phony

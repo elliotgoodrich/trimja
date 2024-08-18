@@ -1,0 +1,8 @@
+build outa: touch in |@ ignored
+build outb: touch ignored |@ in
+build tmpa: touch in
+build tmpb: touch ignored
+build tmpc: touch in
+build tmpd: touch ignored
+build outc: touch tmpa |@ tmpb
+build outd: touch tmpd |@ tmpc

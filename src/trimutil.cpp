@@ -184,7 +184,10 @@ class Parser {
       collectPaths(ins, err);
     }
 
-    // Collect validations (but at the moment we don't support validations)
+    // Collect validations but ignore what they are. If we include a build
+    // command it will include the validation.  If that validation has a
+    // required input then we include that, otherwise the validation is
+    // `phony`ed out.
     if (m_lexer.PeekToken(Lexer::PIPEAT)) {
       std::vector<std::string> validations;
       collectPaths(validations, err);
