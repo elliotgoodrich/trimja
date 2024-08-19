@@ -42,8 +42,6 @@ namespace trimja {
 
 namespace {
 
-static std::string_view alwaysEmpty = "";
-
 class Parser {
  public:
   // Split up the parts of the build file and whether we need to print it
@@ -53,6 +51,11 @@ class Parser {
   // Map each output index to the index within `m_parts`.  Use -1 for a
   // value that isn't an output to a build command (i.e. a source file)
   std::vector<std::size_t> m_nodeToParts;
+
+  // Map each output index to the string containing the validation edges
+  // e.g. "|@ validation1 validation2" (note no newline and no leading
+  // space)
+  std::vector<std::string_view> m_validationParts;
 
   // Storage (and reference stability) for any phony commands we need
   std::forward_list<std::string> m_phonyCommands;
@@ -67,6 +70,7 @@ class Parser {
     const std::size_t index = m_graph.addPath(std::string(path));
     if (index >= m_nodeToParts.size()) {
       m_nodeToParts.resize(index + 1, -1);
+      m_validationParts.resize(index + 1, "");
     }
     return index;
   }
@@ -188,9 +192,12 @@ class Parser {
     // command it will include the validation.  If that validation has a
     // required input then we include that, otherwise the validation is
     // `phony`ed out.
+    std::string_view validationStr;
+    const char* validationStart = m_lexer.position();
     if (m_lexer.PeekToken(Lexer::PIPEAT)) {
       std::vector<std::string> validations;
       collectPaths(validations, err);
+      validationStr = std::string_view(validationStart, m_lexer.position());
     }
 
     expectToken(Lexer::NEWLINE);
@@ -212,8 +219,10 @@ class Parser {
       outIndices.push_back(outIndex);
       if (outIndex >= m_nodeToParts.size()) {
         m_nodeToParts.resize(outIndex + 1, -1);
+        m_validationParts.resize(outIndex + 1, "");
       }
       m_nodeToParts[outIndex] = partsIndex;
+      m_validationParts[outIndex] = validationStr;
     }
 
     // Add all in edges and connect them with all output edges
@@ -244,8 +253,10 @@ class Parser {
     const std::size_t outIndex = m_graph.addDefault();
     if (outIndex >= m_nodeToParts.size()) {
       m_nodeToParts.resize(outIndex + 1, -1);
+      m_validationParts.resize(outIndex + 1, "");
     }
     m_nodeToParts[outIndex] = partsIndex;
+    m_validationParts[outIndex] = "";  // no validations for `default`
     for (const std::string& in : ins) {
       m_graph.addEdge(getPathIndex(in), outIndex);
     }
@@ -323,7 +334,12 @@ class Parser {
     if (m_nodeToParts[index] != -1) {
       std::string& phony = m_phonyCommands.emplace_front("build ");
       phony += m_graph.path(index);
-      phony += ": phony\n";
+      phony += ": phony";
+      if (const std::string_view v = m_validationParts[index]; !v.empty()) {
+        phony += ' ';
+        phony += v;
+      }
+      phony += "\n";
       m_parts[m_nodeToParts[index]].first = phony;
       m_parts[m_nodeToParts[index]].second = true;
     }
