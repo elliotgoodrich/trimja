@@ -1,9 +1,8 @@
 foo = "bar"
-include "other.ninja"
-subninja "small.ninja"
+include other.ninja
+subninja small.ninja
 pool testPool
   depth = 3
 rule copy
   command = cp $in $out
   description = Copying $out
-  other = "foo"

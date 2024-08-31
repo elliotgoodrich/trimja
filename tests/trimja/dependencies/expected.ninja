@@ -1,3 +1,5 @@
+rule copy
+  command = ninja --version $in -> $out
 build out1: copy in
 build out2: copy foo | in
 build out3: copy foo || in

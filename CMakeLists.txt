@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.26.3)
 project(trimja VERSION 0.0.1)
-include(CTest)
+enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,13 +14,37 @@ add_executable(
     src/trimja.m.cpp
     src/depsreader.cpp
     src/graph.cpp
+    src/logreader.cpp
+    src/murmur_hash.cpp
     src/ninja_clock.cpp
     src/trimutil.cpp
+    thirdparty/ninja/eval_env.cc
     thirdparty/ninja/lexer.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
 )
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
 target_include_directories(trimja PRIVATE thirdparty)
+
+file(
+    GLOB TRIMJA_TESTS
+    LIST_DIRECTORIES true
+    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/*
+)
+
+# Set up test case fixtures
+foreach(TEST ${TRIMJA_TESTS})
+    # Run ninja over all test directories to generate `.ninja_log` and `.ninja_deps`
+    add_test(
+        NAME trimja.snapshot.${TEST}.ninja
+        COMMAND ninja -d keepdepfile
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/
+    )
+    set_tests_properties(
+        trimja.snapshot.${TEST}.ninja
+        PROPERTIES FIXTURES_SETUP trimja.snapshot.${TEST}.fixture
+    )
+endforeach()
 
 # --version
 add_test(NAME trimja.--version COMMAND trimja --version)
@@ -56,12 +80,20 @@ add_test(
     --expected expected.ninja
     --restrict changed.txt
 )
+set_tests_properties(
+    trimja.snapshot.no-f
+    PROPERTIES FIXTURES_REQUIRED trimja.snapshot.passthrough.fixture
+)
 
 # Check we can write to the same file we read
 add_test(
     NAME trimja.big-in-out
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/bigpassthrough/
     COMMAND trimja --write --restrict changed.txt
+)
+set_tests_properties(
+    trimja.big-in-out
+    PROPERTIES FIXTURES_REQUIRED trimja.snapshot.bigpassthrough.fixture
 )
 
 # Check we can write to a different file
@@ -70,17 +102,21 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/
     COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja --restrict changed.txt
 )
+set_tests_properties(
+    trimja.--write
+    PROPERTIES FIXTURES_REQUIRED trimja.snapshot.passthrough.fixture
+)
 add_test(
     NAME trimja.--write.cmp
     COMMAND ${CMAKE_COMMAND} -E compare_files ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/build.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
 )
 set_tests_properties(
-    trimja.--write.cmp
-    PROPERTIES FIXTURES_REQUIRED trimja.--write.fixture
-)
-set_tests_properties(
     trimja.--write
     PROPERTIES FIXTURES_SETUP trimja.--write.fixture
+)
+set_tests_properties(
+    trimja.--write.cmp
+    PROPERTIES FIXTURES_REQUIRED trimja.--write.fixture
 )
 
 # Check redirection from a file
@@ -96,15 +132,21 @@ else()
     )
 endif()
 set_property(TEST trimja.stdin PROPERTY PASS_REGULAR_EXPRESSION "build out1")
+set_tests_properties(
+    trimja.stdin
+    PROPERTIES FIXTURES_REQUIRED trimja.snapshot.simple.fixture
+)
 
 # Snapshot tests
-foreach(TEST default default_unused passthrough simple simple_reversed chained fan pyramid dependencies attached basic_dyndep validations)
+foreach(TEST ${TRIMJA_TESTS})
     add_test(
         NAME trimja.snapshot.${TEST}
-        COMMAND trimja
-        -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/build.ninja
-        --expected ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/expected.ninja
-        --restrict ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/changed.txt
+        COMMAND trimja -f build.ninja --expected expected.ninja --restrict changed.txt
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/
+    )
+    set_tests_properties(
+        trimja.snapshot.${TEST}
+        PROPERTIES FIXTURES_REQUIRED trimja.snapshot.${TEST}.fixture
     )
 endforeach()
 
@@ -118,8 +160,11 @@ add_executable(
     src/depsreader.cpp
     src/depswriter.cpp
     src/graph.cpp
+    src/murmur_hash.cpp
+    src/logreader.cpp
     src/ninja_clock.cpp
     src/trimutil.cpp
+    thirdparty/ninja/eval_env.cc
     thirdparty/ninja/lexer.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
 )

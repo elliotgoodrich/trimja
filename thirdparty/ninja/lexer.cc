@@ -15,6 +15,13 @@
 
 #include "lexer.h"
 
+#include "eval_env.h"
+
+bool Lexer::SkipVarValue(std::string *err) {
+  EvalString tmp;
+  return ReadEvalString(&tmp, false, err);
+}
+
 bool Lexer::Error(const std::string_view& message, std::string* err) {
   // Compute line/column.
   int line = 1;
@@ -545,7 +552,7 @@ yy89:
   }
 }
 
-bool Lexer::ReadIdent(std::string* out) {
+bool Lexer::ReadIdent(std::string_view* out) {
   const char* p = ofs_;
   const char* start;
   for (;;) {
@@ -602,7 +609,7 @@ yy95:
 		goto yy95;
 	}
 	{
-      out->assign(start, p - start);
+      *out = std::string_view(start, p - start);
       break;
     }
 }
@@ -682,7 +689,7 @@ yy95:
   return true;
 }
 
-bool Lexer::ReadEvalString(std::string* eval, bool path, std::string* err) {
+bool Lexer::ReadEvalString(EvalString *eval, bool path, std::string* err) {
   const char* p = ofs_;
   const char* q;
   const char* start;
@@ -750,7 +757,7 @@ yy102:
 		goto yy102;
 	}
 	{
-      eval->append(start, p - start);
+	  eval->AddText(std::string_view(start, p - start));
       continue;
     }
 yy105:
@@ -762,7 +769,7 @@ yy105:
       } else {
         if (*start == '\n')
           break;
-        eval->append(start, 1);
+	    eval->AddText(std::string_view(start, 1));
         continue;
       }
     }
@@ -827,13 +834,13 @@ yy117:
 yy118:
 	++p;
 	{
-      eval->append(" ");
+      eval->AddText(" ");
       continue;
     }
 yy120:
 	++p;
 	{
-      eval->append("$");
+      eval->AddText("$");
       continue;
     }
 yy122:
@@ -843,13 +850,13 @@ yy122:
 	}
 	{
 	// TODO:
-      eval->append(start + 1, p - start - 1);
+      eval->AddSpecial(std::string_view(start + 1, p - start - 1));
       continue;
     }
 yy125:
 	++p;
 	{
-      eval->append(":");
+      eval->AddText(":");
       continue;
     }
 yy127:
@@ -875,7 +882,7 @@ yy131:
 yy134:
 	++p;
 	{
-      eval->append(start + 2, p - start - 3);
+      eval->AddSpecial(std::string_view(start + 2, p - start - 3));
       continue;
     }
 }
