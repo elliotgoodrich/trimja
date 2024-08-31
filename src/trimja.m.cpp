@@ -209,6 +209,7 @@ int main(int argc, char** argv) try {
       outputFile);
 
   TrimUtil::trim(output, ninjaFile, ninjaFileContents, changed);
+  output.flush();
   if (!expectedFile.has_value()) {
     std::_Exit(EXIT_SUCCESS);
   }

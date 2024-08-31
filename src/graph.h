@@ -51,6 +51,8 @@ class Graph {
 
   std::size_t addPath(const std::string& path);
 
+  bool hasPath(const std::string& path) const;
+
   std::size_t addDefault();
 
   void addEdge(std::size_t in, std::size_t out);

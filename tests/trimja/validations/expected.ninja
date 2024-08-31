@@ -1,3 +1,5 @@
+rule touch
+  command = ninja --version $in -> $out
 build outa: touch in |@ ignored
 build outb: phony |@ in
 build tmpa: touch in

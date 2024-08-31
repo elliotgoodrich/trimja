@@ -39,6 +39,10 @@ std::size_t Graph::addPath(const std::string& path) {
   return it->second;
 }
 
+bool Graph::hasPath(const std::string& path) const {
+  return m_pathToIndex.contains(path);
+}
+
 std::size_t Graph::addDefault() {
   assert(m_defaultIndex == -1);
   const std::size_t nextIndex = m_inputToOutput.size();
