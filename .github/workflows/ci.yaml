@@ -29,9 +29,9 @@ jobs:
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cpp }}
         -DCMAKE_C_COMPILER=${{ matrix.compiler.c }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_UNITY_BUILD=ON
+        ${{ format('-D{0}={1}', matrix.os == 'windows-latest' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
         ${{ matrix.os != 'windows-latest' && '-G Ninja' || ''}}
+        -DCMAKE_UNITY_BUILD=ON
         -S ${{ github.workspace }}
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
