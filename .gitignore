@@ -1,3 +1,4 @@
 build
 .vs
-
+tests/**/.ninja_deps
+tests/**/.ninja_log

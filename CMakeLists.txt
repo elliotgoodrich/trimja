@@ -28,8 +28,8 @@ target_include_directories(trimja PRIVATE thirdparty)
 file(
     GLOB TRIMJA_TESTS
     LIST_DIRECTORIES true
-    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/*
+    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/tests/
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/*
 )
 
 # Set up test case fixtures
@@ -38,7 +38,7 @@ foreach(TEST ${TRIMJA_TESTS})
     add_test(
         NAME trimja.snapshot.${TEST}.ninja
         COMMAND ninja -d keepdepfile
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/
     )
     set_tests_properties(
         trimja.snapshot.${TEST}.ninja
@@ -75,7 +75,7 @@ set_property(TEST trimja.--output_and_--write PROPERTY WILL_FAIL true)
 # Check we can avoid passing `-f`
 add_test(
     NAME trimja.snapshot.no-f
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
     COMMAND trimja
     --expected expected.ninja
     --restrict changed.txt
@@ -88,7 +88,7 @@ set_tests_properties(
 # Check we can write to the same file we read
 add_test(
     NAME trimja.big-in-out
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/bigpassthrough/
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/bigpassthrough/
     COMMAND trimja --write --restrict changed.txt
 )
 set_tests_properties(
@@ -99,7 +99,7 @@ set_tests_properties(
 # Check we can write to a different file
 add_test(
     NAME trimja.--write
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
     COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja --restrict changed.txt
 )
 set_tests_properties(
@@ -108,7 +108,7 @@ set_tests_properties(
 )
 add_test(
     NAME trimja.--write.cmp
-    COMMAND ${CMAKE_COMMAND} -E compare_files ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/passthrough/build.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
+    COMMAND ${CMAKE_COMMAND} -E compare_files ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/build.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
 )
 set_tests_properties(
     trimja.--write
@@ -123,12 +123,12 @@ set_tests_properties(
 if (WIN32)
     add_test(
         NAME trimja.stdin
-        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/simple/ $ENV{ComSpec} /c $<TARGET_FILE:trimja> < changed.txt
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ $ENV{ComSpec} /c $<TARGET_FILE:trimja> < changed.txt
     )
 else()
     add_test(
         NAME trimja.stdin
-        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/simple/ sh -c "$<TARGET_FILE:trimja> < changed.txt"
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ sh -c "$<TARGET_FILE:trimja> < changed.txt"
     )
 endif()
 set_property(TEST trimja.stdin PROPERTY PASS_REGULAR_EXPRESSION "build out1")
@@ -142,7 +142,7 @@ foreach(TEST ${TRIMJA_TESTS})
     add_test(
         NAME trimja.snapshot.${TEST}
         COMMAND trimja -f build.ninja --expected expected.ninja --restrict changed.txt
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/trimja/${TEST}/
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/
     )
     set_tests_properties(
         trimja.snapshot.${TEST}
@@ -150,89 +150,3 @@ foreach(TEST ${TRIMJA_TESTS})
     )
 endforeach()
 
-###############################################################################
-# kinja                                                                       #
-###############################################################################
-
-add_executable(
-    kinja
-    src/kinja.m.cpp
-    src/depsreader.cpp
-    src/depswriter.cpp
-    src/graph.cpp
-    src/murmur_hash.cpp
-    src/logreader.cpp
-    src/ninja_clock.cpp
-    src/trimutil.cpp
-    thirdparty/ninja/eval_env.cc
-    thirdparty/ninja/lexer.cc
-    $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
-)
-target_compile_definitions(kinja PRIVATE KINJA_VERSION="${CMAKE_PROJECT_VERSION}")
-target_include_directories(kinja PRIVATE thirdparty)
-target_compile_definitions(kinja PRIVATE JSON_DIAGNOSTICS=1)
-
-# --version
-add_test(NAME kinja.--version COMMAND kinja --version)
-string(REPLACE "." "\." KINJA_VERSION_REGEX ${CMAKE_PROJECT_VERSION})
-set_property(
-    TEST kinja.--version
-    PROPERTY PASS_REGULAR_EXPRESSION "^${KINJA_VERSION_REGEX}\n$"
-)
-
-# --help
-add_test(NAME kinja.--help COMMAND kinja --help)
-set_property(TEST kinja.--help PROPERTY PASS_REGULAR_EXPRESSION "Help")
-add_test(NAME kinja.-h COMMAND kinja -h)
-set_property(TEST kinja.-h PROPERTY PASS_REGULAR_EXPRESSION "Help")
-
-# --unknown
-add_test(NAME kinja.--unknown COMMAND kinja --unknown)
-set_property(TEST kinja.--unknown PROPERTY WILL_FAIL true)
-add_test(NAME kinja.-u COMMAND kinja -u)
-set_property(TEST kinja.-u PROPERTY WILL_FAIL true)
-
-# Snapshot tests
-foreach(TEST basic)
-    set(NINJA_JSON_INPUT ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.crlf.json)
-    set(NINJA_JSON_ACTUAL ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.json)
-    set(NINJA_JSON_EXPECTED ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.$<IF:$<BOOL:${WIN32}>,crlf,lf>.json)
-    set(NINJA_DEPS_ACTUAL ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/actual.dat)
-    # .ninja_deps files differ based on platform so our expected file is different
-    set(NINJA_DEPS_EXPECTED ${CMAKE_CURRENT_SOURCE_DIR}/tests/kinja/${TEST}/expected.$<IF:$<BOOL:${WIN32}>,win,posix>.dat)
-
-    add_test(
-        NAME kinja.snapshot.${TEST}
-        COMMAND kinja --input ${NINJA_JSON_INPUT} --output ${NINJA_DEPS_ACTUAL}
-    )
-    add_test(
-        NAME kinja.snapshot.${TEST}.cmp
-        COMMAND ${CMAKE_COMMAND} -E compare_files ${NINJA_DEPS_ACTUAL} ${NINJA_DEPS_EXPECTED}
-    )
-    set_tests_properties(
-        kinja.snapshot.${TEST}.cmp
-        PROPERTIES FIXTURES_REQUIRED kinja.snapshot.prettyprint.${TEST}.fixture
-    )
-    set_tests_properties(kinja.snapshot.${TEST}
-        PROPERTIES FIXTURES_SETUP kinja.snapshot.${TEST}.fixture
-    )
-
-    add_test(
-        NAME kinja.snapshot.prettyprint.${TEST}
-        COMMAND kinja --print ${NINJA_DEPS_EXPECTED} --output ${NINJA_JSON_ACTUAL}
-    )
-    add_test(
-        NAME kinja.snapshot.prettyprint.${TEST}.cmp
-        COMMAND ${CMAKE_COMMAND} -E compare_files ${NINJA_JSON_ACTUAL} ${NINJA_JSON_EXPECTED}
-    )
-    set_tests_properties(
-        kinja.snapshot.prettyprint.${TEST}.cmp
-        PROPERTIES FIXTURES_REQUIRED kinja.snapshot.prettyprint.${TEST}.fixture
-    )
-    set_tests_properties(kinja.snapshot.prettyprint.${TEST}
-        PROPERTIES FIXTURES_SETUP kinja.snapshot.prettyprint.${TEST}.fixture
-    )
-
-endforeach()
-
-# TODO: Test kinja with bad JSON

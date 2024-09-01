@@ -25,24 +25,9 @@ In order to handle
 [header dependencies](https://ninja-build.org/manual.html#ref_headers) and
 [dynamic dependencies](https://ninja-build.org/manual.html#ref_dyndep),
 `trimja` will need a `.ninja_deps` file that contains all of these
-dependencies.  This is fully generated from a successful `ninja` run.  Any
-CI solution using `trimja` will need to cache `.ninja_deps` files from
-builds on `main` and load these when running pull requests.
+dependencies.  This is fully generated from a successful `ninja` run.  In
+addition we will also need the `.ninja_log` file to determine if any build
+commands have been edited. Any CI solution using `trimja` will need to cache
+`.ninja_deps` files from builds on `main` and load these when running pull
+requests.
 
-Alternatively, there will be a way to generate `.ninja_deps` files that
-will give a great estimate to standard header dependencies.  This is
-planned for the `kinja` tool (see below).
-
-## kinja
-
-`kinja` is a command line application to write a ninja dependency file.
-
-In the future `kinja` will be able to generate `.ninja_deps` files for
-C/C++ ninja build files.
-
-```bash
-kinja -i dependencies.json -o .ninja_deps
-kinja -i dependencies.json -f build.ninja
-kinja -f build.ninja --generate-from-include-paths
-kinja -f build.ninja --generate-from-preprocessor
-```
