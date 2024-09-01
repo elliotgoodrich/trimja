@@ -103,7 +103,7 @@ bool operator==(const LogReader::iterator& iter, LogReader::sentinel) {
   return iter.m_reader == nullptr;
 }
 
-bool operator!=(const LogReader::iterator& iter, LogReader::sentinel s) {
+bool operator!=(const LogReader::iterator& iter, LogReader::sentinel) {
   return iter.m_reader != nullptr;
 }
 

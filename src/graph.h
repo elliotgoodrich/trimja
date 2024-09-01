@@ -44,7 +44,7 @@ class Graph {
   // names of paths
   std::vector<std::string> m_path;
 
-  std::size_t m_defaultIndex = -1;
+  std::size_t m_defaultIndex = std::numeric_limits<std::size_t>::max();
 
  public:
   Graph();
