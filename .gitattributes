@@ -1,0 +1,2 @@
+# Do not convert line endings in this test directory
+tests/**/expected.* -text

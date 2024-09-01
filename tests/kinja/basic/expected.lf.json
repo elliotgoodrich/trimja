@@ -1,5 +1,0 @@
-[
-    { "type": "addFile", "index": 0, "file": "out.txt" },
-    { "type": "addFile", "index": 1, "file": "in.txt" },
-    { "type": "addDep", "out": "out.txt", "datetime": "2001-01-01 00:00:00.000000000", "deps": ["out.txt"] }
-]
