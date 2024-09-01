@@ -166,7 +166,7 @@ class Parser {
   std::size_t getPathIndex(std::string_view path) {
     const std::size_t index = m_graph.addPath(std::string(path));
     if (index >= m_nodeToParts.size()) {
-      m_nodeToParts.resize(index + 1, -1);
+      m_nodeToParts.resize(index + 1, std::numeric_limits<std::size_t>::max());
       m_validationParts.resize(index + 1, "");
       m_hashes.resize(index + 1);
     }
@@ -176,7 +176,7 @@ class Parser {
   std::size_t getDefault() {
     const std::size_t index = m_graph.addDefault();
     if (index >= m_nodeToParts.size()) {
-      m_nodeToParts.resize(index + 1, -1);
+      m_nodeToParts.resize(index + 1, std::numeric_limits<std::size_t>::max());
       m_validationParts.resize(index + 1, "");
       m_hashes.resize(index + 1);
     }
@@ -480,7 +480,7 @@ class Parser {
   }
 
   void markForPrinting(std::size_t index) {
-    if (m_nodeToParts[index] != -1) {
+    if (m_nodeToParts[index] != std::numeric_limits<std::size_t>::max()) {
       m_parts[m_nodeToParts[index]].second = true;
     }
   }
@@ -488,7 +488,7 @@ class Parser {
   void printPhonyEdge(std::size_t index) {
     // No need to add anything if `index` represents a path that isn't built
     // by ninja.
-    if (m_nodeToParts[index] != -1) {
+    if (m_nodeToParts[index] != std::numeric_limits<std::size_t>::max()) {
       std::string& phony = m_phonyCommands.emplace_front("build ");
       phony += m_graph.path(index);
       phony += ": phony";
@@ -576,7 +576,7 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
     switch (record.index()) {
       case 0: {
         const PathRecordView& view = std::get<PathRecordView>(record);
-        if (view.index >= lookup.size()) {
+        if (static_cast<std::size_t>(view.index) >= lookup.size()) {
           lookup.resize(view.index + 1);
         }
         lookup[view.index] = parser.getPathIndex(view.path);
@@ -676,7 +676,7 @@ void TrimUtil::trim(std::ostream& output,
   // Regardless of what the default index was set to, we set it to `None` so
   // that we don't require any of its inputs
   if (const std::size_t defaultIndex = graph.defaultIndex();
-      defaultIndex != -1) {
+      defaultIndex != std::numeric_limits<std::size_t>::max()) {
     requirements[defaultIndex] = Requirement::None;
   }
 

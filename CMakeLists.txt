@@ -4,6 +4,7 @@ enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 
 ###############################################################################
 # trimja                                                                      #
@@ -24,6 +25,10 @@ add_executable(
 )
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
 target_include_directories(trimja PRIVATE thirdparty)
+target_compile_options(trimja PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+)
 
 file(
     GLOB TRIMJA_TESTS

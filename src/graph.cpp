@@ -44,7 +44,7 @@ bool Graph::hasPath(const std::string& path) const {
 }
 
 std::size_t Graph::addDefault() {
-  assert(m_defaultIndex == -1);
+  assert(m_defaultIndex == std::numeric_limits<std::size_t>::max());
   const std::size_t nextIndex = m_inputToOutput.size();
   m_inputToOutput.emplace_back();
   m_outputToInput.emplace_back();
