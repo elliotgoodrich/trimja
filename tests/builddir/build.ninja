@@ -1,0 +1,8 @@
+var = x64
+builddir = $var/dummy
+rule copy
+  command = ninja --version $in -> $out
+build out1: copy in1
+builddir = $var/build
+build out2: copy in2
+var = x86

@@ -34,6 +34,7 @@
 #include <filesystem>
 #include <forward_list>
 #include <fstream>
+#include <iostream>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -69,6 +70,15 @@ class BasicScope : public Scope {
  public:
   BasicScope() = default;
 
+  template <typename STRING>
+  std::string_view set(std::string_view key, STRING&& value) {
+    const auto [it, inserted] = m_variables.emplace(key, value);
+    if (!inserted) {
+      it->second = std::forward<STRING>(value);
+    }
+    return it->second;
+  }
+
   std::string_view operator()(std::string_view name) const final {
     const auto it = m_variables.find(name);
     return it == m_variables.end() ? std::string_view() : it->second;
@@ -95,9 +105,9 @@ std::string concatPaths(std::span<const std::string> paths,
   }
 }
 
-std::string evaluate(const EvalString& command, Scope& scope) {
+std::string evaluate(const EvalString& variable, Scope& scope) {
   std::string result;
-  for (const auto& [string, type] : command.parsed_) {
+  for (const auto& [string, type] : variable.parsed_) {
     if (type == EvalString::RAW) {
       result += string;
     } else {
@@ -151,6 +161,8 @@ class Parser {
 
   std::unordered_map<std::string, EvalString, TransparentHash, std::equal_to<>>
       m_rules;
+
+  BasicScope m_fileScope;
 
  public:
   std::vector<std::uint64_t> m_hashes;
@@ -343,7 +355,7 @@ class Parser {
     }
 
     expectToken(Lexer::NEWLINE);
-    while (m_lexer.PeekToken(Lexer::IDENT)) {
+    while (m_lexer.PeekToken(Lexer::INDENT)) {
       skipLet();
     }
 
@@ -421,10 +433,6 @@ class Parser {
   void parse(const std::filesystem::path& filename,
              std::string_view input,
              std::filesystem::path& builddir) {
-    // TODO: Get the builddir variable from the ninja build file
-    builddir = filename;
-    builddir.remove_filename();
-
     m_lexer.Start(filename.string(), input);
 
     while (true) {
@@ -449,13 +457,16 @@ class Parser {
         case Lexer::DEFAULT:
           handleDefault(start);
           break;
-        case Lexer::IDENT:
+        case Lexer::IDENT: {
           m_lexer.UnreadToken();
-          skipLet();
+          std::string_view key;
+          EvalString value;
+          parseLet(key, value);
+          m_fileScope.set(key, evaluate(value, m_fileScope));
           m_parts.emplace_back(std::piecewise_construct,
                                std::make_tuple(start, m_lexer.position()),
                                std::make_tuple(true));
-          break;
+        } break;
         case Lexer::INCLUDE:
         case Lexer::SUBNINJA:
           skipInclude();
@@ -465,8 +476,12 @@ class Parser {
           break;
         case Lexer::ERROR:
           throw std::runtime_error("Parsing error");
-        case Lexer::TEOF:
+        case Lexer::TEOF: {
+          builddir = filename;
+          builddir.remove_filename();
+          builddir /= m_fileScope("builddir");
           return;
+        }
         case Lexer::NEWLINE:
           break;
         default: {
@@ -653,31 +668,38 @@ void TrimUtil::trim(std::ostream& output,
   // are either absent in the log (representing new commands that have never
   // been run) or those whose hash has changed.
   if (const std::filesystem::path ninjaLog = builddir / ".ninja_log";
-      std::filesystem::exists(ninjaLog)) {
+      !std::filesystem::exists(ninjaLog)) {
+    // If we don't have a `.ninja_log` file then either the user didn't have
+    // it,which is an error, or our previous run did not include any build
+    // commands. The former is far more likely so we warn the user in this case.
+    std::cerr << "Unable to find " << ninjaLog << ", so including everything"
+              << std::endl;
+    requirements.assign(requirements.size(), Requirement::InputsAndOutputs);
+  } else {
     parseLogFile(ninjaLog, graph, requirements, parser.m_hashes);
-  }
 
-  // Mark all files in `changed` as required
-  for (std::string line; std::getline(changed, line);) {
-    if (!graph.hasPath(line)) {
-      throw std::runtime_error("Unable to find " + line + " in " +
-                               ninjaFile.string());
+    // Mark all files in `changed` as required
+    for (std::string line; std::getline(changed, line);) {
+      if (!graph.hasPath(line)) {
+        throw std::runtime_error("Unable to find " + line + " in " +
+                                 ninjaFile.string());
+      }
+      requirements[graph.getPath(line)] = Requirement::InputsAndOutputs;
     }
-    requirements[graph.getPath(line)] = Requirement::InputsAndOutputs;
-  }
 
-  // Mark all outputs as required or not
-  for (std::size_t index = 0; index < graph.size(); ++index) {
-    if (requirements[index] == Requirement::InputsAndOutputs) {
-      markOutputsAsRequired(graph, index, requirements);
+    // Mark all outputs as required or not
+    for (std::size_t index = 0; index < graph.size(); ++index) {
+      if (requirements[index] == Requirement::InputsAndOutputs) {
+        markOutputsAsRequired(graph, index, requirements);
+      }
     }
-  }
 
-  // Regardless of what the default index was set to, we set it to `None` so
-  // that we don't require any of its inputs
-  if (const std::size_t defaultIndex = graph.defaultIndex();
-      defaultIndex != std::numeric_limits<std::size_t>::max()) {
-    requirements[defaultIndex] = Requirement::None;
+    // Regardless of what the default index was set to, we set it to `None` so
+    // that we don't require any of its inputs
+    if (const std::size_t defaultIndex = graph.defaultIndex();
+        defaultIndex != std::numeric_limits<std::size_t>::max()) {
+      requirements[defaultIndex] = Requirement::None;
+    }
   }
 
   // Mark all inputs as required.  The only time we don't do this
