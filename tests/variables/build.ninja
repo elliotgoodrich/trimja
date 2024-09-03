@@ -1,0 +1,16 @@
+pool hi
+  depth = 100
+pool bye
+  depth = 100
+foo = 42
+rule copy
+  command = ninja --version $in -> $out foo=$foo bar=${bar} pool=$pool
+  pool = hi
+build out1: copy in1
+  foo = 1
+build out2: copy in2
+  foo = 2
+  bar = zulu
+  pool = bye
+build out3: copy in3
+  command = ninja --version Overwrite everything!
