@@ -1,0 +1,11 @@
+pool hi
+  depth = 100
+pool bye
+  depth = 100
+foo = 42
+rule copy
+  command = ninja --version $in -> $out foo=$foo bar=${bar} pool=$pool
+  pool = hi
+build out1: phony
+build out2: phony
+build out3: phony

@@ -30,6 +30,7 @@
 #include <ninja/eval_env.h>
 #include <ninja/lexer.h>
 
+#include <array>
 #include <cassert>
 #include <filesystem>
 #include <forward_list>
@@ -56,14 +57,7 @@ struct TransparentHash {
   }
 };
 
-class Scope {
- public:
-  ~Scope() = default;
-
-  virtual std::string_view operator()(std::string_view name) const = 0;
-};
-
-class BasicScope : public Scope {
+class BasicScope {
   std::unordered_map<std::string, std::string, TransparentHash, std::equal_to<>>
       m_variables;
 
@@ -79,66 +73,152 @@ class BasicScope : public Scope {
     return it->second;
   }
 
-  std::string_view operator()(std::string_view name) const final {
+  bool appendValue(std::string& output, std::string_view name) const {
     const auto it = m_variables.find(name);
-    return it == m_variables.end() ? std::string_view() : it->second;
+    if (it == m_variables.end()) {
+      return false;
+    } else {
+      output += it->second;
+      return true;
+    }
   }
 };
 
-std::string concatPaths(std::span<const std::string> paths,
-                        const char separator) {
-  switch (paths.size()) {
-    case 0:
-      return "";
-    case 1:
-      return paths[0];
-    default: {
-      std::string result = paths[0];
-      for (auto it = std::next(paths.begin()); it != paths.end(); ++it) {
-        result += separator;
-        // TODO: escape the path like ninja does with
-        // `GetWin32EscapedString` and `GetShellEscapedString`
-        result += *it;
+struct Rule {
+  static const std::size_t bindingCount = 11;
+
+  std::string name;
+  std::array<unsigned char, bindingCount + 1>
+      lookup;  // TODO: pack into uint64_t
+  std::vector<EvalString> bindings;
+
+  explicit Rule(std::string_view name) : name(name), lookup(), bindings() {
+    lookup.fill(std::numeric_limits<unsigned char>::max());
+  }
+
+  std::size_t getLookupIndex(std::string_view varName) const {
+    const std::array<std::string_view, bindingCount> names = {
+        "command",
+        "depfile",
+        "dyndep",
+        "description",
+        "deps",
+        "generator",
+        "pool",
+        "restat",
+        "rspfile",
+        "rspfile_content",
+        "msvc_deps_prefix",
+    };
+    return std::find(names.begin(), names.end(), varName) - names.begin();
+  }
+
+  bool add(std::string_view varName, EvalString&& value) {
+    const std::size_t lookupIndex = getLookupIndex(varName);
+    if (lookupIndex >= bindingCount) {
+      return false;
+    }
+    const std::size_t bindingIndex = lookup[lookupIndex];
+    if (bindingIndex < bindings.size()) {
+      bindings[bindingIndex] = std::move(value);
+    } else {
+      bindings.push_back(std::move(value));
+      lookup[lookupIndex] = static_cast<unsigned char>(bindings.size() - 1);
+    }
+    return true;
+  }
+
+  const EvalString* lookupVar(std::string_view varName) const {
+    const std::size_t bindingIndex = lookup[getLookupIndex(varName)];
+    return bindingIndex < bindings.size() ? &bindings[bindingIndex] : nullptr;
+  }
+};
+
+template <typename SCOPE>
+struct EdgeScope {
+  std::span<const std::string> ins;
+  std::span<const std::string> outs;
+  BasicScope local;
+  SCOPE& parent;
+  const Rule& rule;
+
+  EdgeScope(SCOPE& parent,
+            const Rule& rule,
+            std::span<const std::string> ins,
+            std::span<const std::string> outs)
+      : ins(ins), outs(outs), local(), parent(parent), rule(rule) {}
+
+  bool appendValue(std::string& output, std::string_view name) const {
+    // From https://ninja-build.org/manual.html#ref_scope
+    // Variable declarations indented in a build block are scoped to the build
+    // block. The full lookup order for a variable expanded in a build block (or
+    // the rule is uses) is:
+    //   1. Special built-in variables ($in, $out).
+    //   2. Build-level variables from the build block.
+    //   3. Rule-level variables from the rule block (i.e. $command). (Note from
+    //      the above discussion on expansion that these are expanded "late",
+    //      and may make use of in-scope bindings like $in.)
+    //   4. File-level variables from the file that the build line was in.
+    //   5. Variables from the file that included that file using the subninja
+    // keyword.
+    if (name == "in") {
+      appendPaths(output, ins, ' ');
+      return true;
+    } else if (name == "out") {
+      appendPaths(output, outs, ' ');
+      return true;
+    } else if (name == "in_newline") {
+      appendPaths(output, ins, '\n');
+      return true;
+    } else {
+      if (local.appendValue(output, name)) {
+        return true;
       }
-      return result;
+
+      if (const EvalString* value = rule.lookupVar(name)) {
+        evaluate(output, *value, *this);
+        return true;
+      }
+
+      return parent.appendValue(output, name);
     }
   }
-}
 
-std::string evaluate(const EvalString& variable, Scope& scope) {
-  std::string result;
+ private:
+  static void appendPaths(std::string& output,
+                          std::span<const std::string> paths,
+                          const char separator) {
+    switch (paths.size()) {
+      case 0:
+        break;
+      case 1:
+        output += paths[0];
+        break;
+      default: {
+        output += paths[0];
+        for (auto it = std::next(paths.begin()); it != paths.end(); ++it) {
+          output += separator;
+          // TODO: escape the path like ninja does with
+          // `GetWin32EscapedString` and `GetShellEscapedString`
+          output += *it;
+        }
+        break;
+      }
+    }
+  }
+};
+
+template <typename SCOPE>
+void evaluate(std::string& output,
+              const EvalString& variable,
+              const SCOPE& scope) {
   for (const auto& [string, type] : variable.parsed_) {
     if (type == EvalString::RAW) {
-      result += string;
+      output += string;
     } else {
-      result += scope(string);
+      scope.appendValue(output, string);
     }
   }
-
-  return result;
-}
-
-std::string evaluateCommand(const EvalString& command,
-                            Scope& scope,
-                            std::span<const std::string> ins,
-                            std::span<const std::string> outs) {
-  std::string result;
-  for (const auto& [string, type] : command.parsed_) {
-    if (type == EvalString::RAW) {
-      result += string;
-    } else {
-      if (string == "in") {
-        result += concatPaths(ins, ' ');
-      } else if (string == "out") {
-        result += concatPaths(outs, ' ');
-
-      } else {
-        result += scope(string);
-      }
-    }
-  }
-
-  return result;
 }
 
 class Parser {
@@ -159,7 +239,7 @@ class Parser {
   // Storage (and reference stability) for any phony commands we need
   std::forward_list<std::string> m_phonyCommands;
 
-  std::unordered_map<std::string, EvalString, TransparentHash, std::equal_to<>>
+  std::unordered_map<std::string, Rule, TransparentHash, std::equal_to<>>
       m_rules;
 
   BasicScope m_fileScope;
@@ -232,14 +312,25 @@ class Parser {
       throw std::runtime_error("Missing name for rule");
     }
 
+    const auto [it, inserted] = m_rules.emplace(name, name);
+    if (!inserted) {
+      std::stringstream ss;
+      ss << "Duplicate rule '" << name << "' found!" << '\0';
+      throw std::runtime_error(ss.view().data());
+    }
+
+    Rule& rule = it->second;
+
     expectToken(Lexer::NEWLINE);
-    EvalString value;
     while (m_lexer.PeekToken(Lexer::INDENT)) {
       std::string_view key;
-      value.Clear();
+      EvalString value;
       parseLet(key, value);
-      if (key == "command") {
-        m_rules.emplace(name, value);
+      if (!rule.add(key, std::move(value))) {
+        std::stringstream ss;
+        ss << "Unexpected variable '" << key << "' in rule '" << name
+           << "' found!" << '\0';
+        throw std::runtime_error(ss.view().data());
       }
     }
   }
@@ -269,8 +360,9 @@ class Parser {
     }
   }
 
+  template <typename SCOPE>
   std::size_t collectPaths(std::vector<std::string>& result,
-                           Scope& scope,
+                           SCOPE& scope,
                            std::string* err) {
     EvalString out;
     std::size_t count = 0;
@@ -283,7 +375,7 @@ class Parser {
         break;
       }
 
-      result.push_back(evaluate(out, scope));
+      evaluate(result.emplace_back(), out, scope);
       ++count;
     }
 
@@ -295,16 +387,14 @@ class Parser {
     std::string errStorage;
     std::string* err = &errStorage;
 
-    // TODO: Populate a scope using top-level variables
-    BasicScope scope;
-
     {
       EvalString out;
       if (!m_lexer.ReadPath(&out, err)) {
         throw std::runtime_error(*err);
       }
       while (!out.empty()) {
-        outs.push_back(evaluate(out, scope));
+        // TODO: Allow bindings from the rule to be looked up on edges
+        evaluate(outs.emplace_back(), out, m_fileScope);
         out.Clear();
         if (!m_lexer.ReadPath(&out, err)) {
           throw std::runtime_error(*err);
@@ -315,7 +405,7 @@ class Parser {
 
     if (m_lexer.PeekToken(Lexer::PIPE)) {
       // Collect implicit outs
-      collectPaths(outs, scope, err);
+      collectPaths(outs, m_fileScope, err);
     }
 
     if (outs.empty()) {
@@ -328,18 +418,27 @@ class Parser {
       throw std::runtime_error("Missing rule name for build command");
     }
 
+    const Rule& rule = [&] {
+      const auto ruleIt = m_rules.find(ruleName);
+      if (ruleIt == m_rules.end()) {
+        throw std::runtime_error("Unable to find " + std::string(ruleName) +
+                                 " rule");
+      }
+      return ruleIt->second;
+    }();
+
     // Collect inputs
     std::vector<std::string> ins;
-    const std::size_t inSize = collectPaths(ins, scope, err);
+    const std::size_t inSize = collectPaths(ins, m_fileScope, err);
 
     // Collect implicit inputs
     if (m_lexer.PeekToken(Lexer::PIPE)) {
-      collectPaths(ins, scope, err);
+      collectPaths(ins, m_fileScope, err);
     }
 
     // Collect build-order dependencies
     if (m_lexer.PeekToken(Lexer::PIPE2)) {
-      collectPaths(ins, scope, err);
+      collectPaths(ins, m_fileScope, err);
     }
 
     // Collect validations but ignore what they are. If we include a build
@@ -350,13 +449,23 @@ class Parser {
     const char* validationStart = m_lexer.position();
     if (m_lexer.PeekToken(Lexer::PIPEAT)) {
       std::vector<std::string> validations;
-      collectPaths(validations, scope, err);
+      collectPaths(validations, m_fileScope, err);
       validationStr = std::string_view(validationStart, m_lexer.position());
     }
 
     expectToken(Lexer::NEWLINE);
+
+    EdgeScope scope(m_fileScope, rule, std::span(ins.data(), inSize),
+                    std::span(outs.data(), outSize));
+
+    EvalString value;
     while (m_lexer.PeekToken(Lexer::INDENT)) {
-      skipLet();
+      std::string_view key;
+      parseLet(key, value);
+      std::string result;
+      evaluate(result, value, scope);
+      scope.local.set(key, std::move(result));
+      value.Clear();
     }
 
     // Add the build command to `m_parts`
@@ -384,15 +493,8 @@ class Parser {
       }
     }
 
-    const auto ruleIt = m_rules.find(ruleName);
-    if (ruleIt == m_rules.end()) {
-      throw std::runtime_error("Unable to find " + std::string(ruleName) +
-                               " rule");
-    }
-
-    const std::string command =
-        evaluateCommand(ruleIt->second, scope, std::span(ins.data(), inSize),
-                        std::span(outs.data(), outSize));
+    std::string command;
+    scope.appendValue(command, "command");
 
     const std::uint64_t hash =
         murmur_hash::hash(command.data(), command.size());
@@ -462,7 +564,9 @@ class Parser {
           std::string_view key;
           EvalString value;
           parseLet(key, value);
-          m_fileScope.set(key, evaluate(value, m_fileScope));
+          std::string result;
+          evaluate(result, value, m_fileScope);
+          m_fileScope.set(key, std::move(result));
           m_parts.emplace_back(std::piecewise_construct,
                                std::make_tuple(start, m_lexer.position()),
                                std::make_tuple(true));
@@ -479,7 +583,9 @@ class Parser {
         case Lexer::TEOF: {
           builddir = filename;
           builddir.remove_filename();
-          builddir /= m_fileScope("builddir");
+          std::string out;
+          m_fileScope.appendValue(out, "builddir");
+          builddir /= out;
           return;
         }
         case Lexer::NEWLINE:
