@@ -29,6 +29,7 @@
 
 #include <ninja/eval_env.h>
 #include <ninja/lexer.h>
+#include <ninja/util.h>
 
 #include <array>
 #include <cassert>
@@ -36,6 +37,7 @@
 #include <forward_list>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -188,22 +190,17 @@ struct EdgeScope {
   static void appendPaths(std::string& output,
                           std::span<const std::string> paths,
                           const char separator) {
-    switch (paths.size()) {
-      case 0:
-        break;
-      case 1:
-        output += paths[0];
-        break;
-      default: {
-        output += paths[0];
-        for (auto it = std::next(paths.begin()); it != paths.end(); ++it) {
-          output += separator;
-          // TODO: escape the path like ninja does with
-          // `GetWin32EscapedString` and `GetShellEscapedString`
-          output += *it;
-        }
-        break;
-      }
+    auto it = paths.begin();
+    const auto end = paths.end();
+    if (it == end) {
+      return;
+    }
+
+    goto skipSeparator;
+    for (; it != end; ++it) {
+      output += separator;
+    skipSeparator:
+      appendEscapedString(output, *it);
     }
   }
 };
@@ -223,31 +220,51 @@ void evaluate(std::string& output,
 
 class Parser {
  public:
-  // Split up the parts of the build file and whether we need to print it
-  std::vector<std::pair<std::string_view, bool>> m_parts;
+  // All parts of the input build file.  Note that we may swap out
+  // build command sections with phony commands.
+  std::vector<std::string_view> m_parts;
+
+  struct BuildCommand {
+    enum Resolution {
+      // Print the entire build command
+      Print,
+
+      // Create a phony command for all the (implicit) outputs
+      Phony,
+    };
+
+    Resolution resolution = Phony;
+
+    // The location of our entire build command inside `m_parts`
+    std::size_t partsIndex = std::numeric_limits<std::size_t>::max();
+
+    // The hash of the build command
+    std::uint64_t hash = 0;
+
+    // Map each output index to the string containing the
+    // "build out1 out$ 2 | implicitOut3" (note no newline and no trailing `|`
+    // or `:`)
+    std::string_view outStr;
+
+    // Map each output index to the string containing the validation edges
+    // e.g. "|@ validation1 validation2" (note no newline and no leading
+    // space)
+    std::string_view validationStr;
+  };
+
+  // All build commands and default statements mentioned
+  std::vector<BuildCommand> m_commands;
+
+  // Map each output index to the index within `m_command`.  Use -1 for a
+  // value that isn't an output to a build command (i.e. a source file)
+  std::vector<std::size_t> m_nodeToCommand;
 
  private:
-  // Map each output index to the index within `m_parts`.  Use -1 for a
-  // value that isn't an output to a build command (i.e. a source file)
-  std::vector<std::size_t> m_nodeToParts;
-
-  // Map each output index to the string containing the validation edges
-  // e.g. "|@ validation1 validation2" (note no newline and no leading
-  // space)
-  std::vector<std::string_view> m_validationParts;
-
-  // Storage (and reference stability) for any phony commands we need
-  std::forward_list<std::string> m_phonyCommands;
-
   std::unordered_map<std::string, Rule, TransparentHash, std::equal_to<>>
       m_rules;
 
   BasicScope m_fileScope;
 
- public:
-  std::vector<std::uint64_t> m_hashes;
-
- private:
   // Our lexer
   Lexer m_lexer;
 
@@ -257,20 +274,18 @@ class Parser {
  public:
   std::size_t getPathIndex(std::string_view path) {
     const std::size_t index = m_graph.addPath(std::string(path));
-    if (index >= m_nodeToParts.size()) {
-      m_nodeToParts.resize(index + 1, std::numeric_limits<std::size_t>::max());
-      m_validationParts.resize(index + 1, "");
-      m_hashes.resize(index + 1);
+    if (index >= m_nodeToCommand.size()) {
+      m_nodeToCommand.resize(index + 1,
+                             std::numeric_limits<std::size_t>::max());
     }
     return index;
   }
 
   std::size_t getDefault() {
     const std::size_t index = m_graph.addDefault();
-    if (index >= m_nodeToParts.size()) {
-      m_nodeToParts.resize(index + 1, std::numeric_limits<std::size_t>::max());
-      m_validationParts.resize(index + 1, "");
-      m_hashes.resize(index + 1);
+    if (index >= m_nodeToCommand.size()) {
+      m_nodeToCommand.resize(index + 1,
+                             std::numeric_limits<std::size_t>::max());
     }
     return index;
   }
@@ -413,6 +428,10 @@ class Parser {
     }
 
     expectToken(Lexer::COLON);
+
+    // Mark the outputs for later
+    const std::string_view outStr(start, m_lexer.position());
+
     std::string_view ruleName;
     if (!m_lexer.ReadIdent(&ruleName)) {
       throw std::runtime_error("Missing rule name for build command");
@@ -468,11 +487,15 @@ class Parser {
       value.Clear();
     }
 
-    // Add the build command to `m_parts`
     const std::size_t partsIndex = m_parts.size();
-    m_parts.emplace_back(std::piecewise_construct,
-                         std::make_tuple(start, m_lexer.position()),
-                         std::make_tuple(false));
+    m_parts.emplace_back(start, m_lexer.position());
+
+    // Add the build command
+    const std::size_t commandIndex = m_commands.size();
+    BuildCommand& buildCommand = m_commands.emplace_back();
+    buildCommand.partsIndex = partsIndex;
+    buildCommand.validationStr = validationStr;
+    buildCommand.outStr = outStr;
 
     // Set up the mapping from each output index to the corresponding
     // entry in `m_parts`
@@ -480,8 +503,7 @@ class Parser {
     for (const std::string& out : outs) {
       const std::size_t outIndex = getPathIndex(out);
       outIndices.push_back(outIndex);
-      m_nodeToParts[outIndex] = partsIndex;
-      m_validationParts[outIndex] = validationStr;
+      m_nodeToCommand[outIndex] = commandIndex;
     }
 
     // Add all in edges and connect them with all output edges
@@ -496,34 +518,28 @@ class Parser {
     std::string command;
     scope.appendValue(command, "command");
 
-    const std::uint64_t hash =
-        murmur_hash::hash(command.data(), command.size());
-    for (const std::size_t outIndex : outIndices) {
-      m_hashes[outIndex] = hash;
-    }
+    buildCommand.hash = murmur_hash::hash(command.data(), command.size());
   }
 
   void handleDefault(const char* start) {
     std::vector<std::string> ins;
     std::string err;
-    // TODO: Add a proper scope
-    BasicScope scope;
-    collectPaths(ins, scope, &err);
+    collectPaths(ins, m_fileScope, &err);
     if (ins.empty()) {
       throw std::runtime_error("Expected path");
     }
 
     expectToken(Lexer::NEWLINE);
 
-    // Add the build command to `m_parts`
     const std::size_t partsIndex = m_parts.size();
-    m_parts.emplace_back(std::piecewise_construct,
-                         std::make_tuple(start, m_lexer.position()),
-                         std::make_tuple(false));
+    m_parts.emplace_back(start, m_lexer.position());
+
+    const std::size_t commandIndex = m_commands.size();
+    BuildCommand& buildCommand = m_commands.emplace_back();
+    buildCommand.partsIndex = partsIndex;
 
     const std::size_t outIndex = getDefault();
-    m_nodeToParts[outIndex] = partsIndex;
-    m_validationParts[outIndex] = "";  // no validations for `default`
+    m_nodeToCommand[outIndex] = commandIndex;
     for (const std::string& in : ins) {
       m_graph.addEdge(getPathIndex(in), outIndex);
     }
@@ -543,18 +559,14 @@ class Parser {
       switch (token) {
         case Lexer::POOL:
           skipPool();
-          m_parts.emplace_back(std::piecewise_construct,
-                               std::make_tuple(start, m_lexer.position()),
-                               std::make_tuple(true));
+          m_parts.emplace_back(start, m_lexer.position());
           break;
         case Lexer::BUILD:
           handleEdge(start);
           break;
         case Lexer::RULE:
           skipRule();
-          m_parts.emplace_back(std::piecewise_construct,
-                               std::make_tuple(start, m_lexer.position()),
-                               std::make_tuple(true));
+          m_parts.emplace_back(start, m_lexer.position());
           break;
         case Lexer::DEFAULT:
           handleDefault(start);
@@ -567,16 +579,12 @@ class Parser {
           std::string result;
           evaluate(result, value, m_fileScope);
           m_fileScope.set(key, std::move(result));
-          m_parts.emplace_back(std::piecewise_construct,
-                               std::make_tuple(start, m_lexer.position()),
-                               std::make_tuple(true));
+          m_parts.emplace_back(start, m_lexer.position());
         } break;
         case Lexer::INCLUDE:
         case Lexer::SUBNINJA:
           skipInclude();
-          m_parts.emplace_back(std::piecewise_construct,
-                               std::make_tuple(start, m_lexer.position()),
-                               std::make_tuple(true));
+          m_parts.emplace_back(start, m_lexer.position());
           break;
         case Lexer::ERROR:
           throw std::runtime_error("Parsing error");
@@ -600,35 +608,9 @@ class Parser {
     throw std::logic_error("Not reachable");
   }
 
-  void markForPrinting(std::size_t index) {
-    if (m_nodeToParts[index] != std::numeric_limits<std::size_t>::max()) {
-      m_parts[m_nodeToParts[index]].second = true;
-    }
-  }
-
-  void printPhonyEdge(std::size_t index) {
-    // No need to add anything if `index` represents a path that isn't built
-    // by ninja.
-    if (m_nodeToParts[index] != std::numeric_limits<std::size_t>::max()) {
-      std::string& phony = m_phonyCommands.emplace_front("build ");
-      phony += m_graph.path(index);
-      phony += ": phony";
-      if (const std::string_view v = m_validationParts[index]; !v.empty()) {
-        phony += ' ';
-        phony += v;
-      }
-      phony += "\n";
-      m_parts[m_nodeToParts[index]].first = phony;
-      m_parts[m_nodeToParts[index]].second = true;
-    }
-  }
-
   void print(std::ostream& output) const {
-    for (const auto& [text, required] : m_parts) {
-      if (required) {
-        output << text;
-      }
-    }
+    std::copy(m_parts.begin(), m_parts.end(),
+              std::ostream_iterator<std::string_view>(output));
   }
 };
 
@@ -716,10 +698,11 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
   }
 }
 
+template <typename GET_HASH>
 void parseLogFile(const std::filesystem::path& ninjaLog,
                   const Graph& graph,
                   std::vector<Requirement>& requirements,
-                  const std::vector<std::uint64_t>& hashes) {
+                  GET_HASH&& get_hash) {
   std::ifstream deps(ninjaLog);
 
   // As there can be duplicate entries and subsequent entries take precedence
@@ -736,7 +719,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
 
     const std::size_t index = graph.getPath(path);
     seen[index] = true;
-    hashMismatch[index] = entry.hash != hashes[index];
+    hashMismatch[index] = entry.hash != get_hash(index);
   }
 
   // Mark all build commands that are new or have been changed as required
@@ -782,30 +765,32 @@ void TrimUtil::trim(std::ostream& output,
               << std::endl;
     requirements.assign(requirements.size(), Requirement::InputsAndOutputs);
   } else {
-    parseLogFile(ninjaLog, graph, requirements, parser.m_hashes);
+    parseLogFile(ninjaLog, graph, requirements, [&](const std::size_t index) {
+      return parser.m_commands[parser.m_nodeToCommand[index]].hash;
+    });
+  }
 
-    // Mark all files in `changed` as required
-    for (std::string line; std::getline(changed, line);) {
-      if (!graph.hasPath(line)) {
-        throw std::runtime_error("Unable to find " + line + " in " +
-                                 ninjaFile.string());
-      }
-      requirements[graph.getPath(line)] = Requirement::InputsAndOutputs;
+  // Mark all files in `changed` as required
+  for (std::string line; std::getline(changed, line);) {
+    if (!graph.hasPath(line)) {
+      throw std::runtime_error("Unable to find " + line + " in " +
+                               ninjaFile.string());
     }
+    requirements[graph.getPath(line)] = Requirement::InputsAndOutputs;
+  }
 
-    // Mark all outputs as required or not
-    for (std::size_t index = 0; index < graph.size(); ++index) {
-      if (requirements[index] == Requirement::InputsAndOutputs) {
-        markOutputsAsRequired(graph, index, requirements);
-      }
+  // Mark all outputs as required or not
+  for (std::size_t index = 0; index < graph.size(); ++index) {
+    if (requirements[index] == Requirement::InputsAndOutputs) {
+      markOutputsAsRequired(graph, index, requirements);
     }
+  }
 
-    // Regardless of what the default index was set to, we set it to `None` so
-    // that we don't require any of its inputs
-    if (const std::size_t defaultIndex = graph.defaultIndex();
-        defaultIndex != std::numeric_limits<std::size_t>::max()) {
-      requirements[defaultIndex] = Requirement::None;
-    }
+  // Regardless of what the default index was set to, we set it to `None` so
+  // that we don't require any of its inputs
+  if (const std::size_t defaultIndex = graph.defaultIndex();
+      defaultIndex != std::numeric_limits<std::size_t>::max()) {
+    requirements[defaultIndex] = Requirement::None;
   }
 
   // Mark all inputs as required.  The only time we don't do this
@@ -824,16 +809,47 @@ void TrimUtil::trim(std::ostream& output,
     }
   }
 
+  // Mark all affected `BuildCommands` as needing to print them out
   for (std::size_t index = 0; index < graph.size(); ++index) {
     switch (requirements[index]) {
       case Requirement::CreatePhony:
-        parser.printPhonyEdge(index);
         break;
       case Requirement::None:
       case Requirement::Inputs:
-      case Requirement::InputsAndOutputs:
-        parser.markForPrinting(index);
+      case Requirement::InputsAndOutputs: {
+        const std::size_t commandIndex = parser.m_nodeToCommand[index];
+        if (commandIndex != std::numeric_limits<std::size_t>::max()) {
+          parser.m_commands[commandIndex].resolution =
+              Parser::BuildCommand::Print;
+        }
         break;
+      }
+    }
+  }
+
+  // Go through all commands that need to be `phony`ed and do so
+  std::forward_list<std::string> phonyStorage;
+  for (const Parser::BuildCommand& command : parser.m_commands) {
+    if (command.resolution == Parser::BuildCommand::Phony) {
+      const std::initializer_list<std::string_view> parts = {
+          command.outStr,
+          command.validationStr.empty() ? "phony" : "phony ",
+          command.validationStr,
+          "\n",
+      };
+      std::string& phony = phonyStorage.emplace_front();
+      phony.resize(
+          std::accumulate(parts.begin(), parts.end(), phony.size(),
+                          [](std::size_t size, const std::string_view part) {
+                            return size + part.size();
+                          }));
+      [[maybe_unused]] const auto it =
+          std::accumulate(parts.begin(), parts.end(), phony.begin(),
+                          [](auto outIt, const std::string_view part) {
+                            return std::copy(part.begin(), part.end(), outIt);
+                          });
+      assert(it == phony.end());
+      parser.m_parts[command.partsIndex] = std::string_view{phony};
     }
   }
 

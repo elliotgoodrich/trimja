@@ -21,6 +21,7 @@ add_executable(
     src/trimutil.cpp
     thirdparty/ninja/eval_env.cc
     thirdparty/ninja/lexer.cc
+    thirdparty/ninja/util.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
 )
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")

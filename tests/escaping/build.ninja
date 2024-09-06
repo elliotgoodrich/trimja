@@ -1,0 +1,5 @@
+rule copy
+  command = ninja --version $in -> $out
+build out1: copy in1
+build out$ 2a out$ 2b: copy in2
+build out3: copy in$ 3 in$ 4
