@@ -25,15 +25,27 @@
 
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace trimja {
 
 class Graph {
+  struct TransparentHash {
+    using is_transparent = void;
+    std::size_t operator()(const std::string& v) const {
+      return std::hash<std::string_view>{}(v);
+    }
+    std::size_t operator()(std::string_view v) const {
+      return std::hash<std::string_view>{}(v);
+    }
+  };
+
   // A look up from path to vertex index.
   // TODO: Change the key to `std::string_view`
-  std::unordered_map<std::string, std::size_t> m_pathToIndex;
+  std::unordered_map<std::string, std::size_t, TransparentHash, std::equal_to<>>
+      m_pathToIndex;
 
   // An adjacency list of input -> output
   std::vector<std::set<std::size_t>> m_inputToOutput;
@@ -49,9 +61,9 @@ class Graph {
  public:
   Graph();
 
-  std::size_t addPath(const std::string& path);
+  std::size_t addPath(std::string_view path);
 
-  bool hasPath(const std::string& path) const;
+  bool hasPath(std::string_view path) const;
 
   std::size_t addDefault();
 
@@ -64,7 +76,7 @@ class Graph {
   const std::set<std::size_t>& out(std::size_t pathIndex) const;
   const std::set<std::size_t>& in(std::size_t pathIndex) const;
 
-  std::size_t getPath(const std::string& path) const;
+  std::size_t getPath(std::string_view path) const;
 
   std::size_t size() const;
 };

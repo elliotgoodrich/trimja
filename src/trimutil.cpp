@@ -273,7 +273,7 @@ class Parser {
 
  public:
   std::size_t getPathIndex(std::string_view path) {
-    const std::size_t index = m_graph.addPath(std::string(path));
+    const std::size_t index = m_graph.addPath(path);
     if (index >= m_nodeToCommand.size()) {
       m_nodeToCommand.resize(index + 1,
                              std::numeric_limits<std::size_t>::max());
