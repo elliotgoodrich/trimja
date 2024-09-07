@@ -390,7 +390,10 @@ class Parser {
         break;
       }
 
-      evaluate(result.emplace_back(), out, scope);
+      std::string& output = result.emplace_back();
+      evaluate(output, out, scope);
+      [[maybe_unused]] std::uint64_t slashBits;
+      CanonicalizePath(&output, &slashBits);
       ++count;
     }
 
@@ -409,7 +412,10 @@ class Parser {
       }
       while (!out.empty()) {
         // TODO: Allow bindings from the rule to be looked up on edges
-        evaluate(outs.emplace_back(), out, m_fileScope);
+        std::string& output = outs.emplace_back();
+        evaluate(output, out, m_fileScope);
+        [[maybe_unused]] std::uint64_t slashBits;
+        CanonicalizePath(&output, &slashBits);
         out.Clear();
         if (!m_lexer.ReadPath(&out, err)) {
           throw std::runtime_error(*err);
@@ -497,8 +503,7 @@ class Parser {
     buildCommand.validationStr = validationStr;
     buildCommand.outStr = outStr;
 
-    // Set up the mapping from each output index to the corresponding
-    // entry in `m_parts`
+    // Add outputs to the graph and link to the build command
     std::vector<std::size_t> outIndices;
     for (const std::string& out : outs) {
       const std::size_t outIndex = getPathIndex(out);
@@ -506,8 +511,7 @@ class Parser {
       m_nodeToCommand[outIndex] = commandIndex;
     }
 
-    // Add all in edges and connect them with all output edges
-
+    // Add inputs to the graph and add the edges to the graph
     for (const std::string& in : ins) {
       const std::size_t inIndex = getPathIndex(in);
       for (const std::size_t outIndex : outIndices) {
@@ -517,7 +521,6 @@ class Parser {
 
     std::string command;
     scope.appendValue(command, "command");
-
     buildCommand.hash = murmur_hash::hash(command.data(), command.size());
   }
 
@@ -682,6 +685,8 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
         if (static_cast<std::size_t>(view.index) >= lookup.size()) {
           lookup.resize(view.index + 1);
         }
+        // No need to normalize the path here as it is normalized when it
+        // is written to the `.ninja_deps` file
         lookup[view.index] = parser.getPathIndex(view.path);
         break;
       }
@@ -710,6 +715,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   std::vector<bool> seen(graph.size());
   std::vector<bool> hashMismatch(graph.size());
   for (const LogEntry& entry : LogReader(deps)) {
+    // Paths inside `.ninja_log` are already normalized
     const std::string& path = entry.output.string();
     if (!graph.hasPath(path)) {
       // If we don't have the path then it was since removed from the ninja
@@ -772,6 +778,8 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all files in `changed` as required
   for (std::string line; std::getline(changed, line);) {
+    [[maybe_unused]] std::uint64_t slashBits;
+    CanonicalizePath(&line, &slashBits);
     if (!graph.hasPath(line)) {
       throw std::runtime_error("Unable to find " + line + " in " +
                                ninjaFile.string());

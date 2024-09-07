@@ -43,7 +43,6 @@ class Graph {
   };
 
   // A look up from path to vertex index.
-  // TODO: Change the key to `std::string_view`
   std::unordered_map<std::string, std::size_t, TransparentHash, std::equal_to<>>
       m_pathToIndex;
 
