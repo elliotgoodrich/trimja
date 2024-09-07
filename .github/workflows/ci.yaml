@@ -32,6 +32,8 @@ jobs:
         ${{ format('-D{0}={1}', matrix.os == 'windows-latest' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
         ${{ matrix.os != 'windows-latest' && '-G Ninja' || ''}}
         -DCMAKE_UNITY_BUILD=ON
+        -DCMAKE_C_COMPILER_FORCED=TRUE
+        -DCMAKE_CXX_COMPILER_FORCED=TRUE
         -S ${{ github.workspace }}
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
