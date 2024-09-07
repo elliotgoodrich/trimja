@@ -66,13 +66,10 @@ class BasicScope {
  public:
   BasicScope() = default;
 
-  template <typename STRING>
-  std::string_view set(std::string_view key, STRING&& value) {
-    const auto [it, inserted] = m_variables.emplace(key, value);
-    if (!inserted) {
-      it->second = std::forward<STRING>(value);
-    }
-    return it->second;
+  std::string_view set(std::string_view key, std::string&& value) {
+    // `operator[]` does not support `is_transparent` and `emplace` may or
+    // may not move from `value` so this is the best way to avoid allocations
+    return m_variables.emplace(key, "").first->second = std::move(value);
   }
 
   bool appendValue(std::string& output, std::string_view name) const {
