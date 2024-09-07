@@ -28,18 +28,18 @@ namespace trimja {
 
 Graph::Graph() = default;
 
-std::size_t Graph::addPath(const std::string& path) {
+std::size_t Graph::addPath(std::string_view path) {
   const std::size_t nextIndex = m_inputToOutput.size();
   const auto [it, inserted] = m_pathToIndex.emplace(path, nextIndex);
   if (inserted) {
     m_inputToOutput.emplace_back();
     m_outputToInput.emplace_back();
-    m_path.push_back(path);
+    m_path.emplace_back(path);
   }
   return it->second;
 }
 
-bool Graph::hasPath(const std::string& path) const {
+bool Graph::hasPath(std::string_view path) const {
   return m_pathToIndex.contains(path);
 }
 
@@ -79,7 +79,7 @@ const std::set<std::size_t>& Graph::in(std::size_t pathIndex) const {
   return m_outputToInput[pathIndex];
 }
 
-std::size_t Graph::getPath(const std::string& path) const {
+std::size_t Graph::getPath(std::string_view path) const {
   return m_pathToIndex.find(path)->second;
 }
 
