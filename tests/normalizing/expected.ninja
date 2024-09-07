@@ -1,0 +1,12 @@
+rule copy
+  command = ninja --version $in -> $out
+  description = $command
+rule copy_with_deps
+  deps = gcc
+  depfile = $out.d
+  command = ninja --version $in -> $out
+  description = $command
+build out1: copy ./bar/../foo/./in1
+build .///out2: copy in2
+build output/../out3: copy_with_deps ./././ignored
+build .//out4: phony
