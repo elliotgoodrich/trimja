@@ -34,7 +34,7 @@ std::size_t Graph::addPath(std::string_view path) {
   if (inserted) {
     m_inputToOutput.emplace_back();
     m_outputToInput.emplace_back();
-    m_path.emplace_back(path);
+    m_path.emplace_back(it->first);
   }
   return it->second;
 }

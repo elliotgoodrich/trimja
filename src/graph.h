@@ -52,8 +52,9 @@ class Graph {
   // An adjacency list of output -> Input
   std::vector<std::set<std::size_t>> m_outputToInput;
 
-  // names of paths
-  std::vector<std::string> m_path;
+  // Names of paths (this points to the keys in `m_pathToIndex`, which is always
+  // valid since `std::unordered_map` has pointer stability.
+  std::vector<std::string_view> m_path;
 
   std::size_t m_defaultIndex = std::numeric_limits<std::size_t>::max();
 
