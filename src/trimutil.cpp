@@ -162,7 +162,7 @@ struct EdgeScope {
     //      and may make use of in-scope bindings like $in.)
     //   4. File-level variables from the file that the build line was in.
     //   5. Variables from the file that included that file using the subninja
-    // keyword.
+    //      keyword.
     if (name == "in") {
       appendPaths(output, ins, ' ');
       return true;
