@@ -1,6 +1,5 @@
 foo = "bar"
 include other.ninja
-subninja small.ninja
 pool testPool
   depth = 3
 rule copy

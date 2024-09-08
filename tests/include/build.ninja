@@ -1,0 +1,5 @@
+rule copy
+  command = ninja --version $in -> $out
+file1 = in1
+include other.ninja
+build out2: copy2 $file2
