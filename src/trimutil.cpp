@@ -516,9 +516,17 @@ class Parser {
       }
     }
 
-    std::string command;
-    scope.appendValue(command, "command");
-    buildCommand.hash = murmur_hash::hash(command.data(), command.size());
+    {
+      std::string command;
+      scope.appendValue(command, "command");
+      std::string rspcontent;
+      scope.appendValue(rspcontent, "rspfile_content");
+      if (!rspcontent.empty()) {
+        command += ";rspfile=";
+        command += rspcontent;
+      }
+      buildCommand.hash = murmur_hash::hash(command.data(), command.size());
+    }
   }
 
   void handleDefault(const char* start) {

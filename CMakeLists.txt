@@ -43,7 +43,7 @@ foreach(TEST ${TRIMJA_TESTS})
     # Run ninja over all test directories to generate `.ninja_log` and `.ninja_deps`
     add_test(
         NAME trimja.snapshot.${TEST}.ninja
-        COMMAND ninja -d keepdepfile
+        COMMAND ninja -d keepdepfile -d keeprsp
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/
     )
     set_tests_properties(

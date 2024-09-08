@@ -1,0 +1,11 @@
+rule copy_with_rsp
+  command = ninja --version $in -> $out $rspfile
+  description = $command
+  rspfile = $out.rsp
+  rspfile_content = $in
+build out1: copy_with_rsp in1
+build out2: copy_with_rsp in2
+  rspfile_content = dummy input
+build out3: copy_with_rsp in3
+build out4: copy_with_rsp in4
+  rspfile_content = dummy input
