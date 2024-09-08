@@ -114,7 +114,7 @@ set_tests_properties(
 )
 add_test(
     NAME trimja.--write.cmp
-    COMMAND ${CMAKE_COMMAND} -E compare_files ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/build.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
+    COMMAND ${CMAKE_COMMAND} -E compare_files --ignore-eol ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/expected.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
 )
 set_tests_properties(
     trimja.--write

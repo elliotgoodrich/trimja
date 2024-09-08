@@ -1,0 +1,4 @@
+file2 = in2
+build out1: copy $file1
+rule copy2
+  command = ninja --version copy2 $in -> $out

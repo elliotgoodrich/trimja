@@ -61,6 +61,11 @@ class Graph {
  public:
   Graph();
 
+  Graph(Graph&&) = default;
+  Graph(const Graph&) = delete;
+  Graph& operator=(Graph&&) = default;
+  Graph& operator=(const Graph&) = delete;
+
   std::size_t addPath(std::string_view path);
 
   bool hasPath(std::string_view path) const;
