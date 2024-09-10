@@ -180,7 +180,7 @@ int main(int argc, char** argv) try {
   }
 
   // Copy everything from the ninja into a stringstream in case we
-  // are overwriting the file
+  // are overwriting the same input file
   const std::string ninjaFileContents = [&] {
     std::stringstream ninjaCopy;
     std::ifstream ninja(ninjaFile);

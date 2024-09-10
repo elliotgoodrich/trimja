@@ -88,4 +88,4 @@ class Graph {
 
 }  // namespace trimja
 
-#endif  // TRIMJA_TRIMUTIL
+#endif  // TRIMJA_GRAPH
