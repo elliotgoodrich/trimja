@@ -25,14 +25,14 @@
 
 #include <filesystem>
 #include <iosfwd>
-#include <string>
+#include <string_view>
 
 namespace trimja {
 
 struct TrimUtil {
   static void trim(std::ostream& output,
                    const std::filesystem::path& ninjaFile,
-                   const std::string& ninjaFileContents,
+                   std::string_view ninjaFileContents,
                    std::istream& changed);
 };
 

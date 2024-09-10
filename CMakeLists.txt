@@ -18,6 +18,7 @@ add_executable(
     src/logreader.cpp
     src/murmur_hash.cpp
     src/ninja_clock.cpp
+    src/parser.cpp
     src/trimutil.cpp
     thirdparty/ninja/eval_env.cc
     thirdparty/ninja/lexer.cc
