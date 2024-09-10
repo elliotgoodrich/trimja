@@ -29,6 +29,7 @@
 //     of code and we're not unit testing - only system tests)
 //   * Update some of the code to use `std::all_of`
 //   * Use `std::string_view` where possible
+//   * Remove `slash_bits`
 
 #ifndef NINJA_UTIL_H_
 #define NINJA_UTIL_H_
@@ -37,10 +38,8 @@
 #include <string>
 
 /// Canonicalize a path like "foo/../bar.h" into just "bar.h".
-/// |slash_bits| has bits set starting from lowest for a backslash that was
-/// normalized to a forward slash. (only used on Windows)
-void CanonicalizePath(std::string* path, std::uint64_t* slash_bits);
-void CanonicalizePath(char* path, size_t* len, std::uint64_t* slash_bits);
+void CanonicalizePath(std::string* path);
+void CanonicalizePath(char* path, size_t* len);
 
 /// Appends |input| to |*result|, escaping according to the whims of either
 /// Bash, or Win32's CommandLineToArgvW().

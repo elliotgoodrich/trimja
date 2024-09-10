@@ -22,14 +22,71 @@
 
 #include "graph.h"
 
+#include <ninja/util.h>
+
 #include <cassert>
 
 namespace trimja {
 
+std::size_t Graph::PathHash::operator()(const std::string& v) const {
+  return operator()(std::string_view{v});
+}
+
+std::size_t Graph::PathHash::operator()(std::string_view v) const {
+  // FNV-1a hash algorithm but on Windows we swap all backslashes with forward
+  // slashes
+  std::size_t hash = 14695981039346656037ull;
+  for (const char ch : v) {
+#ifdef _WIN32
+    hash ^= ch == '\\' ? '/' : ch;
+#else
+    hash ^= ch;
+#endif
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+bool Graph::PathEqual::operator()(std::string_view left,
+                                  std::string_view right) const {
+#ifdef _WIN32
+  return std::equal(left.begin(), left.end(), right.begin(), right.end(),
+                    [](char l, char r) {
+                      return (l == '\\' ? '/' : l) == (r == '\\' ? '/' : r);
+                    });
+#else
+  return left == right;
+#endif
+}
+
 Graph::Graph() = default;
 
-std::size_t Graph::addPath(std::string_view path) {
+std::size_t Graph::addPath(std::string& path) {
   const std::size_t nextIndex = m_inputToOutput.size();
+  CanonicalizePath(&path);
+  const auto [it, inserted] = m_pathToIndex.emplace(path, nextIndex);
+  if (inserted) {
+    m_inputToOutput.emplace_back();
+    m_outputToInput.emplace_back();
+    m_path.emplace_back(it->first);
+  }
+#ifdef _WIN32
+  else {
+    // On windows paths may differ so update `path` here with the canonical
+    // one, which may differ by path separators
+    path = it->first;
+  }
+#endif
+  return it->second;
+}
+
+std::size_t Graph::addNormalizedPath(std::string_view path) {
+  const std::size_t nextIndex = m_inputToOutput.size();
+#ifndef NDEBUG
+  std::string copy{path};
+  CanonicalizePath(&copy);
+  assert(copy == path);
+#endif
   const auto [it, inserted] = m_pathToIndex.emplace(path, nextIndex);
   if (inserted) {
     m_inputToOutput.emplace_back();
@@ -39,8 +96,30 @@ std::size_t Graph::addPath(std::string_view path) {
   return it->second;
 }
 
-bool Graph::hasPath(std::string_view path) const {
-  return m_pathToIndex.contains(path);
+std::optional<std::size_t> Graph::findPath(std::string& path) const {
+  CanonicalizePath(&path);
+  const auto it = m_pathToIndex.find(path);
+  if (it == m_pathToIndex.end()) {
+    return std::nullopt;
+  } else {
+#ifdef _WIN32
+    // On windows paths may differ so update `path` here with the canonical
+    // one
+    path = it->first;
+#endif
+    assert(it->first == path);
+    return it->second;
+  }
+}
+
+std::optional<std::size_t> Graph::findNormalizedPath(
+    std::string_view path) const {
+  const auto it = m_pathToIndex.find(path);
+  if (it == m_pathToIndex.end()) {
+    return std::nullopt;
+  } else {
+    return it->second;
+  }
 }
 
 std::size_t Graph::addDefault() {
