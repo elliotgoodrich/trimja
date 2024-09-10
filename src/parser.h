@@ -145,7 +145,8 @@ struct BuildContext {
 
   BuildContext() = default;
 
-  std::size_t getPathIndex(std::string_view path);
+  std::size_t getPathIndex(std::string& path);
+  std::size_t getPathIndexForNormalized(std::string_view path);
 
   std::size_t getDefault();
 };

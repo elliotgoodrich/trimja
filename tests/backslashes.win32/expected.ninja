@@ -1,0 +1,15 @@
+rule copy
+  command = ninja --version $in -> $out
+  description = $command
+build bar/out1: copy in1
+build bar\out2: copy in1
+build out3: copy foo/in2
+build out4: copy foo\in2
+build out5: copy foo/in3
+build out6: copy foo\in3
+build bar\out1k: phony
+build bar/out2k: phony
+build out3k: phony
+build out4k: phony
+build out5k: phony
+build out6k: phony

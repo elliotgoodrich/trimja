@@ -39,6 +39,11 @@ file(
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/*
 )
 
+# Some tests are Windows-specific due to their use of backslashes as a path separator
+if(NOT(WIN32))
+    list(FILTER TRIMJA_TESTS EXCLUDE REGEX "win32")
+endif()
+
 # Set up test case fixtures
 foreach(TEST ${TRIMJA_TESTS})
     # Run ninja over all test directories to generate `.ninja_log` and `.ninja_deps`

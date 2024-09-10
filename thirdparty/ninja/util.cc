@@ -62,13 +62,13 @@ bool IsKnownShellSafeCharacter(char ch) {
 
 }  // namespace
 
-void CanonicalizePath(std::string* path, std::uint64_t* slash_bits) {
+void CanonicalizePath(std::string* path) {
   std::size_t len = path->size();
-  CanonicalizePath(path->data(), &len, slash_bits);
+  CanonicalizePath(path->data(), &len);
   path->resize(len);
 }
 
-void CanonicalizePath(char* path, std::size_t* len, std::uint64_t* slash_bits) {
+void CanonicalizePath(char* path, std::size_t* len) {
   // WARNING: this function is performance-critical; please benchmark
   // any changes you make to it.
   if (*len == 0) {
@@ -218,25 +218,6 @@ void CanonicalizePath(char* path, std::size_t* len, std::uint64_t* slash_bits) {
   }
 
   *len = dst - start;  // dst points after the trailing char here.
-#ifdef _WIN32
-  std::uint64_t bits = 0;
-  std::uint64_t bits_mask = 1;
-
-  for (char* c = start; c < start + *len; ++c) {
-    switch (*c) {
-      case '\\':
-        bits |= bits_mask;
-        *c = '/';
-        [[fallthrough]];
-      case '/':
-        bits_mask <<= 1;
-    }
-  }
-
-  *slash_bits = bits;
-#else
-  *slash_bits = 0;
-#endif
 }
 
 void appendEscapedString(std::string& output, std::string_view input) {

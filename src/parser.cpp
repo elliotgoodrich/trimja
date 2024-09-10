@@ -239,8 +239,6 @@ class ParserImp {
 
       std::string& output = result.emplace_back();
       evaluate(output, out, scope);
-      [[maybe_unused]] std::uint64_t slashBits;
-      CanonicalizePath(&output, &slashBits);
       ++count;
     }
 
@@ -261,8 +259,6 @@ class ParserImp {
         // TODO: Allow bindings from the rule to be looked up on edges
         std::string& output = outs.emplace_back();
         evaluate(output, out, m_ctx->fileScope);
-        [[maybe_unused]] std::uint64_t slashBits;
-        CanonicalizePath(&output, &slashBits);
         out.Clear();
         if (!m_lexer.ReadPath(&out, err)) {
           throw std::runtime_error(*err);
@@ -352,14 +348,14 @@ class ParserImp {
 
     // Add outputs to the graph and link to the build command
     std::vector<std::size_t> outIndices;
-    for (const std::string& out : outs) {
+    for (std::string& out : outs) {
       const std::size_t outIndex = m_ctx->getPathIndex(out);
       outIndices.push_back(outIndex);
       m_ctx->nodeToCommand[outIndex] = commandIndex;
     }
 
     // Add inputs to the graph and add the edges to the graph
-    for (const std::string& in : ins) {
+    for (std::string& in : ins) {
       const std::size_t inIndex = m_ctx->getPathIndex(in);
       for (const std::size_t outIndex : outIndices) {
         m_ctx->graph.addEdge(inIndex, outIndex);
@@ -398,7 +394,7 @@ class ParserImp {
 
     const std::size_t outIndex = m_ctx->getDefault();
     m_ctx->nodeToCommand[outIndex] = commandIndex;
-    for (const std::string& in : ins) {
+    for (std::string& in : ins) {
       m_ctx->graph.addEdge(m_ctx->getPathIndex(in), outIndex);
     }
   }
@@ -510,8 +506,16 @@ bool BasicScope::appendValue(std::string& output, std::string_view name) const {
   }
 }
 
-std::size_t BuildContext::getPathIndex(std::string_view path) {
+std::size_t BuildContext::getPathIndex(std::string& path) {
   const std::size_t index = graph.addPath(path);
+  if (index >= nodeToCommand.size()) {
+    nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
+  }
+  return index;
+}
+
+std::size_t BuildContext::getPathIndexForNormalized(std::string_view path) {
+  const std::size_t index = graph.addNormalizedPath(path);
   if (index >= nodeToCommand.size()) {
     nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
   }

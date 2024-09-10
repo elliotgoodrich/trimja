@@ -106,9 +106,8 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
         if (static_cast<std::size_t>(view.index) >= lookup.size()) {
           lookup.resize(view.index + 1);
         }
-        // No need to normalize the path here as it is normalized when it
-        // is written to the `.ninja_deps` file
-        lookup[view.index] = ctx.getPathIndex(view.path);
+        // Entries in `.ninja_deps` are already normalized when written
+        lookup[view.index] = ctx.getPathIndexForNormalized(view.path);
         break;
       }
       case 1: {
@@ -136,17 +135,17 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   std::vector<bool> seen(graph.size());
   std::vector<bool> hashMismatch(graph.size());
   for (const LogEntry& entry : LogReader(deps)) {
-    // Paths inside `.ninja_log` are already normalized
-    const std::string& path = entry.output.string();
-    if (!graph.hasPath(path)) {
+    // Entries in `.ninja_log` are already normalized when written
+    const std::optional<std::size_t> index =
+        graph.findNormalizedPath(entry.output.string());
+    if (!index) {
       // If we don't have the path then it was since removed from the ninja
       // build file
       continue;
     }
 
-    const std::size_t index = graph.getPath(path);
-    seen[index] = true;
-    hashMismatch[index] = entry.hash != get_hash(index);
+    seen[*index] = true;
+    hashMismatch[*index] = entry.hash != get_hash(*index);
   }
 
   // Mark all build commands that are new or have been changed as required
@@ -166,7 +165,8 @@ void TrimUtil::trim(std::ostream& output,
                     std::istream& changed) {
   BuildContext ctx;
 
-  // Parse the build file
+  // Parse the build file, this needs to be the first thing so we choose the
+  // canonical paths in the same way that ninja does
   ParserUtil::parse(ctx, ninjaFile, ninjaFileContents);
 
   Graph& graph = ctx.graph;
@@ -206,13 +206,12 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all files in `changed` as required
   for (std::string line; std::getline(changed, line);) {
-    [[maybe_unused]] std::uint64_t slashBits;
-    CanonicalizePath(&line, &slashBits);
-    if (!graph.hasPath(line)) {
+    const std::optional<std::size_t> index = graph.findPath(line);
+    if (!index) {
       throw std::runtime_error("Unable to find " + line + " in " +
                                ninjaFile.string());
     }
-    requirements[graph.getPath(line)] = Requirement::InputsAndOutputs;
+    requirements[*index] = Requirement::InputsAndOutputs;
   }
 
   // Mark all outputs as required or not

@@ -23,6 +23,7 @@
 #ifndef TRIMJA_GRAPH
 #define TRIMJA_GRAPH
 
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -32,18 +33,19 @@
 namespace trimja {
 
 class Graph {
-  struct TransparentHash {
+  struct PathHash {
     using is_transparent = void;
-    std::size_t operator()(const std::string& v) const {
-      return std::hash<std::string_view>{}(v);
-    }
-    std::size_t operator()(std::string_view v) const {
-      return std::hash<std::string_view>{}(v);
-    }
+    std::size_t operator()(const std::string& v) const;
+    std::size_t operator()(std::string_view v) const;
+  };
+
+  struct PathEqual {
+    using is_transparent = void;
+    bool operator()(std::string_view left, std::string_view right) const;
   };
 
   // A look up from path to vertex index.
-  std::unordered_map<std::string, std::size_t, TransparentHash, std::equal_to<>>
+  std::unordered_map<std::string, std::size_t, PathHash, PathEqual>
       m_pathToIndex;
 
   // An adjacency list of input -> output
@@ -66,9 +68,18 @@ class Graph {
   Graph& operator=(Graph&&) = default;
   Graph& operator=(const Graph&) = delete;
 
-  std::size_t addPath(std::string_view path);
+  // Add the specified `path` to the graph if it isn't already and then return
+  // the corresponding index to that path. `path` will be modified to be
+  // normalized.  Note that on windows, backslashes and forward slashes are
+  // accepted as valid path separators.  If `addPath` is called multiple times
+  // with a `path` that differs only by the slash type, then `path` will be
+  // updated to have the slashes of the first `path` called.
+  std::size_t addPath(std::string& path);
 
-  bool hasPath(std::string_view path) const;
+  std::size_t addNormalizedPath(std::string_view path);
+
+  std::optional<std::size_t> findPath(std::string& path) const;
+  std::optional<std::size_t> findNormalizedPath(std::string_view path) const;
 
   std::size_t addDefault();
 

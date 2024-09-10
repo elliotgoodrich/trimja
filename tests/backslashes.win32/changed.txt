@@ -1,0 +1,3 @@
+in1
+foo/in2
+foo\in3
