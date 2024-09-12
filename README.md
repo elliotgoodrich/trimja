@@ -10,11 +10,12 @@ independent.
 
 For example we can improve CI performance by only building those files that
 depend on files changed in the pull request.  We can ask `git` to list all
-files that differ from the `main` branch and pass `--write` to `trimja` in
-order to edit `build.ninja` in place:
+files that differ from the `main` branch, pass `--write` to `trimja` in
+order to edit `build.ninja` in place, and pass `-` to take a list of affected
+file from stdin:
 
 ```bash
-git diff main --name-only | trimja --write
+git diff main --name-only | trimja - --write
 ninja
 ```
 
