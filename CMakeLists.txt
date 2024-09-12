@@ -78,11 +78,17 @@ set_property(TEST trimja.--unknown PROPERTY WILL_FAIL true)
 add_test(NAME trimja.-u COMMAND trimja -u)
 set_property(TEST trimja.-u PROPERTY WILL_FAIL true)
 
+# No arguments
+add_test(NAME trimja.no-args COMMAND trimja)
+set_property(TEST trimja.no-args PROPERTY WILL_FAIL true)
+
 # too many arguments
 add_test(NAME trimja.--write_and_--output COMMAND trimja --write --output ${CMAKE_CURRENT_BINARY_DIR}/foo.ninja)
 set_property(TEST trimja.--write_and_--output PROPERTY WILL_FAIL true)
 add_test(NAME trimja.--output_and_--write COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/foo.ninja --write)
 set_property(TEST trimja.--output_and_--write PROPERTY WILL_FAIL true)
+add_test(NAME trimja.--affected_and_dash COMMAND trimja --affected changed.txt -)
+set_property(TEST trimja.--affected_and_dash PROPERTY WILL_FAIL true)
 
 # Check we can avoid passing `-f`
 add_test(
@@ -90,7 +96,7 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
     COMMAND trimja
     --expected expected.ninja
-    --restrict changed.txt
+    --affected changed.txt
 )
 set_tests_properties(
     trimja.snapshot.no-f
@@ -101,7 +107,7 @@ set_tests_properties(
 add_test(
     NAME trimja.big-in-out
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/bigpassthrough/
-    COMMAND trimja --write --restrict changed.txt
+    COMMAND trimja --write --affected changed.txt
 )
 set_tests_properties(
     trimja.big-in-out
@@ -112,7 +118,7 @@ set_tests_properties(
 add_test(
     NAME trimja.--write
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
-    COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja --restrict changed.txt
+    COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja --affected changed.txt
 )
 set_tests_properties(
     trimja.--write
@@ -135,12 +141,12 @@ set_tests_properties(
 if (WIN32)
     add_test(
         NAME trimja.stdin
-        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ $ENV{ComSpec} /c $<TARGET_FILE:trimja> < changed.txt
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ $ENV{ComSpec} /c $<TARGET_FILE:trimja> - < changed.txt
     )
 else()
     add_test(
         NAME trimja.stdin
-        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ sh -c "$<TARGET_FILE:trimja> < changed.txt"
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ sh -c "$<TARGET_FILE:trimja> - < changed.txt"
     )
 endif()
 set_property(TEST trimja.stdin PROPERTY PASS_REGULAR_EXPRESSION "build out1")
@@ -153,7 +159,7 @@ set_tests_properties(
 foreach(TEST ${TRIMJA_TESTS})
     add_test(
         NAME trimja.snapshot.${TEST}
-        COMMAND trimja -f build.ninja --expected expected.ninja --restrict changed.txt
+        COMMAND trimja -f build.ninja --expected expected.ninja --affected changed.txt
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/
     )
     set_tests_properties(

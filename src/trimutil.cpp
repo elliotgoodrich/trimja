@@ -162,7 +162,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
 void TrimUtil::trim(std::ostream& output,
                     const std::filesystem::path& ninjaFile,
                     std::string_view ninjaFileContents,
-                    std::istream& changed) {
+                    std::istream& affected) {
   BuildContext ctx;
 
   // Parse the build file, this needs to be the first thing so we choose the
@@ -204,8 +204,8 @@ void TrimUtil::trim(std::ostream& output,
     });
   }
 
-  // Mark all files in `changed` as required
-  for (std::string line; std::getline(changed, line);) {
+  // Mark all files in `affected` as required
+  for (std::string line; std::getline(affected, line);) {
     const std::optional<std::size_t> index = graph.findPath(line);
     if (!index) {
       throw std::runtime_error("Unable to find " + line + " in " +
