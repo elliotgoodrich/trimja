@@ -24,7 +24,8 @@
 #define TRIMJA_DEPSREADER
 
 #include <chrono>
-#include <iosfwd>
+#include <filesystem>
+#include <fstream>
 #include <span>
 #include <variant>
 #include <vector>
@@ -45,12 +46,13 @@ struct DepsRecordView {
 };
 
 class DepsReader {
-  std::istream* m_deps;
+  std::ifstream m_deps;
   std::string m_storage;
   std::vector<std::int32_t> m_depsStorage;
+  std::filesystem::path m_filePath;
 
  public:
-  explicit DepsReader(std::istream& deps);
+  explicit DepsReader(const std::filesystem::path& ninja_deps);
 
   std::variant<PathRecordView, DepsRecordView, std::monostate> read();
 };
