@@ -45,6 +45,37 @@ TYPE readBinary(std::istream& in) {
 
 }  // namespace
 
+static_assert(std::input_iterator<DepsReader::iterator>);
+
+DepsReader::iterator::iterator(DepsReader* reader)
+    : m_reader(reader), m_entry() {
+  ++*this;
+}
+
+const DepsReader::iterator::value_type& DepsReader::iterator::operator*()
+    const {
+  return m_entry;
+}
+
+DepsReader::iterator& DepsReader::iterator::operator++() {
+  if (!m_reader->read(&m_entry)) {
+    m_reader = nullptr;
+  }
+  return *this;
+}
+
+void DepsReader::iterator::operator++(int) {
+  ++*this;
+}
+
+bool operator==(const DepsReader::iterator& iter, DepsReader::sentinel) {
+  return iter.m_reader == nullptr;
+}
+
+bool operator!=(const DepsReader::iterator& iter, DepsReader::sentinel) {
+  return iter.m_reader != nullptr;
+}
+
 DepsReader::DepsReader(const std::filesystem::path& ninja_deps)
     : m_deps(ninja_deps, std::ios_base::binary),
       m_storage(),
@@ -62,11 +93,10 @@ DepsReader::DepsReader(const std::filesystem::path& ninja_deps)
   }
 }
 
-std::variant<PathRecordView, DepsRecordView, std::monostate>
-DepsReader::read() {
+bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
   try {
     if (m_deps.peek() == EOF) {
-      return std::monostate();
+      return false;
     }
     const std::uint32_t rawRecordSize = readBinary<std::uint32_t>(m_deps);
     const std::uint32_t recordSize = rawRecordSize & 0x7FFFFFFF;
@@ -83,7 +113,7 @@ DepsReader::read() {
       m_storage.erase(m_storage.size() - padding);
       const std::uint32_t checksum = readBinary<std::uint32_t>(m_deps);
       const std::int32_t id = ~checksum;
-      return PathRecordView{id, m_storage};
+      output->emplace<PathRecordView>(id, m_storage);
     } else {
       const std::int32_t outIndex = readBinary<std::int32_t>(m_deps);
       const ninja_clock::time_point mtime =
@@ -94,14 +124,24 @@ DepsReader::read() {
       m_depsStorage.resize(numDependencies);
       std::generate_n(m_depsStorage.begin(), numDependencies,
                       [&] { return readBinary<std::int32_t>(m_deps); });
-      return DepsRecordView{
+      output->emplace<DepsRecordView>(
           outIndex, std::chrono::clock_cast<std::chrono::file_clock>(mtime),
-          m_depsStorage};
+          m_depsStorage);
     }
   } catch (const std::ios_base::failure& e) {
     throw std::runtime_error(
         std::format("Error reading {}: {}", m_filePath.string(), e.what()));
   }
+
+  return true;
+}
+
+DepsReader::iterator DepsReader::begin() {
+  return iterator(this);
+}
+
+DepsReader::sentinel DepsReader::end() {
+  return sentinel();
 }
 
 }  // namespace trimja

@@ -48,7 +48,30 @@ std::array<std::string_view, N> splitOnTab(std::string_view in) {
 static_assert(std::input_iterator<LogReader::iterator>);
 
 LogReader::iterator::iterator(LogReader* reader) : m_reader(reader), m_entry() {
-  m_reader->read(&m_entry);
+  ++(*this);
+}
+
+const LogEntry& LogReader::iterator::operator*() const {
+  return m_entry;
+}
+
+LogReader::iterator& LogReader::iterator::operator++() {
+  if (!m_reader->read(&m_entry)) {
+    m_reader = nullptr;
+  }
+  return *this;
+}
+
+void LogReader::iterator::operator++(int) {
+  ++*this;
+}
+
+bool operator==(const LogReader::iterator& iter, LogReader::sentinel) {
+  return iter.m_reader == nullptr;
+}
+
+bool operator!=(const LogReader::iterator& iter, LogReader::sentinel) {
+  return iter.m_reader != nullptr;
 }
 
 LogReader::LogReader(std::istream& logs) : m_logs(&logs), m_nextLine() {
@@ -97,14 +120,6 @@ LogReader::iterator LogReader::begin() {
 
 LogReader::sentinel LogReader::end() {
   return sentinel();
-}
-
-bool operator==(const LogReader::iterator& iter, LogReader::sentinel) {
-  return iter.m_reader == nullptr;
-}
-
-bool operator!=(const LogReader::iterator& iter, LogReader::sentinel) {
-  return iter.m_reader != nullptr;
 }
 
 }  // namespace trimja
