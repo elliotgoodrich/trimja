@@ -52,9 +52,33 @@ class DepsReader {
   std::filesystem::path m_filePath;
 
  public:
+  struct sentinel {};
+
+  class iterator {
+    DepsReader* m_reader;
+    std::variant<PathRecordView, DepsRecordView> m_entry;
+
+   public:
+    using difference_type = std::ptrdiff_t;
+    using value_type = std::variant<PathRecordView, DepsRecordView>;
+
+    iterator(DepsReader* reader);
+
+    const value_type& operator*() const;
+
+    iterator& operator++();
+    void operator++(int);
+    friend bool operator==(const iterator& iter, sentinel s);
+    friend bool operator!=(const iterator& iter, sentinel s);
+  };
+
+ public:
   explicit DepsReader(const std::filesystem::path& ninja_deps);
 
-  std::variant<PathRecordView, DepsRecordView, std::monostate> read();
+  bool read(std::variant<PathRecordView, DepsRecordView>* output);
+
+  iterator begin();
+  sentinel end();
 };
 
 }  // namespace trimja

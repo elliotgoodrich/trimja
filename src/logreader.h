@@ -57,15 +57,10 @@ class LogReader {
 
     iterator(LogReader* reader);
 
-    const LogEntry& operator*() const { return m_entry; }
+    const LogEntry& operator*() const;
 
-    iterator& operator++() {
-      if (!m_reader->read(&m_entry)) {
-        m_reader = nullptr;
-      }
-      return *this;
-    }
-    void operator++(int) { ++*this; }
+    iterator& operator++();
+    void operator++(int);
     friend bool operator==(const iterator& iter, sentinel s);
     friend bool operator!=(const iterator& iter, sentinel s);
   };

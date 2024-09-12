@@ -95,10 +95,9 @@ void markInputsAsRequired(Graph& graph,
 void parseDepFile(const std::filesystem::path& ninjaDeps,
                   Graph& graph,
                   BuildContext& ctx) {
-  DepsReader reader(ninjaDeps);
   std::vector<std::size_t> lookup;
-  while (true) {
-    const auto record = reader.read();
+  for (const std::variant<PathRecordView, DepsRecordView>& record :
+       DepsReader(ninjaDeps)) {
     switch (record.index()) {
       case 0: {
         const PathRecordView& view = std::get<PathRecordView>(record);
@@ -116,8 +115,6 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
         }
         break;
       }
-      case 2:
-        return;
     }
   }
 }
