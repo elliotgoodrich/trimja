@@ -95,8 +95,7 @@ void markInputsAsRequired(Graph& graph,
 void parseDepFile(const std::filesystem::path& ninjaDeps,
                   Graph& graph,
                   BuildContext& ctx) {
-  std::ifstream deps(ninjaDeps);
-  DepsReader reader(deps);
+  DepsReader reader(ninjaDeps);
   std::vector<std::size_t> lookup;
   while (true) {
     const auto record = reader.read();

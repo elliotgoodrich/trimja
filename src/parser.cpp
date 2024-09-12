@@ -22,7 +22,6 @@
 
 #include "parser.h"
 
-#include "depsreader.h"
 #include "graph.h"
 #include "murmur_hash.h"
 
@@ -32,6 +31,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <span>
 
 namespace trimja {
 
