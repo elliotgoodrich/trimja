@@ -167,12 +167,16 @@ void TrimUtil::trim(std::ostream& output,
 
   Graph& graph = ctx.graph;
 
+  const std::filesystem::path ninjaFileDir = [&] {
+    std::filesystem::path dir(ninjaFile);
+    dir.remove_filename();
+    return dir;
+  }();
+
   const std::filesystem::path builddir = [&] {
     std::string path;
     ctx.fileScope.appendValue(path, "builddir");
-    std::filesystem::path root(ninjaFile);
-    root.remove_filename();
-    return root / path;
+    return ninjaFileDir / path;
   }();
 
   // Add all dynamic dependencies from `.ninja_deps` to the graph
@@ -202,12 +206,41 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all files in `affected` as required
   for (std::string line; std::getline(affected, line);) {
-    const std::optional<std::size_t> index = graph.findPath(line);
-    if (!index) {
-      throw std::runtime_error("Unable to find " + line + " in " +
-                               ninjaFile.string());
+    // First try the raw input
+    {
+      const std::optional<std::size_t> index = graph.findPath(line);
+      if (index) {
+        requirements[*index] = Requirement::InputsAndOutputs;
+        continue;
+      }
     }
-    requirements[*index] = Requirement::InputsAndOutputs;
+
+    // If that does not indicate a path, try the absolute path
+    std::filesystem::path p(line);
+    if (!p.is_absolute()) {
+      const std::filesystem::path absolute =
+          std::filesystem::absolute(ninjaFileDir / p);
+      std::string absoluteStr = absolute.string();
+      const std::optional<std::size_t> index = graph.findPath(absoluteStr);
+      if (index) {
+        requirements[*index] = Requirement::InputsAndOutputs;
+        continue;
+      }
+    }
+
+    // If neither indicates a path, then try the path relative to the ninja
+    // file
+    if (!p.is_relative()) {
+      const std::filesystem::path relative = p.lexically_relative(ninjaFileDir);
+      std::string relativeStr = relative.string();
+      const std::optional<std::size_t> index = graph.findPath(relativeStr);
+      if (index) {
+        requirements[*index] = Requirement::InputsAndOutputs;
+        continue;
+      }
+    }
+
+    std::cerr << "'" << line << "' not found in input file" << std::endl;
   }
 
   // Mark all outputs as required or not
