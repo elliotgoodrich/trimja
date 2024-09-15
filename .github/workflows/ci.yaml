@@ -17,6 +17,8 @@ jobs:
           {os: windows-latest, cpp: cl, c: cl},
         ]
     runs-on: ${{ matrix.compiler.os }}
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
     - uses: seanmiddleditch/gha-setup-ninja@master
@@ -48,8 +50,8 @@ jobs:
       with:
         body_path: ${{ github.workspace }}-CHANGELOG.txt
         files: |
-          ${{ steps.strings.outputs.build-output-dir }}/ninja
-          ${{ steps.strings.outputs.build-output-dir }}/ninja.exe
+          ${{ steps.strings.outputs.build-output-dir }}/trimja
+          ${{ steps.strings.outputs.build-output-dir }}/trimja.exe
   format:
     runs-on: ubuntu-latest
     steps:
