@@ -168,20 +168,21 @@ class ParserImp {
     expectToken(Lexer::NEWLINE);
   }
 
-  void skipRule() {
+  void skipRule(const char* start) {
     std::string_view name;
     if (!m_lexer.ReadIdent(&name)) {
       throw std::runtime_error("Missing name for rule");
     }
 
-    const auto [it, inserted] = m_ctx->rules.emplace(name, name);
+    const std::size_t ruleIndex = m_ctx->rules.size();
+    const auto [ruleIt, inserted] = m_ctx->ruleLookup.emplace(name, ruleIndex);
     if (!inserted) {
       std::stringstream ss;
       ss << "Duplicate rule '" << name << "' found!" << '\0';
       throw std::runtime_error(ss.view().data());
     }
 
-    Rule& rule = it->second;
+    Rule& rule = m_ctx->rules.emplace_back(ruleIt->first);
 
     expectToken(Lexer::NEWLINE);
     while (m_lexer.PeekToken(Lexer::INDENT)) {
@@ -195,6 +196,10 @@ class ParserImp {
         throw std::runtime_error(ss.view().data());
       }
     }
+
+    const std::size_t partsIndex = m_ctx->parts.size();
+    m_ctx->parts.emplace_back(start, m_lexer.position());
+    rule.partsIndex = partsIndex;
   }
 
   void skipLet() {
@@ -286,9 +291,9 @@ class ParserImp {
       throw std::runtime_error("Missing rule name for build command");
     }
 
-    const Rule& rule = [&]() -> const Rule& {
-      const auto ruleIt = m_ctx->rules.find(ruleName);
-      if (ruleIt == m_ctx->rules.end()) {
+    const std::size_t ruleIndex = [&] {
+      const auto ruleIt = m_ctx->ruleLookup.find(ruleName);
+      if (ruleIt == m_ctx->ruleLookup.end()) {
         throw std::runtime_error("Unable to find " + std::string(ruleName) +
                                  " rule");
       }
@@ -323,7 +328,8 @@ class ParserImp {
 
     expectToken(Lexer::NEWLINE);
 
-    EdgeScope scope(m_ctx->fileScope, rule, std::span(ins.data(), inSize),
+    EdgeScope scope(m_ctx->fileScope, m_ctx->rules[ruleIndex],
+                    std::span(ins.data(), inSize),
                     std::span(outs.data(), outSize));
 
     EvalString value;
@@ -345,7 +351,7 @@ class ParserImp {
     buildCommand.partsIndex = partsIndex;
     buildCommand.validationStr = validationStr;
     buildCommand.outStr = outStr;
-    buildCommand.ruleName = ruleName;
+    buildCommand.ruleIndex = ruleIndex;
 
     // Add outputs to the graph and link to the build command
     std::vector<std::size_t> outIndices;
@@ -392,7 +398,7 @@ class ParserImp {
     const std::size_t commandIndex = m_ctx->commands.size();
     BuildCommand& buildCommand = m_ctx->commands.emplace_back();
     buildCommand.partsIndex = partsIndex;
-    buildCommand.ruleName = "default";
+    buildCommand.ruleIndex = BuildContext::defaultIndex;
 
     const std::size_t outIndex = m_ctx->getDefault();
     m_ctx->nodeToCommand[outIndex] = commandIndex;
@@ -422,8 +428,7 @@ class ParserImp {
           handleEdge(start);
           break;
         case Lexer::RULE:
-          skipRule();
-          m_ctx->parts.emplace_back(start, m_lexer.position());
+          skipRule(start);
           break;
         case Lexer::DEFAULT:
           handleDefault(start);
@@ -508,8 +513,23 @@ bool BasicScope::appendValue(std::string& output, std::string_view name) const {
   }
 }
 
+bool BuildContext::isBuiltInRule(std::size_t ruleIndex) {
+  static_assert(phonyIndex == 0);
+  static_assert(defaultIndex == 1);
+  return ruleIndex < 2;
+}
+
 BuildContext::BuildContext() {
-  rules.emplace("phony", "phony");
+  // Push back an empty part for the built-in rules
+  for (const auto builtIn : {"phony", "default"}) {
+    const std::size_t partsIndex = parts.size();
+    const std::size_t ruleIndex = rules.size();
+    parts.emplace_back("");
+    const auto ruleIt = ruleLookup.emplace(builtIn, ruleIndex).first;
+    rules.emplace_back(ruleIt->first).partsIndex = partsIndex;
+  }
+  assert(rules[BuildContext::phonyIndex].name == "phony");
+  assert(rules[BuildContext::defaultIndex].name == "default");
 }
 
 std::size_t BuildContext::getPathIndex(std::string& path) {

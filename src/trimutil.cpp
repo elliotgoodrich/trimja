@@ -114,11 +114,9 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
       continue;
     }
 
-    // `phony` and `default` rules don't appear in the build log so should be
-    // skipped
-    const std::string_view ruleName =
-        ctx.commands[ctx.nodeToCommand[index]].ruleName;
-    if (ruleName == "phony" || ruleName == "default") {
+    // buil-in rules don't appear in the build log so skip them
+    if (BuildContext::isBuiltInRule(
+            ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
       continue;
     }
 
@@ -170,11 +168,9 @@ void markIfChildrenAffected(std::size_t index,
       inIndices, [&](const std::size_t index) { return isAffected[index]; });
   if (it != inIndices.end()) {
     if (explain) {
-      // Only mention user-defined rules since we always include `phony` and
-      // `default` edges regardless
-      const std::string_view ruleName =
-          ctx.commands[ctx.nodeToCommand[index]].ruleName;
-      if (ruleName != "phony" && ruleName != "default") {
+      // Only mention user-defined rules since built-in rules are always kept
+      if (!BuildContext::isBuiltInRule(
+              ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
         std::cerr << "Including '" << graph.path(index)
                   << "' as it has the affected input '" << graph.path(*it)
                   << "'" << std::endl;
@@ -208,9 +204,8 @@ void ifAffectedMarkAllChildren(std::size_t index,
     return;
   }
 
-  const std::string_view ruleName =
-      ctx.commands[ctx.nodeToCommand[index]].ruleName;
-  if (ruleName != "phony" && ruleName != "default") {
+  if (!BuildContext::isBuiltInRule(
+          ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
     if (isAffected[index]) {
       needsAllInputs[index] = true;
       return;
@@ -373,10 +368,15 @@ void TrimUtil::trim(std::ostream& output,
     }
   }
 
-  // Go through all commands that need to be `phony`ed and do so
+  // Go through all build commands, keep a note of rules that are needed and
+  // `phony` out the build edges that weren't affected.
   std::forward_list<std::string> phonyStorage;
+  std::vector<bool> ruleReferenced(ctx.rules.size());
   for (const BuildCommand& command : ctx.commands) {
-    if (command.resolution == BuildCommand::Phony) {
+    if (command.resolution == BuildCommand::Print) {
+      ruleReferenced[command.ruleIndex] = true;
+    } else {
+      assert(command.resolution == BuildCommand::Phony);
       const std::initializer_list<std::string_view> parts = {
           command.outStr,
           command.validationStr.empty() ? "phony" : "phony ",
@@ -396,6 +396,13 @@ void TrimUtil::trim(std::ostream& output,
                           });
       assert(it == phony.end());
       ctx.parts[command.partsIndex] = std::string_view{phony};
+    }
+  }
+
+  // Remove all rules that weren't referenced
+  for (std::size_t ruleIndex = 0; ruleIndex < ctx.rules.size(); ++ruleIndex) {
+    if (!ruleReferenced[ruleIndex]) {
+      ctx.parts[ctx.rules[ruleIndex].partsIndex] = "";
     }
   }
 

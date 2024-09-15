@@ -1,5 +1,3 @@
-rule copy
-  command = ninja --version $in -> $out
 build out1: phony
 build out$ 2a out$ 2b: phony
 build out3: phony
