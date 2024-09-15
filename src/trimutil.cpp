@@ -41,26 +41,41 @@ namespace {
 void parseDepFile(const std::filesystem::path& ninjaDeps,
                   Graph& graph,
                   BuildContext& ctx) {
-  std::vector<std::size_t> lookup;
+  // Later entries may override earlier entries so don't touch the graph until
+  // we have parsed the whole file
+  std::vector<std::string> paths;
+  std::vector<std::vector<std::int32_t>> deps;
   for (const std::variant<PathRecordView, DepsRecordView>& record :
        DepsReader(ninjaDeps)) {
     switch (record.index()) {
       case 0: {
         const PathRecordView& view = std::get<PathRecordView>(record);
-        if (static_cast<std::size_t>(view.index) >= lookup.size()) {
-          lookup.resize(view.index + 1);
+        if (static_cast<std::size_t>(view.index) >= paths.size()) {
+          paths.resize(view.index + 1);
         }
         // Entries in `.ninja_deps` are already normalized when written
-        lookup[view.index] = ctx.getPathIndexForNormalized(view.path);
+        paths[view.index] = view.path;
         break;
       }
       case 1: {
         const DepsRecordView& view = std::get<DepsRecordView>(record);
-        for (const std::int32_t inIndex : view.deps) {
-          graph.addEdge(lookup[inIndex], lookup[view.outIndex]);
+        if (static_cast<std::size_t>(view.outIndex) >= deps.size()) {
+          deps.resize(view.outIndex + 1);
         }
+        deps[view.outIndex].assign(view.deps.begin(), view.deps.end());
         break;
       }
+    }
+  }
+
+  std::vector<std::size_t> lookup(paths.size());
+  std::ranges::transform(paths, lookup.begin(), [&](std::string_view path) {
+    return ctx.getPathIndexForNormalized(path);
+  });
+
+  for (std::size_t outIndex = 0; outIndex < deps.size(); ++outIndex) {
+    for (const std::int32_t inIndex : deps[outIndex]) {
+      graph.addEdge(lookup[inIndex], lookup[outIndex]);
     }
   }
 }
