@@ -77,6 +77,9 @@ struct Rule {
       lookup;  // TODO: pack into uint64_t
   std::vector<EvalString> bindings;
 
+  // The location of our entire build command inside `BuildContext::parts`
+  std::size_t partsIndex = std::numeric_limits<std::size_t>::max();
+
   // Create a `Rule` having the specified `name`. The string pointed to by
   // `name` MUST live longer than this object.
   explicit Rule(std::string_view name);
@@ -99,7 +102,7 @@ struct BuildCommand {
 
   Resolution resolution = Phony;
 
-  // The location of our entire build command inside `m_parts`
+  // The location of our entire build command inside `BuildContext::parts`
   std::size_t partsIndex = std::numeric_limits<std::size_t>::max();
 
   // The hash of the build command
@@ -115,11 +118,18 @@ struct BuildCommand {
   // space)
   std::string_view validationStr;
 
-  // The name of the rule
-  std::string_view ruleName;
+  // The index of the rule into `BuildContext::rules`
+  std::size_t ruleIndex = std::numeric_limits<std::size_t>::max();
 };
 
 struct BuildContext {
+  // The indexes of the built-in rules within `rules`
+  static const std::size_t phonyIndex = 0;
+  static const std::size_t defaultIndex = 1;
+
+  // Return whether `ruleIndex` is a built-in rule (i.e. `default` or `phony`)
+  static bool isBuiltInRule(std::size_t ruleIndex);
+
   // An optional storage for the contents for the input ninja files.  This is
   // useful when processing `include` and `subninja` and we need to extend the
   // lifetime of the file contents until all parsing has finished
@@ -137,12 +147,15 @@ struct BuildContext {
   // value that isn't an output to a build command (i.e. a source file)
   std::vector<std::size_t> nodeToCommand;
 
+  // Our list of rules.
+  std::vector<Rule> rules;
+
   // Our rules keyed by name
   std::unordered_map<std::string_view,
-                     Rule,
+                     std::size_t,
                      detail::TransparentHash,
                      std::equal_to<>>
-      rules;
+      ruleLookup;
 
   // Our top-level variables
   BasicScope fileScope;

@@ -2,6 +2,3 @@ foo = "bar"
 zulu = 42
 pool testPool
   depth = 3
-rule copy
-  command = cp $in $out
-  description = Copying $out
