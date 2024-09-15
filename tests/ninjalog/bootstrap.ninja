@@ -1,0 +1,7 @@
+rule copy
+  command = ninja --version $in -> $out
+rule copyOld
+  command = ninja --version OLD $in -> $out
+build out1: copy in1
+build out2: copyOld in2
+
