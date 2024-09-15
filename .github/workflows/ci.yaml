@@ -35,23 +35,22 @@ jobs:
         ${{ format('-D{0}={1}', matrix.compiler.os == 'windows-latest' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
         ${{ matrix.compiler.os != 'windows-latest' && '-G Ninja' || ''}}
         -DCMAKE_UNITY_BUILD=ON
-        -S ${{ github.workspace }}
     - name: Build
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: cmake --build build --config ${{ matrix.build_type }}
     - name: Test
-      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      working-directory: build
       run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
     - name: Generate Changelog
-      run: git show -s --format='%b' > ${{ github.workspace }}-CHANGELOG.txt
+      run: git show -s --format='%b' > CHANGELOG.txt
       if: startsWith(github.ref, 'refs/tags/')
     - name: Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
       with:
-        body_path: ${{ github.workspace }}-CHANGELOG.txt
+        body_path: CHANGELOG.txt
         files: |
-          ${{ steps.strings.outputs.build-output-dir }}/trimja
-          ${{ steps.strings.outputs.build-output-dir }}/trimja.exe
+          build/trimja
+          build/trimja.exe
   format:
     runs-on: ubuntu-latest
     steps:
