@@ -121,14 +121,14 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
     }
 
     if (!seen[index]) {
-      isAffected[true] = true;
+      isAffected[index] = true;
       if (explain) {
         std::cerr << "Including '" << graph.path(index)
                   << "' as it was not found in '" << ninjaLog << "'"
                   << std::endl;
       }
     } else if (hashMismatch[index]) {
-      isAffected[true] = true;
+      isAffected[index] = true;
       if (explain) {
         std::cerr << "Including '" << graph.path(index)
                   << "' as the build command hash differs in '" << ninjaLog
