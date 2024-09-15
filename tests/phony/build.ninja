@@ -1,0 +1,13 @@
+rule copy
+  command = ninja --version $in -> $out
+build out1: copy affected1
+build out2: copy notAffected1
+build out3: copy affected2
+build out4: copy notAffected2
+build subtoplevel: phony out1 out2 out3
+build toplevel: phony subtoplevel out4
+build out5: copy affected3
+build out6: copy notAffected3
+build out7: copy notAffected4
+build bootstrap: phony out5 out6
+build topout: copy out7 || bootstrap

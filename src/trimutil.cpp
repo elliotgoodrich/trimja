@@ -38,60 +38,6 @@ namespace trimja {
 
 namespace {
 
-enum Requirement : char {
-  // This build command is needed only by `default` and has no inputs marked
-  // as required so instead of modifying the `default` statement we instead
-  // create a build statement that is an empty `phony`.
-  CreatePhony,
-
-  // This build command should be printed as-is, but it doesn't require inputs
-  // or outputs (e.g. `default` statement)
-  None,
-
-  // We need all inputs of this build command, but not necessarily all of the
-  // outputs.
-  Inputs,
-
-  // We need both inputs and outputs of this command.
-  InputsAndOutputs,
-};
-
-void markOutputsAsRequired(Graph& graph,
-                           std::size_t index,
-                           std::vector<Requirement>& requirement) {
-  for (const std::size_t out : graph.out(index)) {
-    switch (requirement[out]) {
-      case Requirement::CreatePhony:
-      case Requirement::Inputs:
-        requirement[out] = Requirement::InputsAndOutputs;
-        markOutputsAsRequired(graph, out, requirement);
-        break;
-      case Requirement::InputsAndOutputs:
-        break;
-      case Requirement::None:
-        assert(!"Should not have 'None' at this point");
-    }
-  }
-}
-
-void markInputsAsRequired(Graph& graph,
-                          std::size_t index,
-                          std::vector<Requirement>& requirement) {
-  for (const std::size_t in : graph.in(index)) {
-    switch (requirement[in]) {
-      case Requirement::CreatePhony:
-        requirement[in] = Requirement::Inputs;
-        markInputsAsRequired(graph, in, requirement);
-        break;
-      case Requirement::Inputs:
-      case Requirement::InputsAndOutputs:
-        break;
-      case Requirement::None:
-        assert(!"Should not get 'None' as an input");
-    }
-  }
-}
-
 void parseDepFile(const std::filesystem::path& ninjaDeps,
                   Graph& graph,
                   BuildContext& ctx) {
@@ -121,13 +67,15 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
 
 template <typename GET_HASH>
 void parseLogFile(const std::filesystem::path& ninjaLog,
-                  const Graph& graph,
-                  std::vector<Requirement>& requirements,
-                  GET_HASH&& get_hash) {
+                  const BuildContext& ctx,
+                  std::vector<bool>& isAffected,
+                  GET_HASH&& get_hash,
+                  bool explain) {
   std::ifstream deps(ninjaLog);
 
   // As there can be duplicate entries and subsequent entries take precedence
   // first record everything we care about and then update the graph
+  const Graph& graph = ctx.graph;
   std::vector<bool> seen(graph.size());
   std::vector<bool> hashMismatch(graph.size());
   for (const LogEntry& entry : LogReader(deps)) {
@@ -147,9 +95,128 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   // Mark all build commands that are new or have been changed as required
   for (std::size_t index = 0; index < seen.size(); ++index) {
     const bool isBuildCommand = !graph.in(index).empty();
-    if (isBuildCommand && (!seen[index] || hashMismatch[index])) {
-      requirements[index] = Requirement::InputsAndOutputs;
+    if (isAffected[index] || !isBuildCommand) {
+      continue;
     }
+
+    // `phony` and `default` rules don't appear in the build log so should be
+    // skipped
+    const std::string_view ruleName =
+        ctx.commands[ctx.nodeToCommand[index]].ruleName;
+    if (ruleName == "phony" || ruleName == "default") {
+      continue;
+    }
+
+    if (!seen[index]) {
+      isAffected[true] = true;
+      if (explain) {
+        std::cerr << "Including '" << graph.path(index)
+                  << "' as it was not found in '" << ninjaLog << "'"
+                  << std::endl;
+      }
+    } else if (hashMismatch[index]) {
+      isAffected[true] = true;
+      if (explain) {
+        std::cerr << "Including '" << graph.path(index)
+                  << "' as the build command hash differs in '" << ninjaLog
+                  << "'" << std::endl;
+      }
+    }
+  }
+}
+
+// If `index` has not been seen (using `seen`) then call
+// `markIfChildrenAffected` for all inputs to `index` and then set
+// `isAffected[index]` if any child is affected. Return whether this
+void markIfChildrenAffected(std::size_t index,
+                            std::vector<bool>& seen,
+                            std::vector<bool>& isAffected,
+                            const BuildContext& ctx,
+                            bool explain) {
+  if (seen[index]) {
+    return;
+  }
+  seen[index] = true;
+
+  // Always process all our children so that `isAffected` is updated for them
+  const Graph& graph = ctx.graph;
+  const auto& inIndices = graph.in(index);
+  for (const std::size_t in : inIndices) {
+    markIfChildrenAffected(in, seen, isAffected, ctx, explain);
+  }
+
+  if (isAffected[index]) {
+    return;
+  }
+
+  // Otherwise, find out if at least one of our children is affected and if
+  // so, mark ourselves as affected
+  const auto it = std::ranges::find_if(
+      inIndices, [&](const std::size_t index) { return isAffected[index]; });
+  if (it != inIndices.end()) {
+    if (explain) {
+      // Only mention user-defined rules since we always include `phony` and
+      // `default` edges regardless
+      const std::string_view ruleName =
+          ctx.commands[ctx.nodeToCommand[index]].ruleName;
+      if (ruleName != "phony" && ruleName != "default") {
+        std::cerr << "Including '" << graph.path(index)
+                  << "' as it has the affected input '" << graph.path(*it)
+                  << "'" << std::endl;
+      }
+    }
+    isAffected[index] = true;
+  }
+}
+
+// If `index` has not been seen (using `seen`) then call
+// `ifAffectedMarkAllChildren` for all outputs to `index` and then set
+// `isAffected[index]` if any child is affected. Return whether this
+void ifAffectedMarkAllChildren(std::size_t index,
+                               std::vector<bool>& seen,
+                               std::vector<bool>& isAffected,
+                               std::vector<bool>& needsAllInputs,
+                               const BuildContext& ctx,
+                               bool explain) {
+  if (seen[index]) {
+    return;
+  }
+  seen[index] = true;
+
+  for (const std::size_t out : ctx.graph.out(index)) {
+    ifAffectedMarkAllChildren(out, seen, isAffected, needsAllInputs, ctx,
+                              explain);
+  }
+
+  // Nothing to do if we have no children
+  if (ctx.graph.in(index).empty()) {
+    return;
+  }
+
+  const std::string_view ruleName =
+      ctx.commands[ctx.nodeToCommand[index]].ruleName;
+  if (ruleName != "phony" && ruleName != "default") {
+    if (isAffected[index]) {
+      needsAllInputs[index] = true;
+      return;
+    }
+  }
+
+  // If any build commands requiring us are marked as needing all inputs then
+  // mark ourselves as affected and that we also need all our inputs.
+  const auto it = std::ranges::find_if(
+      ctx.graph.out(index),
+      [&](const std::size_t index) { return needsAllInputs[index]; });
+  if (it != ctx.graph.out(index).end()) {
+    if (!isAffected[index]) {
+      if (explain) {
+        std::cerr << "Including '" << ctx.graph.path(index)
+                  << "' as it is a required input for the affected output '"
+                  << ctx.graph.path(*it) << "'" << std::endl;
+      }
+      isAffected[index] = true;
+    }
+    needsAllInputs[index] = true;
   }
 }
 
@@ -158,7 +225,8 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
 void TrimUtil::trim(std::ostream& output,
                     const std::filesystem::path& ninjaFile,
                     std::string_view ninjaFileContents,
-                    std::istream& affected) {
+                    std::istream& affected,
+                    bool explain) {
   BuildContext ctx;
 
   // Parse the build file, this needs to be the first thing so we choose the
@@ -185,7 +253,7 @@ void TrimUtil::trim(std::ostream& output,
     parseDepFile(ninjaDeps, graph, ctx);
   }
 
-  std::vector<Requirement> requirements(graph.size(), Requirement::CreatePhony);
+  std::vector<bool> isAffected(graph.size(), false);
 
   // Look through all log entries and mark as required those build commands that
   // are either absent in the log (representing new commands that have never
@@ -194,14 +262,19 @@ void TrimUtil::trim(std::ostream& output,
       !std::filesystem::exists(ninjaLog)) {
     // If we don't have a `.ninja_log` file then either the user didn't have
     // it,which is an error, or our previous run did not include any build
-    // commands. The former is far more likely so we warn the user in this case.
-    std::cerr << "Unable to find " << ninjaLog << ", so including everything"
-              << std::endl;
-    requirements.assign(requirements.size(), Requirement::InputsAndOutputs);
+    // commands.
+    if (explain) {
+      std::cerr << "Unable to find '" << ninjaLog
+                << "', so including everything" << std::endl;
+    }
+    isAffected.assign(isAffected.size(), true);
   } else {
-    parseLogFile(ninjaLog, graph, requirements, [&](const std::size_t index) {
-      return ctx.commands[ctx.nodeToCommand[index]].hash;
-    });
+    parseLogFile(
+        ninjaLog, ctx, isAffected,
+        [&](const std::size_t index) {
+          return ctx.commands[ctx.nodeToCommand[index]].hash;
+        },
+        explain);
   }
 
   // Mark all files in `affected` as required
@@ -209,8 +282,13 @@ void TrimUtil::trim(std::ostream& output,
     // First try the raw input
     {
       const std::optional<std::size_t> index = graph.findPath(line);
-      if (index) {
-        requirements[*index] = Requirement::InputsAndOutputs;
+      if (index.has_value()) {
+        if (explain && !isAffected[*index]) {
+          std::cerr << "Including '" << line
+                    << "' as it was marked as affected by the user"
+                    << std::endl;
+        }
+        isAffected[*index] = true;
         continue;
       }
     }
@@ -222,8 +300,13 @@ void TrimUtil::trim(std::ostream& output,
           std::filesystem::absolute(ninjaFileDir / p);
       std::string absoluteStr = absolute.string();
       const std::optional<std::size_t> index = graph.findPath(absoluteStr);
-      if (index) {
-        requirements[*index] = Requirement::InputsAndOutputs;
+      if (index.has_value()) {
+        if (explain && !isAffected[*index]) {
+          std::cerr << "Including '" << line
+                    << "' as it was marked as affected by the user"
+                    << std::endl;
+        }
+        isAffected[*index] = true;
         continue;
       }
     }
@@ -234,8 +317,13 @@ void TrimUtil::trim(std::ostream& output,
       const std::filesystem::path relative = p.lexically_relative(ninjaFileDir);
       std::string relativeStr = relative.string();
       const std::optional<std::size_t> index = graph.findPath(relativeStr);
-      if (index) {
-        requirements[*index] = Requirement::InputsAndOutputs;
+      if (index.has_value()) {
+        if (explain && !isAffected[*index]) {
+          std::cerr << "Including '" << line
+                    << "' as it was marked as affected by the user"
+                    << std::endl;
+        }
+        isAffected[*index] = true;
         continue;
       }
     }
@@ -243,49 +331,29 @@ void TrimUtil::trim(std::ostream& output,
     std::cerr << "'" << line << "' not found in input file" << std::endl;
   }
 
-  // Mark all outputs as required or not
+  std::vector<bool> seen(graph.size());
+
+  // Mark all outputs that have an affected input as affected
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    if (requirements[index] == Requirement::InputsAndOutputs) {
-      markOutputsAsRequired(graph, index, requirements);
-    }
+    markIfChildrenAffected(index, seen, isAffected, ctx, explain);
   }
 
-  // Regardless of what the default index was set to, we set it to `None` so
-  // that we don't require any of its inputs
-  if (const std::size_t defaultIndex = graph.defaultIndex();
-      defaultIndex != std::numeric_limits<std::size_t>::max()) {
-    requirements[defaultIndex] = Requirement::None;
-  }
-
-  // Mark all inputs as required.  The only time we don't do this
-  // is for the default rule since this is just a nice way for users to
-  // build a set of output files and when we're using `trimja` we only
-  // want to build what has changed.
+  // Mark all inputs to affected outputs as affected (they technically
+  // aren't affected but they are required to be built in order to
+  // be inputs to affected outputs)
+  seen.assign(seen.size(), false);
+  std::vector<bool> needsAllInputs(graph.size(), false);
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    switch (requirements[index]) {
-      case Requirement::CreatePhony:
-      case Requirement::None:
-        break;
-      case Requirement::Inputs:
-      case Requirement::InputsAndOutputs:
-        markInputsAsRequired(graph, index, requirements);
-        break;
-    }
+    ifAffectedMarkAllChildren(index, seen, isAffected, needsAllInputs, ctx,
+                              explain);
   }
 
   // Mark all affected `BuildCommands` as needing to print them out
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    switch (requirements[index]) {
-      case Requirement::CreatePhony:
-        break;
-      case Requirement::None:
-      case Requirement::Inputs:
-      case Requirement::InputsAndOutputs: {
-        const std::size_t commandIndex = ctx.nodeToCommand[index];
-        if (commandIndex != std::numeric_limits<std::size_t>::max()) {
-          ctx.commands[commandIndex].resolution = BuildCommand::Print;
-        }
-        break;
+    if (isAffected[index]) {
+      const std::size_t commandIndex = ctx.nodeToCommand[index];
+      if (commandIndex != std::numeric_limits<std::size_t>::max()) {
+        ctx.commands[commandIndex].resolution = BuildCommand::Print;
       }
     }
   }

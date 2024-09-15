@@ -33,7 +33,8 @@ struct TrimUtil {
   static void trim(std::ostream& output,
                    const std::filesystem::path& ninjaFile,
                    std::string_view ninjaFileContents,
-                   std::istream& affected);
+                   std::istream& affected,
+                   bool explain);
 };
 
 }  // namespace trimja
