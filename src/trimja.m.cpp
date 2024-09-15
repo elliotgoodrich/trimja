@@ -40,7 +40,7 @@ namespace {
 
 const std::string_view g_helpText = R"HELP(Usage:
   trimja [--version] [--help] [--file <path>]
-      [--write | --output <path>] [--affected <path> | -]
+      [--write | --output <path>] [--affected <path> | -] [--explain]
 
 trimja is a tool to create a smaller ninja build file containing only those
 build commands that relate to a specified set of files. This is commonly used
@@ -70,6 +70,7 @@ Options:
   -                         read affected file paths from stdin
   -o FILE, --output=FILE    output file path [default=stdout]
   -w, --write               overwrite input ninja build file
+  --explain                 print why each part of the build file was kept
   -h, --help                print help
   -v, --version             print trimja version ()HELP" TRIMJA_VERSION
                                     R"HELP()
@@ -78,7 +79,8 @@ For more information visit the homepage https://github.com/elliotgoodrich/trimja
 
 static const option g_longOptions[] = {
     // TODO: Remove `--expected` and replace with comparing files within CTest
-    {"expected", required_argument, nullptr, 'e'},
+    {"explain", no_argument, nullptr, 'e'},
+    {"expected", required_argument, nullptr, 'x'},
     {"file", required_argument, nullptr, 'f'},
     {"help", no_argument, nullptr, 'h'},
     {"output", required_argument, nullptr, 'o'},
@@ -124,10 +126,11 @@ int main(int argc, char* argv[]) try {
 
   std::optional<std::string> expectedFile;
   std::filesystem::path ninjaFile = "build.ninja";
+  bool explain = false;
 
   int ch;
-  while ((ch = getopt_long(argc, argv, "a:e:f:ho:vw", g_longOptions,
-                           nullptr)) != -1) {
+  while ((ch = getopt_long(argc, argv, "a:f:ho:vw", g_longOptions, nullptr)) !=
+         -1) {
     switch (ch) {
       case 'a':
         if (std::get_if<std::monostate>(&affectedFile)) {
@@ -139,21 +142,7 @@ int main(int argc, char* argv[]) try {
         }
         break;
       case 'e':
-        if (std::get_if<Stdout>(&outputFile)) {
-          outputFile.emplace<Expected>();
-          expectedFile = optarg;
-        } else if (std::get_if<std::filesystem::path>(&outputFile)) {
-          std::cerr << "Cannot specify --expected when --output was given"
-                    << std::endl;
-          std::_Exit(EXIT_FAILURE);
-        } else if (std::get_if<Write>(&outputFile)) {
-          std::cerr << "Cannot specify --expected when --write was given"
-                    << std::endl;
-          std::_Exit(EXIT_FAILURE);
-        } else {
-          assert(false);
-          std::_Exit(EXIT_FAILURE);
-        }
+        explain = true;
         break;
       case 'f':
         ninjaFile = optarg;
@@ -189,6 +178,23 @@ int main(int argc, char* argv[]) try {
           std::_Exit(EXIT_FAILURE);
         } else if (std::get_if<Expected>(&outputFile)) {
           std::cerr << "Cannot specify --write when --expected was given"
+                    << std::endl;
+          std::_Exit(EXIT_FAILURE);
+        } else {
+          assert(false);
+          std::_Exit(EXIT_FAILURE);
+        }
+        break;
+      case 'x':
+        if (std::get_if<Stdout>(&outputFile)) {
+          outputFile.emplace<Expected>();
+          expectedFile = optarg;
+        } else if (std::get_if<std::filesystem::path>(&outputFile)) {
+          std::cerr << "Cannot specify --expected when --output was given"
+                    << std::endl;
+          std::_Exit(EXIT_FAILURE);
+        } else if (std::get_if<Write>(&outputFile)) {
+          std::cerr << "Cannot specify --expected when --write was given"
                     << std::endl;
           std::_Exit(EXIT_FAILURE);
         } else {
@@ -247,7 +253,7 @@ int main(int argc, char* argv[]) try {
                  },
                  outputFile);
 
-  TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected);
+  TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
   output.flush();
   if (!expectedFile.has_value()) {
     std::_Exit(EXIT_SUCCESS);

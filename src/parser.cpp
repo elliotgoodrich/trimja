@@ -345,6 +345,7 @@ class ParserImp {
     buildCommand.partsIndex = partsIndex;
     buildCommand.validationStr = validationStr;
     buildCommand.outStr = outStr;
+    buildCommand.ruleName = ruleName;
 
     // Add outputs to the graph and link to the build command
     std::vector<std::size_t> outIndices;
@@ -391,6 +392,7 @@ class ParserImp {
     const std::size_t commandIndex = m_ctx->commands.size();
     BuildCommand& buildCommand = m_ctx->commands.emplace_back();
     buildCommand.partsIndex = partsIndex;
+    buildCommand.ruleName = "default";
 
     const std::size_t outIndex = m_ctx->getDefault();
     m_ctx->nodeToCommand[outIndex] = commandIndex;
@@ -504,6 +506,10 @@ bool BasicScope::appendValue(std::string& output, std::string_view name) const {
     output += it->second;
     return true;
   }
+}
+
+BuildContext::BuildContext() {
+  rules.emplace("phony", "phony");
 }
 
 std::size_t BuildContext::getPathIndex(std::string& path) {

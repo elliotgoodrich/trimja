@@ -72,11 +72,13 @@ struct Rule {
       "msvc_deps_prefix",
   };
 
-  std::string name;
+  std::string_view name;
   std::array<unsigned char, reserved.size() + 1>
       lookup;  // TODO: pack into uint64_t
   std::vector<EvalString> bindings;
 
+  // Create a `Rule` having the specified `name`. The string pointed to by
+  // `name` MUST live longer than this object.
   explicit Rule(std::string_view name);
 
   static std::size_t getLookupIndex(std::string_view varName);
@@ -112,6 +114,9 @@ struct BuildCommand {
   // e.g. "|@ validation1 validation2" (note no newline and no leading
   // space)
   std::string_view validationStr;
+
+  // The name of the rule
+  std::string_view ruleName;
 };
 
 struct BuildContext {
@@ -133,9 +138,11 @@ struct BuildContext {
   std::vector<std::size_t> nodeToCommand;
 
   // Our rules keyed by name
-  std::
-      unordered_map<std::string, Rule, detail::TransparentHash, std::equal_to<>>
-          rules;
+  std::unordered_map<std::string_view,
+                     Rule,
+                     detail::TransparentHash,
+                     std::equal_to<>>
+      rules;
 
   // Our top-level variables
   BasicScope fileScope;
@@ -143,7 +150,7 @@ struct BuildContext {
   // Our graph
   Graph graph;
 
-  BuildContext() = default;
+  BuildContext();
 
   std::size_t getPathIndex(std::string& path);
   std::size_t getPathIndexForNormalized(std::string_view path);
