@@ -40,17 +40,18 @@ jobs:
     - name: Test
       working-directory: build
       run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+    - name: Install
+      if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
+      run: cmake --install bin
     - name: Generate Changelog
-      run: git show -s --format='%b' > CHANGELOG.txt
-      if: startsWith(github.ref, 'refs/tags/')
+      run: git show -s --format='%b' > build/CHANGELOG.txt
+      if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
     - name: Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
       with:
-        body_path: CHANGELOG.txt
-        files: |
-          build/trimja
-          build/trimja.exe
+        body_path: build/CHANGELOG.txt
+        files:  bin/*
   format:
     runs-on: ubuntu-latest
     steps:
