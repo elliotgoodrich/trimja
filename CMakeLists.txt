@@ -31,6 +31,8 @@ target_compile_options(trimja PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
+install(TARGETS trimja RUNTIME DESTINATION bin)
+include(CPack)
 
 file(
     GLOB TRIMJA_TESTS
