@@ -32,6 +32,9 @@ target_compile_options(trimja PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
 install(TARGETS trimja RUNTIME DESTINATION bin)
+set(CPACK_PACKAGE_INSTALL_DIRECTORY trimja)
+set(CPACK_NSIS_MODIFY_PATH ON)
+set(CPACK_NSIS_IGNORE_LICENSE_PAGE ON)
 include(CPack)
 
 file(
