@@ -20,23 +20,39 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef TRIMJA_TRIMUTIL
-#define TRIMJA_TRIMUTIL
+#include "edgescope.h"
 
-#include <filesystem>
-#include <iosfwd>
-#include <string>
+#include <ninja/util.h>
 
 namespace trimja {
 
-struct TrimUtil {
-  static void trim(std::ostream& output,
-                   const std::filesystem::path& ninjaFile,
-                   const std::string& ninjaFileContents,
-                   std::istream& affected,
-                   bool explain);
-};
+namespace detail {
 
+void EdgeScopeBase::appendPaths(std::string& output,
+                                std::span<const std::string> paths,
+                                const char separator) {
+  auto it = paths.begin();
+  const auto end = paths.end();
+  if (it == end) {
+    return;
+  }
+
+  goto skipSeparator;
+  for (; it != end; ++it) {
+    output += separator;
+  skipSeparator:
+    appendEscapedString(output, *it);
+  }
+}
+
+EdgeScopeBase::EdgeScopeBase(const Rule& rule,
+                             std::span<const std::string> ins,
+                             std::span<const std::string> outs)
+    : m_ins(ins), m_outs(outs), m_local(), m_rule(rule) {}
+
+std::string_view EdgeScopeBase::set(std::string_view key, std::string&& value) {
+  return m_local.set(key, std::move(value));
+}
+
+}  // namespace detail
 }  // namespace trimja
-
-#endif  // TRIMJA_TRIMUTIL

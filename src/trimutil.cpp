@@ -22,21 +22,340 @@
 
 #include "trimutil.h"
 
+#include "basicscope.h"
 #include "depsreader.h"
+#include "edgescope.h"
 #include "graph.h"
 #include "logreader.h"
-#include "parser.h"
+#include "manifestparser.h"
+#include "murmur_hash.h"
+#include "rule.h"
+#include "transparenthash.h"
 
+#include <ninja/eval_env.h>
 #include <ninja/util.h>
 
 #include <cassert>
+#include <forward_list>
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <ranges>
 
 namespace trimja {
 
 namespace {
+
+template <typename RANGE>
+void consume(RANGE&& range) {
+  for ([[maybe_unused]] auto&& r : range) {
+  }
+}
+
+struct BuildCommand {
+  enum Resolution {
+    // Print the entire build command
+    Print,
+
+    // Create a phony command for all the (implicit) outputs
+    Phony,
+  };
+
+  Resolution resolution = Phony;
+
+  // The location of our entire build command inside `BuildContext::parts`
+  std::size_t partsIndex = std::numeric_limits<std::size_t>::max();
+
+  // The hash of the build command
+  std::uint64_t hash = 0;
+
+  // Map each output index to the string containing the
+  // "build out1 out$ 2 | implicitOut3" (note no newline and no trailing `|`
+  // or `:`)
+  std::string_view outStr;
+
+  // Map each output index to the string containing the validation edges
+  // e.g. "|@ validation1 validation2" (note no newline and no leading
+  // space)
+  std::string_view validationStr;
+
+  // The index of the rule into `BuildContext::rules`
+  std::size_t ruleIndex = std::numeric_limits<std::size_t>::max();
+};
+
+struct BuildContext {
+  // The indexes of the built-in rules within `rules`
+  static const std::size_t phonyIndex = 0;
+  static const std::size_t defaultIndex = 1;
+
+  // An optional storage for the contents for the input ninja files.  This is
+  // useful when processing `include` and `subninja` and we need to extend the
+  // lifetime of the file contents until all parsing has finished
+  std::forward_list<std::string> fileContents;
+
+  // All parts of the input build file, indexing into an element of
+  // `fileContents`.  Note that we may swap out build command sections with
+  // phony commands.
+  std::vector<std::string_view> parts;
+
+  // All build commands and default statements mentioned
+  std::vector<BuildCommand> commands;
+
+  // Map each output index to the index within `command`.  Use -1 for a
+  // value that isn't an output to a build command (i.e. a source file)
+  std::vector<std::size_t> nodeToCommand;
+
+  // Our list of rules along with their index into `m_parts`
+  std::vector<std::pair<Rule, std::size_t>> rules;
+
+  // Our rules keyed by name
+  std::unordered_map<std::string_view,
+                     std::size_t,
+                     TransparentHash,
+                     std::equal_to<>>
+      ruleLookup;
+
+  // Our top-level variables
+  BasicScope fileScope;
+
+  // Our graph
+  Graph graph;
+
+  // Return whether `ruleIndex` is a built-in rule (i.e. `default` or `phony`)
+  static bool isBuiltInRule(std::size_t ruleIndex) {
+    static_assert(phonyIndex == 0);
+    static_assert(defaultIndex == 1);
+    return ruleIndex < 2;
+  }
+
+  BuildContext() {
+    // Push back an empty part for the built-in rules
+    for (const auto builtIn : {"phony", "default"}) {
+      const std::size_t partsIndex = parts.size();
+      const std::size_t ruleIndex = rules.size();
+      parts.emplace_back("");
+      const auto ruleIt = ruleLookup.emplace(builtIn, ruleIndex).first;
+      rules.emplace_back(ruleIt->first, partsIndex);
+    }
+    assert(rules[BuildContext::phonyIndex].first.name() == "phony");
+    assert(rules[BuildContext::defaultIndex].first.name() == "default");
+  }
+
+  std::size_t getPathIndex(std::string& path) {
+    const std::size_t index = graph.addPath(path);
+    if (index >= nodeToCommand.size()) {
+      nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
+    }
+    return index;
+  }
+
+  std::size_t getPathIndexForNormalized(std::string_view path) {
+    const std::size_t index = graph.addNormalizedPath(path);
+    if (index >= nodeToCommand.size()) {
+      nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
+    }
+    return index;
+  }
+
+  std::size_t getDefault() {
+    const std::size_t index = graph.addDefault();
+    if (index >= nodeToCommand.size()) {
+      nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
+    }
+    return index;
+  }
+
+  void parse(const std::filesystem::path& ninjaFile,
+             const std::string& ninjaFileContents) {
+    for (auto&& part : ManifestReader(ninjaFile, ninjaFileContents)) {
+      std::visit(*this, part);
+    }
+  }
+
+  void operator()(PoolReader& r) {
+    [[maybe_unused]] const std::string_view name = r.name();
+    consume(r.variables());
+    parts.emplace_back(r.start(), r.position());
+  }
+
+  void operator()(BuildReader& r) {
+    std::vector<std::string> outs;
+    auto evaluatePath = [&](const EvalString& path) {
+      std::string result;
+      evaluate(result, path, fileScope);
+      return result;
+    };
+
+    for (const EvalString& path : r.out()) {
+      outs.push_back(evaluatePath(path));
+    }
+    if (outs.empty()) {
+      throw std::runtime_error("Missing output paths in build command");
+    }
+    const std::size_t outSize = outs.size();
+    for (const EvalString& path : r.implicitOut()) {
+      outs.push_back(evaluatePath(path));
+    }
+
+    // Mark the outputs for later
+    const std::string_view outStr(r.start(), r.position());
+
+    std::string_view ruleName = r.name();
+
+    const std::size_t ruleIndex = [&] {
+      const auto ruleIt = ruleLookup.find(ruleName);
+      if (ruleIt == ruleLookup.end()) {
+        throw std::runtime_error("Unable to find " + std::string(ruleName) +
+                                 " rule");
+      }
+      return ruleIt->second;
+    }();
+
+    // Collect inputs
+    std::vector<std::string> ins;
+    for (const EvalString& path : r.in()) {
+      ins.push_back(evaluatePath(path));
+    }
+    const std::size_t inSize = ins.size();
+
+    for (const EvalString& path : r.implicitIn()) {
+      ins.push_back(evaluatePath(path));
+    }
+    for (const EvalString& path : r.orderOnlyDeps()) {
+      ins.push_back(evaluatePath(path));
+    }
+
+    // Collect validations but ignore what they are. If we include a build
+    // command it will include the validation.  If that validation has a
+    // required input then we include that, otherwise the validation is
+    // `phony`ed out.
+    const char* validationStart = r.position();
+    consume(r.validations());
+    std::string_view validationStr(validationStart, r.position());
+
+    EdgeScope scope(fileScope, rules[ruleIndex].first,
+                    std::span(ins.data(), inSize),
+                    std::span(outs.data(), outSize));
+
+    for (VariableReader v : r.variables()) {
+      const std::string_view name = v.name();
+      std::string result;
+      evaluate(result, v.value(), scope);
+      scope.set(name, std::move(result));
+    }
+
+    const std::size_t partsIndex = parts.size();
+    parts.emplace_back(r.start(), r.position());
+
+    // Add the build command
+    const std::size_t commandIndex = commands.size();
+    BuildCommand& buildCommand = commands.emplace_back();
+    buildCommand.partsIndex = partsIndex;
+    buildCommand.validationStr = validationStr;
+    buildCommand.outStr = outStr;
+    buildCommand.ruleIndex = ruleIndex;
+
+    // Add outputs to the graph and link to the build command
+    std::vector<std::size_t> outIndices;
+    for (std::string& out : outs) {
+      const std::size_t outIndex = getPathIndex(out);
+      outIndices.push_back(outIndex);
+      nodeToCommand[outIndex] = commandIndex;
+    }
+
+    // Add inputs to the graph and add the edges to the graph
+    for (std::string& in : ins) {
+      const std::size_t inIndex = getPathIndex(in);
+      for (const std::size_t outIndex : outIndices) {
+        graph.addEdge(inIndex, outIndex);
+      }
+    }
+
+    {
+      std::string command;
+      scope.appendValue(command, "command");
+      std::string rspcontent;
+      scope.appendValue(rspcontent, "rspfile_content");
+      if (!rspcontent.empty()) {
+        command += ";rspfile=";
+        command += rspcontent;
+      }
+      buildCommand.hash = murmur_hash::hash(command.data(), command.size());
+    }
+  }
+
+  void operator()(RuleReader& r) {
+    std::string_view name = r.name();
+    const std::size_t ruleIndex = rules.size();
+    const auto [ruleIt, inserted] = ruleLookup.emplace(name, ruleIndex);
+    if (!inserted) {
+      std::stringstream ss;
+      ss << "Duplicate rule '" << name << "' found!" << '\0';
+      throw std::runtime_error(ss.view().data());
+    }
+
+    Rule& rule = rules.emplace_back(ruleIt->first, parts.size()).first;
+    for (VariableReader v : r.variables()) {
+      const std::string_view key = v.name();
+      if (!rule.add(key, v.value())) {
+        throw std::runtime_error(std::format(
+            "Unexpected variable '{}' in rule '{}' found!", key, name));
+      }
+    }
+
+    parts.emplace_back(r.start(), r.position());
+  }
+
+  void operator()(DefaultReader& r) {
+    std::vector<std::string> ins;
+    for (const EvalString& path : r.paths()) {
+      std::string result;
+      evaluate(result, path, fileScope);
+      ins.push_back(std::move(result));
+    }
+
+    const std::size_t partsIndex = parts.size();
+    parts.emplace_back(r.start(), r.position());
+
+    const std::size_t commandIndex = commands.size();
+    BuildCommand& buildCommand = commands.emplace_back();
+    buildCommand.partsIndex = partsIndex;
+    buildCommand.ruleIndex = BuildContext::defaultIndex;
+
+    const std::size_t outIndex = getDefault();
+    nodeToCommand[outIndex] = commandIndex;
+    for (std::string& in : ins) {
+      graph.addEdge(getPathIndex(in), outIndex);
+    }
+  }
+
+  void operator()(VariableReader& r) {
+    std::string_view name = r.name();
+    std::string result;
+    evaluate(result, r.value(), fileScope);
+    fileScope.set(name, std::move(result));
+    parts.emplace_back(r.start(), r.position());
+  }
+
+  void operator()(IncludeReader& r) {
+    const EvalString& pathEval = r.path();
+    std::string path;
+    evaluate(path, pathEval, fileScope);
+
+    if (!std::filesystem::exists(path)) {
+      throw std::runtime_error(std::format("Unable to find {}!", path));
+    }
+    std::stringstream ninjaCopy;
+    std::ifstream ninja(path);
+    ninjaCopy << ninja.rdbuf();
+    fileContents.push_front(ninjaCopy.str());
+    parse(path, fileContents.front());
+  }
+
+  void operator()(SubninjaReader&) {
+    throw std::runtime_error("subninja not yet supported");
+  }
+};
 
 void parseDepFile(const std::filesystem::path& ninjaDeps,
                   Graph& graph,
@@ -69,9 +388,10 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
   }
 
   std::vector<std::size_t> lookup(paths.size());
-  std::ranges::transform(paths, lookup.begin(), [&](std::string_view path) {
-    return ctx.getPathIndexForNormalized(path);
-  });
+  std::transform(paths.cbegin(), paths.cend(), lookup.begin(),
+                 [&](const std::string_view path) {
+                   return ctx.getPathIndexForNormalized(path);
+                 });
 
   for (std::size_t outIndex = 0; outIndex < deps.size(); ++outIndex) {
     for (const std::int32_t inIndex : deps[outIndex]) {
@@ -234,14 +554,14 @@ void ifAffectedMarkAllChildren(std::size_t index,
 
 void TrimUtil::trim(std::ostream& output,
                     const std::filesystem::path& ninjaFile,
-                    std::string_view ninjaFileContents,
+                    const std::string& ninjaFileContents,
                     std::istream& affected,
                     bool explain) {
   BuildContext ctx;
 
   // Parse the build file, this needs to be the first thing so we choose the
   // canonical paths in the same way that ninja does
-  ParserUtil::parse(ctx, ninjaFile, ninjaFileContents);
+  ctx.parse(ninjaFile, ninjaFileContents);
 
   Graph& graph = ctx.graph;
 
@@ -379,7 +699,7 @@ void TrimUtil::trim(std::ostream& output,
       assert(command.resolution == BuildCommand::Phony);
       const std::initializer_list<std::string_view> parts = {
           command.outStr,
-          command.validationStr.empty() ? "phony" : "phony ",
+          command.validationStr.empty() ? ": phony" : ": phony ",
           command.validationStr,
           "\n",
       };
@@ -402,7 +722,7 @@ void TrimUtil::trim(std::ostream& output,
   // Remove all rules that weren't referenced
   for (std::size_t ruleIndex = 0; ruleIndex < ctx.rules.size(); ++ruleIndex) {
     if (!ruleReferenced[ruleIndex]) {
-      ctx.parts[ctx.rules[ruleIndex].partsIndex] = "";
+      ctx.parts[ctx.rules[ruleIndex].second] = "";
     }
   }
 

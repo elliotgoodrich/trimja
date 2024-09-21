@@ -24,7 +24,7 @@
 //   * Replace `StringPiece` with `std::string_view`
 //   * Add `EvalString() = default`
 //   * Make everything public
-
+//   * Add 'evaluate' taking a template 'SCOPE'
 
 #ifndef NINJA_EVAL_ENV_H_
 #define NINJA_EVAL_ENV_H_
@@ -56,5 +56,19 @@ struct EvalString {
   typedef std::vector<std::pair<std::string, TokenType> > TokenList;
   TokenList parsed_;
 };
+
+template <typename SCOPE>
+void evaluate(std::string& output,
+              const EvalString& variable,
+              const SCOPE& scope) {
+  for (const auto& [string, type] : variable.parsed_) {
+    if (type == EvalString::RAW) {
+      output += string;
+    } else {
+      scope.appendValue(output, string);
+    }
+  }
+}
+
 
 #endif  // NINJA_EVAL_ENV_H_

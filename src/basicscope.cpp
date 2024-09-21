@@ -20,23 +20,26 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef TRIMJA_TRIMUTIL
-#define TRIMJA_TRIMUTIL
-
-#include <filesystem>
-#include <iosfwd>
-#include <string>
+#include "basicscope.h"
 
 namespace trimja {
 
-struct TrimUtil {
-  static void trim(std::ostream& output,
-                   const std::filesystem::path& ninjaFile,
-                   const std::string& ninjaFileContents,
-                   std::istream& affected,
-                   bool explain);
-};
+BasicScope::BasicScope() = default;
+
+std::string_view BasicScope::set(std::string_view key, std::string&& value) {
+  // `operator[]` does not support `is_transparent` and `emplace` may or
+  // may not move from `value` so this is the best way to avoid allocations
+  return m_variables.emplace(key, "").first->second = std::move(value);
+}
+
+bool BasicScope::appendValue(std::string& output, std::string_view name) const {
+  const auto it = m_variables.find(name);
+  if (it == m_variables.end()) {
+    return false;
+  } else {
+    output += it->second;
+    return true;
+  }
+}
 
 }  // namespace trimja
-
-#endif  // TRIMJA_TRIMUTIL

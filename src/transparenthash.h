@@ -20,23 +20,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef TRIMJA_TRIMUTIL
-#define TRIMJA_TRIMUTIL
+#ifndef TRIMJA_TRANSPARENTHASH
+#define TRIMJA_TRANSPARENTHASH
 
-#include <filesystem>
-#include <iosfwd>
 #include <string>
+#include <string_view>
+#include <utility>
 
 namespace trimja {
 
-struct TrimUtil {
-  static void trim(std::ostream& output,
-                   const std::filesystem::path& ninjaFile,
-                   const std::string& ninjaFileContents,
-                   std::istream& affected,
-                   bool explain);
+struct TransparentHash {
+  using is_transparent = void;
+
+  std::size_t operator()(const std::string& v) const {
+    return std::hash<std::string_view>{}(v);
+  }
+
+  std::size_t operator()(std::string_view v) const {
+    return std::hash<std::string_view>{}(v);
+  }
 };
 
 }  // namespace trimja
 
-#endif  // TRIMJA_TRIMUTIL
+#endif
