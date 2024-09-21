@@ -20,23 +20,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef TRIMJA_TRIMUTIL
-#define TRIMJA_TRIMUTIL
+#ifndef TRIMJA_BASICSCOPE
+#define TRIMJA_BASICSCOPE
 
-#include <filesystem>
-#include <iosfwd>
+#include "transparenthash.h"
+
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 namespace trimja {
 
-struct TrimUtil {
-  static void trim(std::ostream& output,
-                   const std::filesystem::path& ninjaFile,
-                   const std::string& ninjaFileContents,
-                   std::istream& affected,
-                   bool explain);
+class BasicScope {
+  std::unordered_map<std::string, std::string, TransparentHash, std::equal_to<>>
+      m_variables;
+
+ public:
+  BasicScope();
+
+  std::string_view set(std::string_view key, std::string&& value);
+
+  bool appendValue(std::string& output, std::string_view name) const;
 };
 
 }  // namespace trimja
 
-#endif  // TRIMJA_TRIMUTIL
+#endif

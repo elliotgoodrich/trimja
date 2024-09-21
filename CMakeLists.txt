@@ -13,12 +13,15 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 add_executable(
     trimja
     src/trimja.m.cpp
+    src/basicscope.cpp
     src/depsreader.cpp
+    src/edgescope.cpp
     src/graph.cpp
     src/logreader.cpp
+    src/manifestparser.cpp
     src/murmur_hash.cpp
     src/ninja_clock.cpp
-    src/parser.cpp
+    src/rule.cpp
     src/trimutil.cpp
     thirdparty/ninja/eval_env.cc
     thirdparty/ninja/lexer.cc
