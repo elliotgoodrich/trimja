@@ -338,18 +338,22 @@ struct BuildContext {
   }
 
   void operator()(IncludeReader& r) {
-    const EvalString& pathEval = r.path();
-    std::string path;
-    evaluate(path, pathEval, fileScope);
+    const std::filesystem::path file = [&] {
+      const EvalString& pathEval = r.path();
+      std::string path;
+      evaluate(path, pathEval, fileScope);
+      return std::filesystem::path(r.parent()).remove_filename() / path;
+    }();
 
-    if (!std::filesystem::exists(path)) {
-      throw std::runtime_error(std::format("Unable to find {}!", path));
+    if (!std::filesystem::exists(file)) {
+      throw std::runtime_error(
+          std::format("Unable to find {}!", file.string()));
     }
     std::stringstream ninjaCopy;
-    std::ifstream ninja(path);
+    std::ifstream ninja(file);
     ninjaCopy << ninja.rdbuf();
     fileContents.push_front(ninjaCopy.str());
-    parse(path, fileContents.front());
+    parse(file, fileContents.front());
   }
 
   void operator()(SubninjaReader&) {

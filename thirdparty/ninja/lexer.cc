@@ -35,7 +35,7 @@ bool Lexer::Error(const std::string_view& message, std::string* err) {
   int col = last_token_ ? (int)(last_token_ - line_start) : 0;
 
   char buf[1024];
-  snprintf(buf, sizeof(buf), "%s:%d: ", std::string(filename_).c_str(), line);
+  snprintf(buf, sizeof(buf), "%s:%d: ", filename_.string().c_str(), line);
   *err = buf;
   *err += message;
   *err += "\n";
@@ -66,8 +66,8 @@ Lexer::Lexer(const char* input) {
   Start("input", input);
 }
 
-void Lexer::Start(std::string_view filename, std::string_view input) {
-  filename_ = filename;
+void Lexer::Start(std::filesystem::path filename, std::string_view input) {
+  filename_ = std::move(filename);
   input_ = input;
   ofs_ = input_.data();
   last_token_ = NULL;

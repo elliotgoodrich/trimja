@@ -272,6 +272,14 @@ const EvalString& IncludeReader::path() {
   return *m_storage;
 }
 
+const std::filesystem::path& IncludeReader::parent() const {
+  return m_lexer->getFilename();
+}
+
+const std::filesystem::path& SubninjaReader::parent() const {
+  return m_lexer->getFilename();
+}
+
 ManifestReader::iterator::iterator(Lexer* lexer, EvalString* storage)
     : detail::BaseReader{lexer, storage},
       m_value{PoolReader{nullptr, nullptr, nullptr}} {
@@ -344,10 +352,8 @@ bool operator!=(const ManifestReader::iterator& iter,
 
 ManifestReader::ManifestReader(const std::filesystem::path& ninjaFile,
                                const std::string& ninjaFileContents)
-    : m_lexer(ninjaFileContents.c_str()),
-      m_storage(),
-      m_filename(ninjaFile.string()) {
-  m_lexer.Start(m_filename, ninjaFileContents);
+    : m_lexer(), m_storage() {
+  m_lexer.Start(ninjaFile, ninjaFileContents);
 }
 
 ManifestReader::iterator ManifestReader::begin() {

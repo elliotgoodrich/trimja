@@ -161,16 +161,24 @@ class IncludeReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
   const EvalString& path();
+
+  // Return the path passed in to the `ManifestReader` constructor. Note that
+  // this method can be called before or after `path`.
+  const std::filesystem::path& parent() const;
 };
 
 class SubninjaReader : public detail::BaseReaderWithStart {
+ public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
+
+  // Return the path passed in to the `ManifestReader` constructor. Note that
+  // this method can be called before or after `path`.
+  const std::filesystem::path& parent() const;
 };
 
 class ManifestReader {
   Lexer m_lexer;
   EvalString m_storage;
-  std::string m_filename;
 
  public:
   class sentinel {};
