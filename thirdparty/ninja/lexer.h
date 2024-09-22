@@ -28,10 +28,13 @@
 //   * Add `const char* position()` to return the current position in the
 //     ninja file
 //   * Change 'ReadIdent' to return the key as a `string_view`
+//   * Store the filename as a `std::filesystem::path` and add `getFilename`
+//     accessor
 
 #ifndef NINJA_LEXER_H_
 #define NINJA_LEXER_H_
 
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -72,7 +75,7 @@ struct Lexer {
   std::string_view DescribeLastError();
 
   /// Start parsing some input.
-  void Start(std::string_view filename, std::string_view input);
+  void Start(std::filesystem::path filename, std::string_view input);
 
   /// Read a Token from the Token enum.
   Token ReadToken();
@@ -114,10 +117,13 @@ struct Lexer {
   /// Read a $-escaped string.
   bool ReadEvalString(EvalString* eval, bool path, std::string* err);
 
-  std::string_view filename_;
+  std::filesystem::path filename_;
   std::string_view input_;
   const char* ofs_;
   const char* last_token_;
+
+ public:
+  const std::filesystem::path& getFilename() const { return filename_; }
 };
 
 #endif  // NINJA_LEXER_H_

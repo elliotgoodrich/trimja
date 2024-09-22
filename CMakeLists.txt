@@ -167,8 +167,8 @@ set_tests_properties(
 foreach(TEST ${TRIMJA_TESTS})
     add_test(
         NAME trimja.snapshot.${TEST}
-        COMMAND trimja -f build.ninja --expected expected.ninja --affected changed.txt --explain
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/
+        COMMAND trimja -f ${TEST}/build.ninja --expected ${TEST}/expected.ninja --affected ${TEST}/changed.txt --explain
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
     )
     set_tests_properties(
         trimja.snapshot.${TEST}
