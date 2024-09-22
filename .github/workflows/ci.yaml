@@ -54,6 +54,7 @@ jobs:
         files: |
           build/trimja-*-Linux.tar.gz
           build/trimja-*-win64.exe
+          build/trimja-*.zip
   format:
     runs-on: ubuntu-latest
     steps:
