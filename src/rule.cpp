@@ -26,48 +26,42 @@
 
 namespace trimja {
 
-Rule::Rule(std::string_view name) : m_name(name), m_lookup(), m_bindings() {
-  m_lookup.fill(std::numeric_limits<unsigned char>::max());
-}
+Rule::Rule(std::string_view name) : m_name(name), m_bindings() {}
 
 std::size_t Rule::getLookupIndex(std::string_view varName) {
-  return std::find(reserved.begin(), reserved.end(), varName) -
-         reserved.begin();
+  return std::find(std::begin(reserved), std::end(reserved), varName) -
+         std::begin(reserved);
 }
 
-bool Rule::add(std::string_view varName, EvalString&& value) {
-  const std::size_t lookupIndex = getLookupIndex(varName);
-  if (lookupIndex == reserved.size()) {
-    return false;
-  }
-  const std::size_t bindingIndex = m_lookup[lookupIndex];
-  if (bindingIndex < m_bindings.size()) {
-    m_bindings[bindingIndex] = std::move(value);
+bool Rule::add(std::string_view varName, EvalString value) {
+  const auto it = std::find_if(
+      m_bindings.begin(), m_bindings.end(),
+      [varName](const std::pair<const std::string_view*, EvalString>& binding) {
+        return *binding.first == varName;
+      });
+  if (it != m_bindings.end()) {
+    // If we already have this variable then it has already been verified as
+    // a reserved name so no need to check against `reserved`.
+    it->second = std::move(value);
   } else {
-    m_bindings.push_back(std::move(value));
-    m_lookup[lookupIndex] = static_cast<unsigned char>(m_bindings.size() - 1);
-  }
-  return true;
-}
+    // Otherwise we need to make sure it's actually supported
+    const std::size_t lookupIndex = getLookupIndex(varName);
+    if (lookupIndex == std::size(reserved)) {
+      return false;
+    }
 
-bool Rule::add(std::string_view varName, const EvalString& value) {
-  const std::size_t lookupIndex = getLookupIndex(varName);
-  if (lookupIndex == reserved.size()) {
-    return false;
-  }
-  const std::size_t bindingIndex = m_lookup[lookupIndex];
-  if (bindingIndex < m_bindings.size()) {
-    m_bindings[bindingIndex] = value;
-  } else {
-    m_bindings.push_back(value);
-    m_lookup[lookupIndex] = static_cast<unsigned char>(m_bindings.size() - 1);
+    m_bindings.emplace_back(&reserved[lookupIndex], std::move(value));
   }
   return true;
 }
 
 const EvalString* Rule::lookupVar(std::string_view varName) const {
-  const std::size_t bindingIndex = m_lookup[getLookupIndex(varName)];
-  return bindingIndex < m_bindings.size() ? &m_bindings[bindingIndex] : nullptr;
+  const auto it = std::find_if(
+      m_bindings.cbegin(), m_bindings.cend(),
+      [varName](const std::pair<const std::string_view*, EvalString>& binding) {
+        return *binding.first == varName;
+      });
+  return it != m_bindings.cend() ? &it->second : nullptr;
 }
 
 std::string_view Rule::name() const {
