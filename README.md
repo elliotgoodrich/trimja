@@ -1,34 +1,76 @@
 # trimja
 
-`trimja` is a command line utility to trim down
-[ninja](https://ninja-build.org/) to a subset of input files.
+**trimja** is a command line utility to trim down
+[ninja build](https://ninja-build.org/) file to only those commands that
+are dependent or necessary for a specific subset of input files.
 
-This can avoid building unnecessary artifacts when only working on a subset
-of the files instead of doing a full build.  If you change a unit test then
-it is unnecessary to build and run any of the other unit tests that are
-independent.
+This can be used to **speed up CI** to create only those build artifacts that
+are affected by the current pull request. For example, a pull request updating
+`README.md` shouldn't need to build and test your entire software!
 
-For example we can improve CI performance by only building those files that
-depend on files changed in the pull request.  We can ask `git` to list all
-files that differ from the `main` branch, pass `--write` to `trimja` in
-order to edit `build.ninja` in place, and pass `-` to take a list of affected
-file from stdin:
+## Help
 
-```bash
-git diff main --name-only | trimja - --write
-ninja
+The following instruction on how to use trimja can be found by running
+`trimja --help` or `trimja -h`.
+
+```
+Usage:
+  trimja [--version] [--help] [--file <path>]
+      [--write | --output <path>] [--affected <path> | -] [--explain]
+
+trimja is a tool to create a smaller ninja build file containing only those
+build commands that relate to a specified set of files. This is commonly used
+to improve CI performance for pull requests.
+
+trimja requires both the '.ninja_log' and '.ninja_deps' file from a succesful
+run of the input ninja build file in order to correctly remove build commands.
+Note that with simple ninja input files it is possible for ninja to not
+generate either '.ninja_log' or '.ninja_deps', and in this case trimja will
+work as expected.
+
+Examples:
+
+Build only those commands that relate to fibonacci.cpp,
+  $ echo "fibonacci.cpp" > changed.txt
+  $ trimja --file build.ninja --affected changed.txt --output small.ninja
+  $ ninja -f small.ninja
+
+Build only those commands that relate to files that differ from the 'main' git
+branch, note the lone '-' argument to specify we are reading from stdin,
+  $ git diff main --name-only | trimja - --write
+  $ ninja
+
+Options:
+  -f FILE, --file=FILE      path to input ninja build file [default=build.ninja]
+  -a FILE, --affected=FILE  path to file containing affected file paths
+  -                         read affected file paths from stdin
+  -o FILE, --output=FILE    output file path [default=stdout]
+  -w, --write               overwrite input ninja build file
+  --explain                 print why each part of the build file was kept
+  -h, --help                print help
+  -v, --version             print trimja version
+
+For more information visit the homepage https://github.com/elliotgoodrich/trimja
 ```
 
-If you just change a README file, we shouldn't have to rebuild the entire
-world on the pull request.
+## CI Design
 
-In order to handle
-[header dependencies](https://ninja-build.org/manual.html#ref_headers) and
-[dynamic dependencies](https://ninja-build.org/manual.html#ref_dyndep),
-`trimja` will need a `.ninja_deps` file that contains all of these
-dependencies.  This is fully generated from a successful `ninja` run.  In
-addition we will also need the `.ninja_log` file to determine if any build
-commands have been edited. Any CI solution using `trimja` will need to cache
-`.ninja_deps` files from builds on `main` and load these when running pull
-requests.
+Integrating trimja into a CI pipeline requires an external cache where the
+`.ninja_log` and `.ninja_deps` files can be stored for successful builds.  The
+`.ninja_log` file contains a list of all files built with the hash of the build
+command and the `.ninja_deps` file contains dynamic dependencies generated
+during the build - such as includes header files when compiling C/C++ source
+files.
 
+  1. On requiring to build a new commit (e.g. on a PR or on merging to `main`)
+  2. Configure your build and generate the `ninja.build` file
+  3. Attempt to find the cache entry for the most recent ancestor commit of
+     `HEAD`
+  4. If a cache entry is found, move to the next step, otherwise skip to step 7
+  5. Note the commit hash that generated this cache hit (call this `EXISTING`)
+     and download the cache to the correct location
+  6. Run `git diff EXISTING..HEAD --name-only | trimja - --write` to replace the
+     `build.ninja` file
+  7. Run `ninja`
+  8. If the build is successful upload `.ninja_log` and `.ninja_deps` to the
+     cache
