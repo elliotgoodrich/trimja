@@ -14,6 +14,7 @@ add_executable(
     trimja
     src/trimja.m.cpp
     src/basicscope.cpp
+    src/builddirutil.cpp
     src/depsreader.cpp
     src/edgescope.cpp
     src/graph.cpp
@@ -170,6 +171,14 @@ set_tests_properties(
     PROPERTIES FIXTURES_REQUIRED trimja.snapshot.simple.fixture
 )
 
+# --builddir
+add_test(
+    NAME trimja.--builddir
+    COMMAND trimja -f builddir/build.ninja --builddir
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
+)
+set_property(TEST trimja.--builddir PROPERTY PASS_REGULAR_EXPRESSION "builddir\/x64\/build")
+
 # Snapshot tests
 foreach(TEST ${TRIMJA_TESTS})
     add_test(
@@ -180,6 +189,13 @@ foreach(TEST ${TRIMJA_TESTS})
     set_tests_properties(
         trimja.snapshot.${TEST}
         PROPERTIES FIXTURES_REQUIRED trimja.snapshot.${TEST}.fixture
+    )
+
+    # Check that --builddir at least returns success on all tests
+    add_test(
+        NAME trimja.smoke.builddir.${TEST}
+        COMMAND trimja -f ${TEST}/build.ninja --builddir
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
     )
 endforeach()
 

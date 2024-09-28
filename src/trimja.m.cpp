@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include "builddirutil.h"
 #include "trimutil.h"
 #ifdef _WIN32
 #include <ninja/getopt.h>
@@ -38,11 +39,8 @@
 
 namespace {
 
-const std::string_view g_helpText = R"HELP(Usage:
-  trimja [--version] [--help] [--file <path>]
-      [--write | --output <path>] [--affected <path> | -] [--explain]
-
-trimja is a tool to create a smaller ninja build file containing only those
+const std::string_view g_helpText =
+    R"HELP(trimja is a tool to create a smaller ninja build file containing only those
 build commands that relate to a specified set of files. This is commonly used
 to improve CI performance for pull requests.
 
@@ -51,6 +49,31 @@ run of the input ninja build file in order to correctly remove build commands.
 Note that with simple ninja input files it is possible for ninja to not
 generate either '.ninja_log' or '.ninja_deps', and in this case trimja will
 work as expected.
+
+Usage:
+$ trimja --version
+    Print out the version of trimja ()HELP" TRIMJA_VERSION R"HELP()
+
+$ trimja --help
+    Print out this help dialog
+
+$ trimja --builddir [-f FILE]
+    Print out the $builddir path in the ninja build file relative to the cwd
+
+$ trimja [-f FILE] [--write | -o OUT] [--affected PATH | -] [--explain]
+    Trim down the ninja build file to only required outputs and inputs
+
+Options:
+  -f FILE, --file=FILE      path to input ninja build file [default=build.ninja]
+  -a PATH, --affected=PATH  path to file containing affected file paths
+  -                         read affected file paths from stdin
+  -o OUT, --output=OUT      output file path [default=stdout]
+  -w, --write               overwrite input ninja build file
+  --explain                 print why each part of the build file was kept
+  --builddir                print the $builddir variable relative to the cwd
+  -h, --help                print help
+  -v, --version             print trimja version ()HELP" TRIMJA_VERSION
+    R"HELP()
 
 Examples:
 
@@ -64,21 +87,11 @@ branch, note the lone '-' argument to specify we are reading from stdin,
   $ git diff main --name-only | trimja - --write
   $ ninja
 
-Options:
-  -f FILE, --file=FILE      path to input ninja build file [default=build.ninja]
-  -a FILE, --affected=FILE  path to file containing affected file paths
-  -                         read affected file paths from stdin
-  -o FILE, --output=FILE    output file path [default=stdout]
-  -w, --write               overwrite input ninja build file
-  --explain                 print why each part of the build file was kept
-  -h, --help                print help
-  -v, --version             print trimja version ()HELP" TRIMJA_VERSION
-                                    R"HELP()
-
 For more information visit the homepage https://github.com/elliotgoodrich/trimja)HELP";
 
 static const option g_longOptions[] = {
     // TODO: Remove `--expected` and replace with comparing files within CTest
+    {"builddir", no_argument, nullptr, 'b'},
     {"explain", no_argument, nullptr, 'e'},
     {"expected", required_argument, nullptr, 'x'},
     {"file", required_argument, nullptr, 'f'},
@@ -127,6 +140,7 @@ int main(int argc, char* argv[]) try {
   std::optional<std::string> expectedFile;
   std::filesystem::path ninjaFile = "build.ninja";
   bool explain = false;
+  bool builddir = false;
 
   int ch;
   while ((ch = getopt_long(argc, argv, "a:f:ho:vw", g_longOptions, nullptr)) !=
@@ -140,6 +154,9 @@ int main(int argc, char* argv[]) try {
                     << std::endl;
           std::_Exit(EXIT_FAILURE);
         }
+        break;
+      case 'b':
+        builddir = true;
         break;
       case 'e':
         explain = true;
@@ -219,6 +236,13 @@ int main(int argc, char* argv[]) try {
     ninjaCopy << ninja.rdbuf();
     return ninjaCopy.str();
   }();
+
+  // If we have `--builddir` then ignore all other flags other than -f
+  if (builddir) {
+    std::cout << BuildDirUtil::builddir(ninjaFile, ninjaFileContents).string()
+              << std::endl;
+    std::_Exit(EXIT_SUCCESS);
+  }
 
   std::ifstream affectedFileStream;
   std::istream& affected = std::visit(
