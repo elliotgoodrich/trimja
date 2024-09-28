@@ -46,12 +46,6 @@ namespace trimja {
 
 namespace {
 
-template <typename RANGE>
-void consume(RANGE&& range) {
-  for ([[maybe_unused]] auto&& r : range) {
-  }
-}
-
 struct BuildCommand {
   enum Resolution {
     // Print the entire build command
@@ -126,6 +120,18 @@ struct BuildContext {
     static_assert(phonyIndex == 0);
     static_assert(defaultIndex == 1);
     return ruleIndex < 2;
+  }
+
+  static void consume(PathRangeReader&& range) {
+    for ([[maybe_unused]] const EvalString& r : range) {
+    }
+  }
+
+  static void consume(LetRangeReader&& range) {
+    for (VariableReader&& r : range) {
+      [[maybe_unused]] const std::string_view name = r.name();
+      [[maybe_unused]] const EvalString& value = r.value();
+    }
   }
 
   BuildContext() {

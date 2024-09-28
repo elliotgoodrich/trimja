@@ -14,10 +14,6 @@ The following instruction on how to use trimja can be found by running
 `trimja --help` or `trimja -h`.
 
 ```
-Usage:
-  trimja [--version] [--help] [--file <path>]
-      [--write | --output <path>] [--affected <path> | -] [--explain]
-
 trimja is a tool to create a smaller ninja build file containing only those
 build commands that relate to a specified set of files. This is commonly used
 to improve CI performance for pull requests.
@@ -27,6 +23,30 @@ run of the input ninja build file in order to correctly remove build commands.
 Note that with simple ninja input files it is possible for ninja to not
 generate either '.ninja_log' or '.ninja_deps', and in this case trimja will
 work as expected.
+
+Usage:
+$ trimja --version
+    Print out the version of trimja
+
+$ trimja --help
+    Print out this help dialog
+
+$ trimja --builddir [-f FILE]
+    Print out the $builddir path in the ninja build file relative to the cwd
+
+$ trimja [-f FILE] [--write | -o OUT] [--affected PATH | -] [--explain]
+    Trim down the ninja build file to only required outputs and inputs
+
+Options:
+  -f FILE, --file=FILE      path to input ninja build file [default=build.ninja]
+  -a PATH, --affected=PATH  path to file containing affected file paths
+  -                         read affected file paths from stdin
+  -o OUT, --output=OUT      output file path [default=stdout]
+  -w, --write               overwrite input ninja build file
+  --explain                 print why each part of the build file was kept
+  --builddir                print the $builddir variable relative to the cwd
+  -h, --help                print help
+  -v, --version             print trimja version
 
 Examples:
 
@@ -39,16 +59,6 @@ Build only those commands that relate to files that differ from the 'main' git
 branch, note the lone '-' argument to specify we are reading from stdin,
   $ git diff main --name-only | trimja - --write
   $ ninja
-
-Options:
-  -f FILE, --file=FILE      path to input ninja build file [default=build.ninja]
-  -a FILE, --affected=FILE  path to file containing affected file paths
-  -                         read affected file paths from stdin
-  -o FILE, --output=FILE    output file path [default=stdout]
-  -w, --write               overwrite input ninja build file
-  --explain                 print why each part of the build file was kept
-  -h, --help                print help
-  -v, --version             print trimja version
 
 For more information visit the homepage https://github.com/elliotgoodrich/trimja
 ```
