@@ -25,7 +25,7 @@
 
 #include <array>
 #include <cassert>
-#include <ranges>
+#include <charconv>
 
 namespace trimja {
 namespace {
@@ -104,7 +104,7 @@ bool LogReader::read(LogEntry* output) {
   {
     ninja_clock::rep ticks;
     std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), ticks);
-    output->mtime = std::chrono::clock_cast<std::chrono::file_clock>(
+    output->mtime = ninja_clock::to_file_clock(
         ninja_clock::time_point{ninja_clock::duration{ticks}});
   }
 

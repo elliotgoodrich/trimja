@@ -22,6 +22,8 @@
 
 #include "ninja_clock.h"
 
+namespace trimja {
+
 namespace {
 
 #if defined(_MSC_VER)
@@ -41,6 +43,21 @@ const std::uint64_t offset = 0;
 
 }  // namespace
 
+trimja::ninja_clock::time_point ninja_clock::from_file_clock(
+    std::chrono::file_clock::time_point t) {
+  return trimja::ninja_clock::time_point(
+      trimja::ninja_clock::duration(t.time_since_epoch().count() - offset));
+}
+
+std::chrono::file_clock::time_point ninja_clock::to_file_clock(
+    trimja::ninja_clock::time_point t) {
+  return std::chrono::file_clock::time_point(
+      std::chrono::file_clock::duration(t.time_since_epoch().count() + offset));
+}
+
+}  // namespace trimja
+
+#if 0
 namespace std {
 namespace chrono {
 
@@ -48,15 +65,16 @@ trimja::ninja_clock::time_point
 clock_time_conversion<trimja::ninja_clock, file_clock>::operator()(
     file_clock::time_point t) {
   return trimja::ninja_clock::time_point(
-      trimja::ninja_clock::duration(t.time_since_epoch().count() - offset));
+      trimja::ninja_clock::duration(t.time_since_epoch().count() - trimja::offset));
 };
 
 file_clock::time_point
 clock_time_conversion<file_clock, trimja::ninja_clock>::operator()(
     trimja::ninja_clock::time_point t) {
   return file_clock::time_point(
-      file_clock::duration(t.time_since_epoch().count() + offset));
+      file_clock::duration(t.time_since_epoch().count() + trimja::offset));
 }
 
 }  // namespace chrono
 }  // namespace std
+#endif

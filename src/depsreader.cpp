@@ -113,7 +113,7 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
       m_storage.erase(m_storage.size() - padding);
       const std::uint32_t checksum = readBinary<std::uint32_t>(m_deps);
       const std::int32_t id = ~checksum;
-      output->emplace<PathRecordView>(id, m_storage);
+      *output = PathRecordView{id, m_storage};
     } else {
       const std::int32_t outIndex = readBinary<std::int32_t>(m_deps);
       const ninja_clock::time_point mtime =
@@ -124,13 +124,16 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
       m_depsStorage.resize(numDependencies);
       std::generate_n(m_depsStorage.begin(), numDependencies,
                       [&] { return readBinary<std::int32_t>(m_deps); });
-      output->emplace<DepsRecordView>(
-          outIndex, std::chrono::clock_cast<std::chrono::file_clock>(mtime),
-          m_depsStorage);
+      *output = DepsRecordView{outIndex, ninja_clock::to_file_clock(mtime),
+                               m_depsStorage};
     }
   } catch (const std::ios_base::failure& e) {
-    throw std::runtime_error(
-        std::format("Error reading {}: {}", m_filePath.string(), e.what()));
+    std::string msg;
+    msg += "Error reading ";
+    msg += m_filePath.string();
+    msg += ": ";
+    msg += e.what();
+    throw std::runtime_error(msg);
   }
 
   return true;

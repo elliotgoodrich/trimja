@@ -36,10 +36,18 @@ struct ninja_clock {
   using duration = std::chrono::duration<rep, period>;
   using time_point = std::chrono::time_point<ninja_clock>;
   static const bool is_steady = false;
+
+  static trimja::ninja_clock::time_point from_file_clock(
+      std::chrono::file_clock::time_point t);
+
+  static std::chrono::file_clock::time_point to_file_clock(
+      trimja::ninja_clock::time_point t);
 };
 
 }  // namespace trimja
 
+#if 0
+// Supported only with later versions of C++20
 namespace std {
 namespace chrono {
 
@@ -55,5 +63,5 @@ struct clock_time_conversion<file_clock, trimja::ninja_clock> {
 
 }  // namespace chrono
 }  // namespace std
-
+#endif
 #endif
