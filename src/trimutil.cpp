@@ -40,7 +40,6 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
-#include <ranges>
 
 namespace trimja {
 
@@ -304,8 +303,13 @@ struct BuildContext {
     for (VariableReader v : r.variables()) {
       const std::string_view key = v.name();
       if (!rule.add(key, v.value())) {
-        throw std::runtime_error(std::format(
-            "Unexpected variable '{}' in rule '{}' found!", key, name));
+        std::string msg;
+        msg += "Unexpected variable '";
+        msg += key;
+        msg += "' in rule '";
+        msg += name;
+        msg += "' found!";
+        throw std::runtime_error(msg);
       }
     }
 
@@ -352,8 +356,11 @@ struct BuildContext {
     }();
 
     if (!std::filesystem::exists(file)) {
-      throw std::runtime_error(
-          std::format("Unable to find {}!", file.string()));
+      std::string msg;
+      msg += "Unable to find ";
+      msg += file.string();
+      msg += "!";
+      throw std::runtime_error(msg);
     }
     std::stringstream ninjaCopy;
     std::ifstream ninja(file);
@@ -494,8 +501,9 @@ void markIfChildrenAffected(std::size_t index,
 
   // Otherwise, find out if at least one of our children is affected and if
   // so, mark ourselves as affected
-  const auto it = std::ranges::find_if(
-      inIndices, [&](const std::size_t index) { return isAffected[index]; });
+  const auto it =
+      std::find_if(inIndices.begin(), inIndices.end(),
+                   [&](const std::size_t index) { return isAffected[index]; });
   if (it != inIndices.end()) {
     if (explain) {
       // Only mention user-defined rules since built-in rules are always kept
@@ -544,10 +552,11 @@ void ifAffectedMarkAllChildren(std::size_t index,
 
   // If any build commands requiring us are marked as needing all inputs then
   // mark ourselves as affected and that we also need all our inputs.
-  const auto it = std::ranges::find_if(
-      ctx.graph.out(index),
+  const auto& outIndices = ctx.graph.out(index);
+  const auto it = std::find_if(
+      outIndices.begin(), outIndices.end(),
       [&](const std::size_t index) { return needsAllInputs[index]; });
-  if (it != ctx.graph.out(index).end()) {
+  if (it != outIndices.end()) {
     if (!isAffected[index]) {
       if (explain) {
         std::cerr << "Including '" << ctx.graph.path(index)

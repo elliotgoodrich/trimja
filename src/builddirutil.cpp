@@ -25,7 +25,6 @@
 #include "basicscope.h"
 #include "manifestparser.h"
 
-#include <format>
 #include <fstream>
 #include <variant>
 
@@ -96,8 +95,11 @@ struct BuildDirContext {
     }();
 
     if (!std::filesystem::exists(file)) {
-      throw std::runtime_error(
-          std::format("Unable to find {}!", file.string()));
+      std::string msg;
+      msg += "Unable to find ";
+      msg += file.string();
+      msg += "!";
+      throw std::runtime_error(msg);
     }
     std::stringstream ninjaCopy;
     std::ifstream ninja(file);

@@ -24,7 +24,6 @@
 
 #include <ninja/lexer.h>
 
-#include <format>
 #include <stdexcept>
 
 namespace trimja {
@@ -34,9 +33,12 @@ namespace {
 void expectToken(Lexer* lexer, Lexer::Token expected) {
   const Lexer::Token token = lexer->ReadToken();
   if (token != expected) {
-    throw std::runtime_error(std::format("Expected {} but got {}",
-                                         Lexer::TokenName(expected),
-                                         Lexer::TokenName(token)));
+    std::string msg;
+    msg += "Expected ";
+    msg += Lexer::TokenName(expected);
+    msg += " but got ";
+    msg += Lexer::TokenName(token);
+    throw std::runtime_error(msg);
   }
 }
 
@@ -328,8 +330,10 @@ ManifestReader::iterator& ManifestReader::iterator::operator++() {
       m_lexer = nullptr;
       break;
     default: {
-      throw std::runtime_error(
-          std::format("Unexpected token {}", Lexer::TokenName(token)));
+      std::string msg;
+      msg += "Unexpected token ";
+      msg += Lexer::TokenName(token);
+      throw std::runtime_error(msg);
     }
   }
 
