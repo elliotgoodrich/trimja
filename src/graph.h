@@ -23,6 +23,8 @@
 #ifndef TRIMJA_GRAPH
 #define TRIMJA_GRAPH
 
+#include "fixed_string.h"
+
 #include <optional>
 #include <set>
 #include <string>
@@ -34,18 +36,15 @@ namespace trimja {
 
 class Graph {
   struct PathHash {
-    using is_transparent = void;
-    std::size_t operator()(const std::string& v) const;
-    std::size_t operator()(std::string_view v) const;
+    std::size_t operator()(const fixed_string& v) const;
   };
 
   struct PathEqual {
-    using is_transparent = void;
-    bool operator()(std::string_view left, std::string_view right) const;
+    bool operator()(const fixed_string& left, const fixed_string& right) const;
   };
 
   // A look up from path to vertex index.
-  std::unordered_map<std::string, std::size_t, PathHash, PathEqual>
+  std::unordered_map<fixed_string, std::size_t, PathHash, PathEqual>
       m_pathToIndex;
 
   // An adjacency list of input -> output

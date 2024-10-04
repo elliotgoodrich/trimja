@@ -13,7 +13,7 @@ jobs:
       matrix:
         build_type: [Debug, Release]
         compiler: [
-          {os: ubuntu-latest, cpp: clang++, c: clang},
+          {os: ubuntu-20.04, cpp: clang++-12, c: clang-12},
           {os: windows-latest, cpp: cl, c: cl},
         ]
     runs-on: ${{ matrix.compiler.os }}

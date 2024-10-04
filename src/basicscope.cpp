@@ -29,11 +29,12 @@ BasicScope::BasicScope() = default;
 std::string_view BasicScope::set(std::string_view key, std::string&& value) {
   // `operator[]` does not support `is_transparent` and `emplace` may or
   // may not move from `value` so this is the best way to avoid allocations
-  return m_variables.emplace(key, "").first->second = std::move(value);
+  return m_variables.emplace(fixed_string::create(key), "").first->second =
+             std::move(value);
 }
 
 bool BasicScope::appendValue(std::string& output, std::string_view name) const {
-  const auto it = m_variables.find(name);
+  const auto it = m_variables.find(fixed_string::make_temp(name));
   if (it == m_variables.end()) {
     return false;
   } else {

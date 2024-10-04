@@ -286,17 +286,15 @@ int main(int argc, char* argv[]) try {
   // Remove CR characters on Windows from the output so that we can cleanly
   // compare the output to the expected file on disk without worrying about
   // different line endings
-#if _WIN32
   std::string actual = std::get<std::stringstream>(outStream).str();
+#if _WIN32
   actual.erase(std::remove(actual.begin(), actual.end(), '\r'), actual.end());
-#else
-  const std::string_view actual = std::get<std::stringstream>(outStream).view();
 #endif
 
   std::ifstream expectedStream(*expectedFile);
   std::stringstream expectedBuffer;
   expectedBuffer << expectedStream.rdbuf();
-  const std::string_view expected = expectedBuffer.view();
+  const std::string expected = expectedBuffer.str();
   if (actual != expected) {
     const std::ptrdiff_t pos = std::mismatch(actual.begin(), actual.end(),
                                              expected.begin(), expected.end())
@@ -313,7 +311,7 @@ int main(int argc, char* argv[]) try {
               << "actual:\n"
               << actual << "---\n"
               << "expected:\n"
-              << expectedBuffer.view() << std::endl;
+              << expected << std::endl;
     std::_Exit(EXIT_SUCCESS);
   }
 } catch (const std::exception& e) {

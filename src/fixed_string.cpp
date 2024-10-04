@@ -20,28 +20,49 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef TRIMJA_BASICSCOPE
-#define TRIMJA_BASICSCOPE
-
 #include "fixed_string.h"
-
-#include <string>
-#include <string_view>
-#include <unordered_map>
 
 namespace trimja {
 
-class BasicScope {
-  std::unordered_map<fixed_string, std::string> m_variables;
+const fixed_string& fixed_string::make_temp(
+    const std::string_view& str) noexcept {
+  // This is only defined as `fixed_string` is standard layout (meaning all its
+  // members must be standard layout too) and so we can `reinterpret_cast`
+  // ourselves to the first member variable.
+  static_assert(std::is_standard_layout_v<fixed_string>);
+  return reinterpret_cast<const fixed_string&>(str);
+}
 
- public:
-  BasicScope();
+fixed_string::copy_from_string_view_t fixed_string::create(
+    const std::string_view& str) {
+  return copy_from_string_view_t{str};
+}
 
-  std::string_view set(std::string_view key, std::string&& value);
+fixed_string::fixed_string(const copy_from_string_view_t& str) : m_data{} {
+  const std::size_t length = str.data.size();
+  char* data = new char[length];
+  std::copy_n(str.data.data(), length, data);
+  m_data = std::string_view{data, length};
+}
 
-  bool appendValue(std::string& output, std::string_view name) const;
-};
+fixed_string::~fixed_string() {
+  delete[] m_data.data();
+}
+
+fixed_string::operator std::string_view() const {
+  return m_data;
+}
+
+std::string_view fixed_string::view() const {
+  return m_data;
+}
+
+bool operator==(const fixed_string& lhs, const fixed_string& rhs) {
+  return lhs.view() == rhs.view();
+}
+
+bool operator!=(const fixed_string& lhs, const fixed_string& rhs) {
+  return lhs.view() != rhs.view();
+}
 
 }  // namespace trimja
-
-#endif
