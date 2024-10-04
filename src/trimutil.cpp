@@ -25,12 +25,12 @@
 #include "basicscope.h"
 #include "depsreader.h"
 #include "edgescope.h"
+#include "fixed_string.h"
 #include "graph.h"
 #include "logreader.h"
 #include "manifestparser.h"
 #include "murmur_hash.h"
 #include "rule.h"
-#include "transparenthash.h"
 
 #include <ninja/eval_env.h>
 #include <ninja/util.h>
@@ -102,11 +102,7 @@ struct BuildContext {
   std::vector<std::pair<Rule, std::size_t>> rules;
 
   // Our rules keyed by name
-  std::unordered_map<std::string_view,
-                     std::size_t,
-                     TransparentHash,
-                     std::equal_to<>>
-      ruleLookup;
+  std::unordered_map<fixed_string, std::size_t> ruleLookup;
 
   // Our top-level variables
   BasicScope fileScope;
@@ -139,7 +135,8 @@ struct BuildContext {
       const std::size_t partsIndex = parts.size();
       const std::size_t ruleIndex = rules.size();
       parts.emplace_back("");
-      const auto ruleIt = ruleLookup.emplace(builtIn, ruleIndex).first;
+      const auto ruleIt =
+          ruleLookup.emplace(fixed_string::create(builtIn), ruleIndex).first;
       rules.emplace_back(ruleIt->first, partsIndex);
     }
     assert(rules[BuildContext::phonyIndex].first.name() == "phony");
@@ -208,7 +205,7 @@ struct BuildContext {
     std::string_view ruleName = r.name();
 
     const std::size_t ruleIndex = [&] {
-      const auto ruleIt = ruleLookup.find(ruleName);
+      const auto ruleIt = ruleLookup.find(fixed_string::make_temp(ruleName));
       if (ruleIt == ruleLookup.end()) {
         throw std::runtime_error("Unable to find " + std::string(ruleName) +
                                  " rule");
@@ -292,11 +289,14 @@ struct BuildContext {
   void operator()(RuleReader& r) {
     std::string_view name = r.name();
     const std::size_t ruleIndex = rules.size();
-    const auto [ruleIt, inserted] = ruleLookup.emplace(name, ruleIndex);
+    const auto [ruleIt, inserted] =
+        ruleLookup.emplace(fixed_string::create(name), ruleIndex);
     if (!inserted) {
-      std::stringstream ss;
-      ss << "Duplicate rule '" << name << "' found!" << '\0';
-      throw std::runtime_error(ss.view().data());
+      std::string msg;
+      msg += "Duplicate rule '";
+      msg += name;
+      msg += "' found!";
+      throw std::runtime_error(msg);
     }
 
     Rule& rule = rules.emplace_back(ruleIt->first, parts.size()).first;

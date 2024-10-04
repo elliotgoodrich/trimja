@@ -18,6 +18,7 @@ add_executable(
     src/depsreader.cpp
     src/edgescope.cpp
     src/graph.cpp
+    src/fixed_string.cpp
     src/logreader.cpp
     src/manifestparser.cpp
     src/murmur_hash.cpp
