@@ -55,6 +55,7 @@ jobs:
         body_path: build/CHANGELOG.txt
         files: |
           build/trimja-*-Linux.tar.gz
+          build/trimja-*-Darwin.tar.gz
           build/trimja-*-win64.exe
           build/trimja-*.zip
   format:
