@@ -53,6 +53,7 @@ struct BaseReaderWithStart : public BaseReader {
  public:
   BaseReaderWithStart(Lexer* lexer, EvalString* storage, const char* start);
   const char* start() const;
+  std::size_t bytesParsed() const;
 };
 
 }  // namespace detail

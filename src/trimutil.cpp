@@ -40,6 +40,7 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <sstream>
 
 namespace trimja {
 
@@ -177,7 +178,7 @@ struct BuildContext {
   void operator()(PoolReader& r) {
     [[maybe_unused]] const std::string_view name = r.name();
     consume(r.variables());
-    parts.emplace_back(r.start(), r.position());
+    parts.emplace_back(r.start(), r.bytesParsed());
   }
 
   void operator()(BuildReader& r) {
@@ -200,7 +201,7 @@ struct BuildContext {
     }
 
     // Mark the outputs for later
-    const std::string_view outStr(r.start(), r.position());
+    const std::string_view outStr(r.start(), r.bytesParsed());
 
     std::string_view ruleName = r.name();
 
@@ -233,7 +234,8 @@ struct BuildContext {
     // `phony`ed out.
     const char* validationStart = r.position();
     consume(r.validations());
-    std::string_view validationStr(validationStart, r.position());
+    std::string_view validationStr(validationStart,
+                                   r.position() - validationStart);
 
     EdgeScope scope(fileScope, rules[ruleIndex].first,
                     std::span(ins.data(), inSize),
@@ -247,7 +249,7 @@ struct BuildContext {
     }
 
     const std::size_t partsIndex = parts.size();
-    parts.emplace_back(r.start(), r.position());
+    parts.emplace_back(r.start(), r.bytesParsed());
 
     // Add the build command
     const std::size_t commandIndex = commands.size();
@@ -313,7 +315,7 @@ struct BuildContext {
       }
     }
 
-    parts.emplace_back(r.start(), r.position());
+    parts.emplace_back(r.start(), r.bytesParsed());
   }
 
   void operator()(DefaultReader& r) {
@@ -325,7 +327,7 @@ struct BuildContext {
     }
 
     const std::size_t partsIndex = parts.size();
-    parts.emplace_back(r.start(), r.position());
+    parts.emplace_back(r.start(), r.bytesParsed());
 
     const std::size_t commandIndex = commands.size();
     BuildCommand& buildCommand = commands.emplace_back();
@@ -344,7 +346,7 @@ struct BuildContext {
     std::string result;
     evaluate(result, r.value(), fileScope);
     fileScope.set(name, std::move(result));
-    parts.emplace_back(r.start(), r.position());
+    parts.emplace_back(r.start(), r.bytesParsed());
   }
 
   void operator()(IncludeReader& r) {

@@ -62,6 +62,10 @@ const char* BaseReaderWithStart::start() const {
   return m_start;
 }
 
+std::size_t BaseReaderWithStart::bytesParsed() const {
+  return position() - m_start;
+}
+
 }  // namespace detail
 
 std::string_view VariableReader::name() {
