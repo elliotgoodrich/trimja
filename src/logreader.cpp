@@ -37,7 +37,7 @@ std::array<std::string_view, N> splitOnTab(std::string_view in) {
   const auto end = in.end();
   for (std::string_view& part : parts) {
     const auto tab = std::find(it, end, '\t');
-    part = std::string_view{it, tab};
+    part = std::string_view{&*it, static_cast<std::size_t>(tab - it)};
     it = tab + std::min<std::size_t>(sizeof('\t'), end - tab);
   }
   return parts;

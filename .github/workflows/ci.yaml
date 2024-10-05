@@ -11,12 +11,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_type: [Debug, Release]
-        compiler: [
-          {os: ubuntu-20.04, cpp: clang++-12, c: clang-12},
-          {os: windows-latest, cpp: cl, c: cl},
+        environment: [
+          {name: Linux, os: ubuntu-20.04, cpp: clang++-12, c: clang-12},
+          {name: MacOS, os: macos-12, cpp: clang++, c: clang},
+          {name: Windows, os: windows-latest, cpp: cl, c: cl},
         ]
-    runs-on: ${{ matrix.compiler.os }}
+        build_type: [Debug, Release]
+    name: ${{ matrix.environment.name }} (${{ matrix.build_type }})
+    runs-on: ${{ matrix.environment.os }}
     permissions:
       contents: write
     steps:
@@ -30,10 +32,10 @@ jobs:
     - name: Configure CMake
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cpp }}
-        -DCMAKE_C_COMPILER=${{ matrix.compiler.c }}
-        ${{ format('-D{0}={1}', matrix.compiler.os == 'windows-latest' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
-        ${{ matrix.compiler.os != 'windows-latest' && '-G Ninja' || ''}}
+        -DCMAKE_CXX_COMPILER=${{ matrix.environment.cpp }}
+        -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
+        ${{ format('-D{0}={1}', matrix.environment.name == 'Windows' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
+        ${{ matrix.environment.name != 'Windows' && '-G Ninja' || ''}}
         -DCMAKE_UNITY_BUILD=ON
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
