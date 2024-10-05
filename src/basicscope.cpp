@@ -27,8 +27,9 @@ namespace trimja {
 BasicScope::BasicScope() = default;
 
 std::string_view BasicScope::set(std::string_view key, std::string&& value) {
-  // `operator[]` does not support `is_transparent` and `emplace` may or
-  // may not move from `value` so this is the best way to avoid allocations
+  // By design to avoid accidental copies, `fixed_string` does not have a copy
+  // constructor so we cannot use `operator[]`.  Instead we can use `emplace` to
+  // achieve basically the same performance.
   return m_variables.emplace(fixed_string::create(key), "").first->second =
              std::move(value);
 }
