@@ -34,6 +34,13 @@ std::string_view BasicScope::set(std::string_view key, std::string&& value) {
              std::move(value);
 }
 
+std::string& BasicScope::clearValue(std::string_view key) {
+  std::string& value =
+      m_variables.emplace(fixed_string::create(key), "").first->second;
+  value.clear();
+  return value;
+}
+
 bool BasicScope::appendValue(std::string& output, std::string_view name) const {
   const auto it = m_variables.find(fixed_string::make_temp(name));
   if (it == m_variables.end()) {

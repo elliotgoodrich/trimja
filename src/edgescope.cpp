@@ -54,5 +54,9 @@ std::string_view EdgeScopeBase::set(std::string_view key, std::string&& value) {
   return m_local.set(key, std::move(value));
 }
 
+std::string& EdgeScopeBase::clearValue(std::string_view key) {
+  return m_local.clearValue(key);
+}
+
 }  // namespace detail
 }  // namespace trimja

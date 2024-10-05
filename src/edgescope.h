@@ -53,6 +53,7 @@ class EdgeScopeBase {
                 std::span<const std::string> outs);
 
   std::string_view set(std::string_view key, std::string&& value);
+  std::string& clearValue(std::string_view key);
 };
 
 }  // namespace detail
@@ -68,6 +69,7 @@ class EdgeScope : private detail::EdgeScopeBase {
             std::span<const std::string> outs)
       : detail::EdgeScopeBase(rule, ins, outs), m_parent(parent) {}
 
+  using detail::EdgeScopeBase::clearValue;
   using detail::EdgeScopeBase::set;
 
   bool appendValue(std::string& output, std::string_view name) const {
