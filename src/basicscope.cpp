@@ -26,6 +26,23 @@ namespace trimja {
 
 BasicScope::BasicScope() = default;
 
+BasicScope::BasicScope(BasicScope&&) = default;
+
+BasicScope::BasicScope(const BasicScope& other) {
+  for (const auto& [name, value] : other.m_variables) {
+    m_variables.emplace(name.view(), value);
+  }
+}
+
+BasicScope& BasicScope::operator=(BasicScope&&) = default;
+
+BasicScope& BasicScope::operator=(const BasicScope& rhs) {
+  BasicScope tmp{rhs};
+  using std::swap;
+  swap(m_variables, tmp.m_variables);
+  return *this;
+}
+
 std::string_view BasicScope::set(std::string_view key, std::string&& value) {
   // By design to avoid accidental copies, `fixed_string` does not have a copy
   // constructor so we cannot use `operator[]`.  Instead we can use `emplace` to

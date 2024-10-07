@@ -6,3 +6,4 @@ build out1: copy in1
 builddir = $var/build
 build out2: copy in2
 var = x86
+subninja other.ninja

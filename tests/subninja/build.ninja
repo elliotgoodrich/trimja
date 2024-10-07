@@ -1,0 +1,6 @@
+rule copy
+  command = ninja --version $in -> $out $var
+file1 = in1
+var = 3
+subninja other.ninja
+build out3: copy in3

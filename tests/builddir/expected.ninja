@@ -6,3 +6,5 @@ build out1: copy in1
 builddir = $var/build
 build out2: phony
 var = x86
+builddir = badval
+builddir = x64/build

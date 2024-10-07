@@ -282,6 +282,16 @@ const std::filesystem::path& IncludeReader::parent() const {
   return m_lexer->getFilename();
 }
 
+const EvalString& SubninjaReader::path() {
+  std::string err;
+  m_storage->clear();
+  if (!m_lexer->ReadPath(m_storage, &err)) {
+    throw std::runtime_error(err);
+  }
+  expectToken(m_lexer, Lexer::NEWLINE);
+  return *m_storage;
+}
+
 const std::filesystem::path& SubninjaReader::parent() const {
   return m_lexer->getFilename();
 }
