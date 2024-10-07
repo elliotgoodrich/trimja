@@ -106,8 +106,10 @@ struct BuildDirContext {
     parse(file, ninjaCopy.str());
   }
 
-  void operator()(SubninjaReader&) const {
-    throw std::runtime_error("subninja not yet supported");
+  void operator()(SubninjaReader& r) const {
+    // subninja introduces a new scope so we can never modify the top-level
+    // `builddir` variable
+    [[maybe_unused]] const EvalString& p = r.path();
   }
 };
 

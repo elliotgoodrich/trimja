@@ -217,6 +217,7 @@ class IncludeReader : public detail::BaseReaderWithStart {
 class SubninjaReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
+  const EvalString& path();
 
   // Return the path passed in to the `ManifestReader` constructor. Note that
   // this method can be called before or after `path`.

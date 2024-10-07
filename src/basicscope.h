@@ -49,6 +49,32 @@ class BasicScope {
   BasicScope();
 
   /**
+   * @brief Move constructor.
+   * @param other The BasicScope to move from.
+   */
+  BasicScope(BasicScope&& other);
+
+  /**
+   * @brief Copy constructor.
+   * @param other The BasicScope to copy from.
+   */
+  BasicScope(const BasicScope& other);
+
+  /**
+   * @brief Move assignment operator.
+   * @param rhs The BasicScope to move assign from.
+   * @return A reference to the assigned BasicScope.
+   */
+  BasicScope& operator=(BasicScope&& rhs);
+
+  /**
+   * @brief Copy assignment operator.
+   * @param rhs The BasicScope to copy assign from.
+   * @return A reference to the assigned BasicScope.
+   */
+  BasicScope& operator=(const BasicScope& rhs);
+
+  /**
    * @brief Sets a variable in the scope.
    * @param key The name of the variable.
    * @param value The value of the variable.
@@ -74,6 +100,18 @@ class BasicScope {
    * @return Whether the variable was found in this scope.
    */
   bool appendValue(std::string& output, std::string_view name) const;
+
+  /**
+   * @brief Returns an iterator to the beginning of the variables.
+   * @return An iterator to the beginning of the variables.
+   */
+  auto begin() const { return m_variables.cbegin(); }
+
+  /**
+   * @brief Returns an iterator to the end of the variables.
+   * @return An iterator to the end of the variables.
+   */
+  auto end() const { return m_variables.cend(); }
 };
 
 }  // namespace trimja

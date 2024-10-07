@@ -47,6 +47,57 @@ namespace trimja {
 
 namespace {
 
+class NestedScope {
+  std::vector<BasicScope> m_scopes;
+
+ public:
+  NestedScope() : m_scopes{1} {}
+
+  void push() {
+    BasicScope last = m_scopes.back();
+    m_scopes.push_back(std::move(last));
+  }
+
+  [[nodiscard]] std::string pop() {
+    // Take all variables defined in the latest scope and if their value differs
+    // from the value in the previous scope then generate some Ninja variable
+    // statements to set this variable back to the parent's value.
+    BasicScope last = std::move(m_scopes.back());
+    m_scopes.pop_back();
+
+    std::string ninja;
+    std::string previousValue;
+    for (const auto& [name, value] : last) {
+      previousValue.clear();
+      m_scopes.back().appendValue(previousValue, name);
+      if (value != previousValue) {
+        ninja += name;
+        if (previousValue.empty()) {
+          ninja += " =";
+        } else {
+          ninja += " = ";
+          ninja += previousValue;
+        }
+        ninja += '\n';
+      }
+    }
+
+    return ninja;
+  }
+
+  std::string_view set(std::string_view key, std::string&& value) {
+    return m_scopes.back().set(key, std::move(value));
+  }
+
+  std::string& resetValue(std::string_view key) {
+    return m_scopes.back().resetValue(key);
+  }
+
+  bool appendValue(std::string& output, std::string_view name) const {
+    return m_scopes.back().appendValue(output, name);
+  }
+};
+
 struct BuildCommand {
   enum Resolution {
     // Print the entire build command
@@ -83,13 +134,15 @@ struct BuildContext {
   static const std::size_t phonyIndex = 0;
   static const std::size_t defaultIndex = 1;
 
-  // An optional storage for the contents for the input ninja files.  This is
-  // useful when processing `include` and `subninja` and we need to extend the
-  // lifetime of the file contents until all parsing has finished
-  std::forward_list<std::string> fileContents;
+  // An optional storage for any generated strings or strings whose lifetime
+  // needs extending. e.g. This is useful when processing `include` and
+  // `subninja` and we need to extend the lifetime of the file contents until
+  // all parsing has finished.  We use a `std::forward_list` so that we get
+  // stable references to the contents.
+  std::forward_list<std::string> stringStorage;
 
-  // All parts of the input build file, indexing into an element of
-  // `fileContents`.  Note that we may swap out build command sections with
+  // All parts of the input build file, possibly indexing into an element of
+  // `stringStorage`.  Note that we may swap out build command sections with
   // phony commands.
   std::vector<std::string_view> parts;
 
@@ -110,7 +163,7 @@ struct BuildContext {
       ruleLookup;
 
   // Our top-level variables
-  BasicScope fileScope;
+  NestedScope fileScope;
 
   // Our graph
   Graph graph;
@@ -383,12 +436,35 @@ struct BuildContext {
     std::stringstream ninjaCopy;
     std::ifstream ninja(file);
     ninjaCopy << ninja.rdbuf();
-    fileContents.push_front(ninjaCopy.str());
-    parse(file, fileContents.front());
+    stringStorage.push_front(ninjaCopy.str());
+    parse(file, stringStorage.front());
   }
 
-  void operator()(SubninjaReader&) {
-    throw std::runtime_error("subninja not yet supported");
+  void operator()(SubninjaReader& r) {
+    const std::filesystem::path file = [&] {
+      const EvalString& pathEval = r.path();
+      std::string path;
+      evaluate(path, pathEval, fileScope);
+      return std::filesystem::path(r.parent()).remove_filename() / path;
+    }();
+
+    if (!std::filesystem::exists(file)) {
+      std::string msg;
+      msg += "Unable to find ";
+      msg += file.string();
+      msg += "!";
+      throw std::runtime_error(msg);
+    }
+
+    std::stringstream ninjaCopy;
+    std::ifstream ninja(file);
+    ninjaCopy << ninja.rdbuf();
+    stringStorage.push_front(ninjaCopy.str());
+
+    fileScope.push();
+    parse(file, stringStorage.front());
+    stringStorage.push_front(fileScope.pop());
+    parts.push_back(stringStorage.front());
   }
 };
 
