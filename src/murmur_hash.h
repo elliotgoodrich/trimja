@@ -28,7 +28,18 @@
 
 namespace trimja {
 
+/**
+ * @struct murmur_hash
+ * @brief Provides a static method to compute the MurmurHash.
+ */
 struct murmur_hash {
+  /**
+   * @brief Computes the MurmurHash for the given key.
+   *
+   * @param key Pointer to the data to hash.
+   * @param length Length of the data in bytes.
+   * @return 64-bit hash value.
+   */
   static std::uint64_t hash(const void* key, std::size_t length);
 };
 

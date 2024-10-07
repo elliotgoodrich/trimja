@@ -34,7 +34,7 @@ std::string_view BasicScope::set(std::string_view key, std::string&& value) {
              std::move(value);
 }
 
-std::string& BasicScope::clearValue(std::string_view key) {
+std::string& BasicScope::resetValue(std::string_view key) {
   std::string& value =
       m_variables.emplace(fixed_string::create(key), "").first->second;
   value.clear();

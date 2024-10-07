@@ -34,6 +34,11 @@
 
 namespace trimja {
 
+/**
+ * @class Graph
+ * @brief Represents a directed graph where nodes are file paths and edges
+ * represent dependencies.
+ */
 class Graph {
   struct PathHash {
     std::size_t operator()(const fixed_string& v) const;
@@ -60,6 +65,9 @@ class Graph {
   std::size_t m_defaultIndex = std::numeric_limits<std::size_t>::max();
 
  public:
+  /**
+   * @brief Constructs an empty Graph.
+   */
   Graph();
 
   Graph(Graph&&) = default;
@@ -67,32 +75,94 @@ class Graph {
   Graph& operator=(Graph&&) = default;
   Graph& operator=(const Graph&) = delete;
 
-  // Add the specified `path` to the graph if it isn't already and then return
-  // the corresponding index to that path. `path` will be modified to be
-  // normalized.  Note that on windows, backslashes and forward slashes are
-  // accepted as valid path separators.  If `addPath` is called multiple times
-  // with a `path` that differs only by the slash type, then `path` will be
-  // updated to have the slashes of the first `path` called.
+  /**
+   * @brief Adds the path to the graph if it isn't already present and returns
+   * the corresponding index.
+   * @param path The path to be added. It will be normalized.
+   * @return The index corresponding to the added path.
+   */
   std::size_t addPath(std::string& path);
 
+  /**
+   * @brief Adds a normalized path to the graph if it isn't already present and
+   * returns the corresponding index.
+   * @param path The normalized path to be added.
+   * @return The index corresponding to the added path.
+   */
   std::size_t addNormalizedPath(std::string_view path);
 
+  /**
+   * @brief Finds the index of the specified path if it exists.
+   * @param path The path to be found. It will be normalized.
+   * @return The index of the path if found, otherwise std::nullopt.
+   */
   std::optional<std::size_t> findPath(std::string& path) const;
+
+  /**
+   * @brief Finds the index of the specified normalized path if it exists.
+   * @param path The normalized path to be found.
+   * @return The index of the path if found, otherwise std::nullopt.
+   */
   std::optional<std::size_t> findNormalizedPath(std::string_view path) const;
 
+  /**
+   * @brief Adds a default node to the graph.
+   * @return The index of the default node.
+   */
   std::size_t addDefault();
 
+  /**
+   * @brief Adds an edge between the specified input and output nodes.
+   * @param in The index of the input node.
+   * @param out The index of the output node.
+   */
   void addEdge(std::size_t in, std::size_t out);
 
+  /**
+   * @brief Checks if the specified path index is the default node.
+   * @param pathIndex The index of the path to check.
+   * @return True if the path index is the default node, otherwise false.
+   */
   bool isDefault(std::size_t pathIndex) const;
+
+  /**
+   * @brief Gets the index of the default node.
+   * @return The index of the default node.
+   */
   std::size_t defaultIndex() const;
 
+  /**
+   * @brief Gets the path corresponding to the specified path index.
+   * @param pathIndex The index of the path.
+   * @return The path corresponding to the specified index.
+   */
   std::string_view path(std::size_t pathIndex) const;
+
+  /**
+   * @brief Gets the set of output nodes for the specified path index.
+   * @param pathIndex The index of the path.
+   * @return The set of output nodes.
+   */
   const std::set<std::size_t>& out(std::size_t pathIndex) const;
+
+  /**
+   * @brief Gets the set of input nodes for the specified path index.
+   * @param pathIndex The index of the path.
+   * @return The set of input nodes.
+   */
   const std::set<std::size_t>& in(std::size_t pathIndex) const;
 
+  /**
+   * @brief Gets the index of the specified path.
+   * @param path The path to be found.
+   * @return The index of the path.
+   */
   std::size_t getPath(std::string_view path) const;
 
+  /**
+   * @brief Gets the number of nodes in the graph.
+   * @return The number of nodes.
+   */
   std::size_t size() const;
 };
 

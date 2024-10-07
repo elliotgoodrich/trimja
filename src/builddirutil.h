@@ -28,7 +28,18 @@
 
 namespace trimja {
 
+/**
+ * @struct BuildDirUtil
+ * @brief Utility functions for finding the build directory for a Ninja file.
+ */
 struct BuildDirUtil {
+  /**
+   * @brief Determines the build directory from the given Ninja file and its
+   * contents.
+   * @param ninjaFile The path to the Ninja file.
+   * @param ninjaFileContents The contents of the Ninja file.
+   * @return The path to the build directory.
+   */
   static std::filesystem::path builddir(const std::filesystem::path& ninjaFile,
                                         const std::string& ninjaFileContents);
 };

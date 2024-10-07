@@ -103,13 +103,6 @@ static const option g_longOptions[] = {
     {},
 };
 
-template <class... Ts>
-struct overloaded : Ts... {
-  using Ts::operator()...;
-};
-template <class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
 }  // namespace
 
 int main(int argc, char* argv[]) try {
@@ -246,37 +239,37 @@ int main(int argc, char* argv[]) try {
 
   std::ifstream affectedFileStream;
   std::istream& affected = std::visit(
-      overloaded{
-          [](std::monostate) -> std::istream& {
-            std::cerr << "A list of affected files needs to be supplied with "
-                         "either --affected [FILE] or - to read from stdin"
-                      << std::endl;
-            std::_Exit(EXIT_FAILURE);
-          },
-          [](StdIn) -> std::istream& { return std::cin; },
-          [&](const std::filesystem::path& p) -> std::istream& {
-            affectedFileStream.open(p);
-            return affectedFileStream;
-          },
+      [&](auto&& arg) -> std::istream& {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, std::monostate>) {
+          std::cerr << "A list of affected files needs to be supplied with "
+                       "either --affected [FILE] or - to read from stdin"
+                    << std::endl;
+          std::_Exit(EXIT_FAILURE);
+        } else if constexpr (std::is_same_v<T, StdIn>) {
+          return std::cin;
+        } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
+          affectedFileStream.open(arg);
+          return affectedFileStream;
+        }
       },
       affectedFile);
 
   std::variant<std::monostate, std::ofstream, std::stringstream> outStream;
-  std::ostream& output =
-      std::visit(overloaded{
-                     [](Stdout) -> std::ostream& { return std::cout; },
-                     [&](Write) -> std::ostream& {
-                       return outStream.emplace<std::ofstream>(ninjaFile);
-                     },
-                     [&](Expected) -> std::ostream& {
-                       return outStream.emplace<std::stringstream>();
-                     },
-                     [&](const std::filesystem::path& out) -> std::ostream& {
-                       return outStream.emplace<std::ofstream>(out);
-                     },
-                 },
-                 outputFile);
-
+  std::ostream& output = std::visit(
+      [&](auto&& arg) -> std::ostream& {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, Stdout>) {
+          return std::cout;
+        } else if constexpr (std::is_same_v<T, Write>) {
+          return outStream.emplace<std::ofstream>(ninjaFile);
+        } else if constexpr (std::is_same_v<T, Expected>) {
+          return outStream.emplace<std::stringstream>();
+        } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
+          return outStream.emplace<std::ofstream>(arg);
+        }
+      },
+      outputFile);
   TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
   output.flush();
   if (!expectedFile.has_value()) {

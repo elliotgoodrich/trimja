@@ -81,7 +81,7 @@ struct BuildDirContext {
 
   void operator()(VariableReader& r) {
     const std::string_view name = r.name();
-    evaluate(fileScope.clearValue(name), r.value(), fileScope);
+    evaluate(fileScope.resetValue(name), r.value(), fileScope);
   }
 
   void operator()(IncludeReader& r) {

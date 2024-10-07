@@ -27,35 +27,54 @@
 
 namespace trimja {
 
-// `fixed_string` is a non-null terminated string that cannot have its length
-// changed after construction.  It is useful as the key to an associative
-// container since these are immutable after construction.  It has no
-// small-string optimization (yet).
-//
-// Before we have heterogenous lookup in associative containers (e.g.
-// `is_transparent` on hash and equality) we can use the `make_temp` static
-// method to create a `const fixed_string&` that can be used to lookup
-// `std::string_view` values from containers.
+/**
+ * @class fixed_string
+ * @brief A non-null terminated string with a fixed length that cannot be
+ * changed after construction.
+ *
+ * This class is useful as the key to an associative container since these are
+ * immutable after construction. It has no small-string optimization (yet).
+ */
 class fixed_string {
   std::string_view m_data;
 
  public:
+  /**
+   * @struct copy_from_string_view_t
+   * @brief Helper struct to create a fixed_string from a std::string_view.
+   */
   struct copy_from_string_view_t {
     std::string_view data;
   };
 
-  // Create a `const fixed_string&` from the specified `str`.  The lifetime of
-  // the returned reference is the same as the lifetime of `str`.
+  /**
+   * @brief Create a temporary const fixed_string reference.
+   *
+   * The lifetime of the returned reference is the same as the lifetime of
+   * the std::string_view.
+   *
+   * @param str The string view to create the fixed_string from.
+   * @return A const reference to the created fixed_string.
+   */
   static const fixed_string& make_temp(const std::string_view& str) noexcept;
 
-  // Create an object that can construct a `fixed_string` from the specified
-  // `str`.
+  /**
+   * @brief Create an object that can construct a fixed_string from a string.
+   *
+   * @param str The string view to create the fixed_string from.
+   * @return A copy_from_string_view_t object containing the string view.
+   */
   static copy_from_string_view_t create(const std::string_view& str);
 
-  // Create a `fixed_string` from the specified `str`. We do not have a
-  // constructor from `std::string_view` in case users forget to call
-  // `make_temp` when looking up values and we construct a temporary
-  // `fixed_string`
+  /**
+   * @brief Construct a fixed_string from a string.
+   *
+   * We do not have a constructor from std::string_view in case users forget
+   * to call make_temp when looking up values and we construct a temporary
+   * fixed_string.
+   *
+   * @param str The copy_from_string_view_t object containing the string view.
+   */
   fixed_string(const copy_from_string_view_t& str);
 
   ~fixed_string();
@@ -63,19 +82,54 @@ class fixed_string {
   fixed_string(const fixed_string&) = delete;
   fixed_string& operator=(const fixed_string&) = delete;
 
+  /**
+   * @brief Implicit conversion operator to std::string_view.
+   *
+   * @return A std::string_view representing the fixed_string.
+   */
   operator std::string_view() const;
+
+  /**
+   * @brief Get a std::string_view of the fixed_string.
+   *
+   * @return A std::string_view representing the fixed_string.
+   */
   std::string_view view() const;
 };
 
+/**
+ * @brief Equality operator for fixed_string.
+ *
+ * @param lhs The left-hand side fixed_string.
+ * @param rhs The right-hand side fixed_string.
+ * @return Whether the fixed_strings are equal.
+ */
 bool operator==(const fixed_string& lhs, const fixed_string& rhs);
+
+/**
+ * @brief Inequality operator for fixed_string.
+ *
+ * @param lhs The left-hand side fixed_string.
+ * @param rhs The right-hand side fixed_string.
+ * @return Whether the fixed_strings are not equal.
+ */
 bool operator!=(const fixed_string& lhs, const fixed_string& rhs);
 
 }  // namespace trimja
 
 namespace std {
 
+/**
+ * @brief Specialization of std::hash for trimja::fixed_string.
+ */
 template <>
 struct hash<trimja::fixed_string> {
+  /**
+   * @brief Compute the hash value for a fixed_string.
+   *
+   * @param str The fixed_string to hash.
+   * @return The hash value of the fixed_string.
+   */
   size_t operator()(const trimja::fixed_string& str) const {
     return hash<std::string_view>{}(str.view());
   }
