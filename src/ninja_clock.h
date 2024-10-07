@@ -27,9 +27,13 @@
 
 namespace trimja {
 
-// `ninja_clock` represents the on-disk time saved within the `.ninja_deps`
-// file.  `ninja_clock::time_point` is guaranteed to be the same layout
-// as the last modified time saved in this file.
+/**
+ * @struct ninja_clock
+ * @brief Represents the on-disk time saved within the .ninja_deps file.
+ *
+ * ninja_clock::time_point is guaranteed to be the same layout
+ * as the last modified time saved in this file.
+ */
 struct ninja_clock {
   using rep = std::uint64_t;
   using period = std::nano;
@@ -37,9 +41,21 @@ struct ninja_clock {
   using time_point = std::chrono::time_point<ninja_clock>;
   static const bool is_steady = false;
 
+  /**
+   * @brief Converts a file_clock::time_point to a ninja_clock::time_point.
+   *
+   * @param t The file_clock::time_point to convert.
+   * @return The corresponding ninja_clock::time_point.
+   */
   static trimja::ninja_clock::time_point from_file_clock(
       std::chrono::file_clock::time_point t);
 
+  /**
+   * @brief Converts a ninja_clock::time_point to a file_clock::time_point.
+   *
+   * @param t The ninja_clock::time_point to convert.
+   * @return The corresponding file_clock::time_point.
+   */
   static std::chrono::file_clock::time_point to_file_clock(
       trimja::ninja_clock::time_point t);
 };
@@ -51,17 +67,37 @@ struct ninja_clock {
 namespace std {
 namespace chrono {
 
+/**
+ * @struct clock_time_conversion
+ * @brief Specialization for converting between trimja::ninja_clock and file_clock.
+ */
 template <>
 struct clock_time_conversion<trimja::ninja_clock, file_clock> {
+  /**
+   * @brief Converts a file_clock::time_point to a ninja_clock::time_point.
+   * 
+   * @param t The file_clock::time_point to convert.
+   * @return The corresponding ninja_clock::time_point.
+   */
   trimja::ninja_clock::time_point operator()(file_clock::time_point t);
 };
 
+/**
+ * @struct clock_time_conversion
+ * @brief Specialization for converting between file_clock and trimja::ninja_clock.
+ */
 template <>
 struct clock_time_conversion<file_clock, trimja::ninja_clock> {
+  /**
+   * @brief Converts a ninja_clock::time_point to a file_clock::time_point.
+   * 
+   * @param t The ninja_clock::time_point to convert.
+   * @return The corresponding file_clock::time_point.
+   */
   file_clock::time_point operator()(trimja::ninja_clock::time_point t);
 };
 
 }  // namespace chrono
 }  // namespace std
 #endif
-#endif
+#endif  // TRIMJA_NINJA_CLOCK

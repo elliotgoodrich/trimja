@@ -36,6 +36,10 @@ namespace trimja {
 
 namespace detail {
 
+/**
+ * @struct BaseReader
+ * @brief Base class for reading tokens from a Ninja build file.
+ */
 struct BaseReader {
  protected:
   Lexer* m_lexer;
@@ -46,6 +50,10 @@ struct BaseReader {
   const char* position() const;
 };
 
+/**
+ * @struct BaseReaderWithStart
+ * @brief Base class for reading tokens with a start position.
+ */
 struct BaseReaderWithStart : public BaseReader {
  private:
   const char* m_start;
@@ -58,6 +66,10 @@ struct BaseReaderWithStart : public BaseReader {
 
 }  // namespace detail
 
+/**
+ * @class VariableReader
+ * @brief Class for reading variable definitions in a Ninja build file.
+ */
 class VariableReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
@@ -65,6 +77,11 @@ class VariableReader : public detail::BaseReaderWithStart {
   const EvalString& value();
 };
 
+/**
+ * @class LetRangeReader
+ * @brief Class for reading a range of variable definitions in a Ninja build
+ * file.
+ */
 class LetRangeReader : public detail::BaseReaderWithStart {
  public:
   class sentinel {};
@@ -89,6 +106,10 @@ class LetRangeReader : public detail::BaseReaderWithStart {
   sentinel end() const;
 };
 
+/**
+ * @class PathRangeReader
+ * @brief Class for reading a range of paths in a Ninja build file.
+ */
 class PathRangeReader : public detail::BaseReader {
  public:
   class sentinel {};
@@ -125,6 +146,10 @@ class PathRangeReader : public detail::BaseReader {
   sentinel end() const;
 };
 
+/**
+ * @class PoolReader
+ * @brief Class for reading pool definitions in a Ninja build file.
+ */
 class PoolReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
@@ -132,6 +157,10 @@ class PoolReader : public detail::BaseReaderWithStart {
   LetRangeReader variables();
 };
 
+/**
+ * @class BuildReader
+ * @brief Class for reading build statements in a Ninja build file.
+ */
 class BuildReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
@@ -145,6 +174,10 @@ class BuildReader : public detail::BaseReaderWithStart {
   LetRangeReader variables();
 };
 
+/**
+ * @class RuleReader
+ * @brief Class for reading rule definitions in a Ninja build file.
+ */
 class RuleReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
@@ -152,12 +185,20 @@ class RuleReader : public detail::BaseReaderWithStart {
   LetRangeReader variables();
 };
 
+/**
+ * @class DefaultReader
+ * @brief Class for reading default statements in a Ninja build file.
+ */
 class DefaultReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
   PathRangeReader paths();
 };
 
+/**
+ * @class IncludeReader
+ * @brief Class for reading include statements in a Ninja build file.
+ */
 class IncludeReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
@@ -168,6 +209,10 @@ class IncludeReader : public detail::BaseReaderWithStart {
   const std::filesystem::path& parent() const;
 };
 
+/**
+ * @class SubninjaReader
+ * @brief Class for reading subninja statements in a Ninja build file.
+ */
 class SubninjaReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
@@ -177,6 +222,10 @@ class SubninjaReader : public detail::BaseReaderWithStart {
   const std::filesystem::path& parent() const;
 };
 
+/**
+ * @class ManifestReader
+ * @brief Class for parsing a Ninja build file.
+ */
 class ManifestReader {
   Lexer m_lexer;
   EvalString m_storage;

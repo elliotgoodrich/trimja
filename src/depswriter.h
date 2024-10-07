@@ -31,10 +31,33 @@
 
 namespace trimja {
 
+/**
+ * @struct DepsWriter
+ * @brief A class to write dependencies to an output stream.
+ */
 struct DepsWriter {
+  /**
+   * @brief Constructs a DepsWriter with the given output stream.
+   *
+   * @param out The output stream to write dependencies to.
+   */
   explicit DepsWriter(std::ostream& out);
 
+  /**
+   * @brief Records a path and returns its associated node ID.
+   *
+   * @param path The path to record.
+   * @return The node ID associated with the recorded path.
+   */
   std::int32_t recordPath(std::string_view path);
+
+  /**
+   * @brief Records dependencies for a given output node.
+   *
+   * @param out The node ID of the output.
+   * @param mtime The modification time of the output.
+   * @param dependencies A span of node IDs representing the dependencies.
+   */
   void recordDependencies(std::int32_t out,
                           std::chrono::file_clock::time_point mtime,
                           std::span<const std::int32_t> dependencies);

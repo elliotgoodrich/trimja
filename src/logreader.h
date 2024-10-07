@@ -32,6 +32,14 @@
 
 namespace trimja {
 
+/**
+ * @struct LogEntry
+ * @brief Represents a single log entry.
+ *
+ * This structure holds information about a single log entry, including
+ * start and end times, modification time, output path, and the build hash
+ * value.
+ */
 struct LogEntry {
   std::chrono::duration<std::int32_t, std::milli> startTime;
   std::chrono::duration<std::int32_t, std::milli> endTime;
@@ -40,13 +48,31 @@ struct LogEntry {
   std::uint64_t hash;
 };
 
+/**
+ * @class LogReader
+ * @brief Reads and parses log entries from an input stream.
+ *
+ * The LogReader class provides functionality to read and parse log entries
+ * from a given input stream. It supports iteration over the log entries.
+ */
 class LogReader {
   std::istream* m_logs;
   std::string m_nextLine;
 
  public:
+  /**
+   * @struct sentinel
+   * @brief Sentinel type for the end of the iterator range.
+   */
   struct sentinel {};
 
+  /**
+   * @class iterator
+   * @brief Iterator for traversing log entries.
+   *
+   * The iterator class provides functionality to traverse log entries
+   * read by the LogReader.
+   */
   class iterator {
     LogReader* m_reader;
     LogEntry m_entry;
@@ -55,22 +81,72 @@ class LogReader {
     using difference_type = std::ptrdiff_t;
     using value_type = LogEntry;
 
+    /**
+     * @brief Constructs an iterator for the given LogReader.
+     * @param reader Pointer to the LogReader.
+     */
     iterator(LogReader* reader);
 
+    /**
+     * @brief Dereferences the iterator to access the current log entry.
+     * @return Reference to the current log entry.
+     */
     const LogEntry& operator*() const;
 
+    /**
+     * @brief Advances the iterator to the next log entry.
+     * @return Reference to the iterator.
+     */
     iterator& operator++();
+
+    /**
+     * @brief Advances the iterator to the next log entry.
+     */
     void operator++(int);
+
+    /**
+     * @brief Compares the iterator with a sentinel for equality.
+     * @param iter The iterator to compare.
+     * @param s The sentinel to compare.
+     * @return Return whether the iterator has read past the end of the file.
+     */
     friend bool operator==(const iterator& iter, sentinel s);
+
+    /**
+     * @brief Compares the iterator with a sentinel for inequality.
+     * @param iter The iterator to compare.
+     * @param s The sentinel to compare.
+     * @return Return whether the iterator points to a valid entry, i.e. not
+     * past the end of the file.
+     */
     friend bool operator!=(const iterator& iter, sentinel s);
   };
 
  public:
+  /**
+   * @brief Constructs a LogReader with the given input stream.
+   * @param logs The input stream to read log entries from.
+   */
   explicit LogReader(std::istream& logs);
 
+  /**
+   * @brief Reads the next log entry from the input stream.
+   * @param output Pointer to the LogEntry to store the read data.
+   * @return Return true if an entry was successfully read and false if we are
+   * at the end of the file.
+   */
   bool read(LogEntry* output);
 
+  /**
+   * @brief Returns an iterator to the beginning of the log entries.
+   * @return An iterator to the beginning of the log entries.
+   */
   iterator begin();
+
+  /**
+   * @brief Returns a sentinel representing the end of the log entries.
+   * @return A sentinel representing the end of the log entries.
+   */
   sentinel end();
 };
 

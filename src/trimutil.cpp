@@ -243,7 +243,7 @@ struct BuildContext {
 
     for (VariableReader v : r.variables()) {
       const std::string_view name = v.name();
-      evaluate(scope.clearValue(name), v.value(), scope);
+      evaluate(scope.resetValue(name), v.value(), scope);
     }
 
     const std::size_t partsIndex = parts.size();
@@ -341,7 +341,7 @@ struct BuildContext {
 
   void operator()(VariableReader& r) {
     std::string_view name = r.name();
-    evaluate(fileScope.clearValue(name), r.value(), fileScope);
+    evaluate(fileScope.resetValue(name), r.value(), fileScope);
     parts.emplace_back(r.start(), r.bytesParsed());
   }
 

@@ -31,29 +31,47 @@
 
 namespace trimja {
 
-// `BasicScope` holds a set of key-value pairs that represent ninja variables.
+/**
+ * @class BasicScope
+ * @brief Manages a scope of variables for evaluation and substitution.
+ */
 class BasicScope {
   std::unordered_map<fixed_string, std::string> m_variables;
 
  public:
-  // Create a `BasicScope` with no values.
+  /**
+   * @brief Constructs an empty BasicScope.
+   */
   BasicScope();
 
-  // Set the value of the specified `key` to the specified `value` and return a
-  // `std::string_view` to to the inserted value.  Note that `value` will be
-  // moved from unconditionally.
+  /**
+   * @brief Sets a variable in the scope.
+   * @param key The name of the variable.
+   * @param value The value of the variable.
+   * @return A reference to the inserted value.
+   */
   std::string_view set(std::string_view key, std::string&& value);
 
-  // Insert an empty value for the specified `key`, or clear the existing
-  // `value` if there is one and return a reference to this empty value in both
-  // cases.
-  std::string& clearValue(std::string_view key);
+  /**
+   * @brief Resets the value of a variable in the scope.
+   *
+   * This method sets the value associated with the specified key to an empty
+   * string. If the key does not exist, it inserts the key with an empty value.
+   *
+   * @param key The name of the variable to reset.
+   * @return A reference to the reset value.
+   */
+  std::string& resetValue(std::string_view key);
 
-  // If there is a key with the specified `name`, then append its value to the
-  // specified `output` and return true; otherwise do nothing and return false.
+  /**
+   * @brief Appends the value of a variable to the output string.
+   * @param output The string to append the value to.
+   * @param name The name of the variable.
+   * @return Whether the variable was found in this scope.
+   */
   bool appendValue(std::string& output, std::string_view name) const;
 };
 
 }  // namespace trimja
 
-#endif
+#endif  // TRIMJA_BASICSCOPE

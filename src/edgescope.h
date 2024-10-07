@@ -53,25 +53,75 @@ class EdgeScopeBase {
                 std::span<const std::string> outs);
 
   std::string_view set(std::string_view key, std::string&& value);
-  std::string& clearValue(std::string_view key);
+  std::string& resetValue(std::string_view key);
 };
 
 }  // namespace detail
 
+/**
+ * @class EdgeScope
+ * @brief Manages the scope of variables for a specific build edge.
+ *
+ * The EdgeScope class is responsible for handling variable lookups and
+ * substitutions within the context of a specific build edge. It extends
+ * the functionality of EdgeScopeBase and interacts with a parent scope.
+ *
+ * @tparam SCOPE The type of the parent scope.
+ */
 template <typename SCOPE>
 class EdgeScope : private detail::EdgeScopeBase {
   SCOPE& m_parent;
 
  public:
+  /**
+   * @brief Constructs an EdgeScope with the given parent scope, rule, inputs,
+   * and outputs.
+   * @param parent The parent scope.
+   * @param rule The rule associated with the build edge.
+   * @param ins The input files for the build edge.
+   * @param outs The output files for the build edge.
+   */
   EdgeScope(SCOPE& parent,
             const Rule& rule,
             std::span<const std::string> ins,
             std::span<const std::string> outs)
       : detail::EdgeScopeBase(rule, ins, outs), m_parent(parent) {}
 
-  using detail::EdgeScopeBase::clearValue;
+  /**
+   * @brief Sets a local variable in the edge scope.
+   *
+   * This method sets a local variable with the given key and value within the
+   * edge scope. The variable is stored in the local scope and can be used for
+   * variable substitution during the build process.
+   *
+   * @param key The name of the variable to set.
+   * @param value The value to assign to the variable.
+   * @return A string view of the stored value.
+   */
   using detail::EdgeScopeBase::set;
 
+  /**
+   * @brief Resets the value of a variable in the scope.
+   *
+   * This method sets the value associated with the specified key to an empty
+   * string. If the key does not exist, it inserts the key with an empty value.
+   *
+   * @param key The name of the variable to reset.
+   * @return A reference to the reset value.
+   */
+  using detail::EdgeScopeBase::resetValue;
+
+  /**
+   * @brief Appends the value of a variable to the output string.
+   *
+   * This method looks up the value of the specified variable name and appends
+   * it to the output string. The lookup follows the order of precedence as
+   * described in the Ninja build manual.
+   *
+   * @param output The string to append the value to.
+   * @param name The name of the variable.
+   * @return Whether the variable was found in this scope.
+   */
   bool appendValue(std::string& output, std::string_view name) const {
     // From https://ninja-build.org/manual.html#ref_scope
     // Variable declarations indented in a build block are scoped to the build
@@ -107,4 +157,4 @@ class EdgeScope : private detail::EdgeScopeBase {
 
 }  // namespace trimja
 
-#endif
+#endif  // TRIMJA_EDGESCOPE

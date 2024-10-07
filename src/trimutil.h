@@ -29,7 +29,20 @@
 
 namespace trimja {
 
+/**
+ * @struct TrimUtil
+ * @brief Utility to trim a Ninja build file based on a list of affected files.
+ */
 struct TrimUtil {
+  /**
+   * @brief Trims the given Ninja build file based on the affected files.
+   *
+   * @param output The output stream to write the trimmed Ninja file to.
+   * @param ninjaFile The path to the original Ninja build file.
+   * @param ninjaFileContents The contents of the original Ninja build file.
+   * @param affected The input stream containing the list of affected files.
+   * @param explain If true, prints to stderr why each build command was kept.
+   */
   static void trim(std::ostream& output,
                    const std::filesystem::path& ninjaFile,
                    const std::string& ninjaFileContents,
