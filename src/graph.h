@@ -112,11 +112,19 @@ class Graph {
   std::size_t addDefault();
 
   /**
-   * @brief Adds an edge between the specified input and output nodes.
+   * @brief Adds bidirectional edge between the specified input and output
+   * nodes.
    * @param in The index of the input node.
    * @param out The index of the output node.
    */
   void addEdge(std::size_t in, std::size_t out);
+
+  /**
+   * @brief Adds an one-way edge from the specified input to output node.
+   * @param in The index of the input node.
+   * @param out The index of the output node.
+   */
+  void addOneWayEdge(std::size_t in, std::size_t out);
 
   /**
    * @brief Checks if the specified path index is the default node.
@@ -146,7 +154,8 @@ class Graph {
   const std::set<std::size_t>& out(std::size_t pathIndex) const;
 
   /**
-   * @brief Gets the set of input nodes for the specified path index.
+   * @brief Gets the set of input nodes for the specified path index.  Note that
+   * this does not include order-only dependencies.
    * @param pathIndex The index of the path.
    * @return The set of input nodes.
    */

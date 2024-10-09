@@ -137,6 +137,11 @@ void Graph::addEdge(std::size_t in, std::size_t out) {
   m_outputToInput[out].insert(in);
 }
 
+void Graph::addOneWayEdge(std::size_t in, std::size_t out) {
+  assert(in != out);
+  m_inputToOutput[in].insert(out);
+}
+
 bool Graph::isDefault(std::size_t pathIndex) const {
   return pathIndex == m_defaultIndex;
 }
