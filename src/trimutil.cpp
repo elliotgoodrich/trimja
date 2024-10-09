@@ -224,8 +224,10 @@ struct BuildContext {
     for (const EvalString& path : r.implicitIn()) {
       ins.push_back(evaluatePath(path));
     }
+
+    std::vector<std::string> orderOnlyDeps;
     for (const EvalString& path : r.orderOnlyDeps()) {
-      ins.push_back(evaluatePath(path));
+      orderOnlyDeps.push_back(evaluatePath(path));
     }
 
     // Collect validations but ignore what they are. If we include a build
@@ -270,6 +272,16 @@ struct BuildContext {
       const std::size_t inIndex = getPathIndex(in);
       for (const std::size_t outIndex : outIndices) {
         graph.addEdge(inIndex, outIndex);
+      }
+    }
+
+    // We only need to add an input to output edge and not a bidirectional
+    // one for order-only dependencies. This is because we only include a
+    // build edge if an input (implicit or not) is affected.
+    for (std::string& orderOnlyDep : orderOnlyDeps) {
+      const std::size_t inIndex = getPathIndex(orderOnlyDep);
+      for (const std::size_t outIndex : outIndices) {
+        graph.addOneWayEdge(inIndex, outIndex);
       }
     }
 

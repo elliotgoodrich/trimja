@@ -10,4 +10,4 @@ build out5: copy affected3
 build out6: copy notAffected3
 build out7: copy notAffected4
 build bootstrap: phony out5 out6
-build topout: copy out7 || bootstrap
+build topout: copy out7 bootstrap

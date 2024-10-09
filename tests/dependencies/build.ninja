@@ -4,6 +4,7 @@ build out1: copy in
 build out2: copy foo | in
 build out3: copy foo || in
 build out4: copy foo | bar || in
+build out5: copy foo || bar
 build extra1: copy out1
 build extra2: copy foo | out2
 build extra3: copy foo || out3
