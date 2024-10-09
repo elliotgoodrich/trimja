@@ -1,3 +1,5 @@
+[![CI](https://github.com/elliotgoodrich/trimja/actions/workflows/ci.yaml/badge.svg)](https://github.com/elliotgoodrich/trimja/actions/workflows/ci.yaml)
+
 # trimja
 
 **trimja** is a command line utility to trim down
@@ -7,6 +9,9 @@ are dependent or necessary for a specific subset of input files.
 This can be used to **speed up CI** to create only those build artifacts that
 are affected by the current pull request. For example, a pull request updating
 `README.md` shouldn't need to build and test your entire software!
+
+For a ready-to-use Github Action see
+[trimja-action](https://github.com/elliotgoodrich/trimja-action).
 
 ## Help
 
