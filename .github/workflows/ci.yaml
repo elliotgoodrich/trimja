@@ -36,6 +36,12 @@ jobs:
         -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
         ${{ format('-D{0}={1}', matrix.environment.name == 'Windows' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
         ${{ matrix.environment.name != 'Windows' && '-G Ninja' || ''}}
+    - uses: elliotgoodrich/trimja-action@v1
+      # Skip Windows (which doesn't yet use Ninja) and releases
+      if: matrix.environment.name != 'Windows' && !startsWith(github.ref, 'refs/tags/')
+      with:
+        path: ${{ steps.strings.outputs.build-output-dir }}/build.ninja
+        build-configuration: ${{ matrix.build_type }}
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
     - name: Test
