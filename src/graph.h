@@ -25,6 +25,7 @@
 
 #include "fixed_string.h"
 
+#include <numeric>
 #include <optional>
 #include <set>
 #include <string>

@@ -26,6 +26,7 @@
 #include "manifestparser.h"
 
 #include <fstream>
+#include <sstream>
 #include <variant>
 
 namespace trimja {

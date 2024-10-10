@@ -22,6 +22,8 @@
 
 #include "fixed_string.h"
 
+#include <algorithm>
+
 namespace trimja {
 
 const fixed_string& fixed_string::make_temp(

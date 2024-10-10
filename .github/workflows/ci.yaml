@@ -36,15 +36,13 @@ jobs:
         -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
         ${{ format('-D{0}={1}', matrix.environment.name == 'Windows' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
         ${{ matrix.environment.name != 'Windows' && '-G Ninja' || ''}}
-        -DCMAKE_UNITY_BUILD=ON
     - name: Build
-      run: cmake --build build --config ${{ matrix.build_type }}
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
     - name: Test
-      working-directory: build
-      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+      run: ctest --test-dir ${{ steps.strings.outputs.build-output-dir }} --build-config ${{ matrix.build_type }} --output-on-failure
     - name: Install
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
-      run: cmake --build build --config ${{ matrix.build_type }} --target package
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} --target package
     - name: Generate Changelog
       run: git show -s --format='%b' > build/CHANGELOG.txt
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
