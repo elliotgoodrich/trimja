@@ -655,8 +655,7 @@ void TrimUtil::trim(std::ostream& output,
     // If that does not indicate a path, try the absolute path
     std::filesystem::path p(line);
     if (!p.is_absolute()) {
-      const std::filesystem::path absolute =
-          std::filesystem::absolute(ninjaFileDir / p);
+      const std::filesystem::path absolute = std::filesystem::absolute(p);
       std::string absoluteStr = absolute.string();
       const std::optional<std::size_t> index = graph.findPath(absoluteStr);
       if (index.has_value()) {
@@ -673,7 +672,7 @@ void TrimUtil::trim(std::ostream& output,
     // If neither indicates a path, then try the path relative to the ninja
     // file
     if (!p.is_relative()) {
-      const std::filesystem::path relative = p.lexically_relative(ninjaFileDir);
+      const std::filesystem::path relative = std::filesystem::relative(p);
       std::string relativeStr = relative.string();
       const std::optional<std::size_t> index = graph.findPath(relativeStr);
       if (index.has_value()) {
