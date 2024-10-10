@@ -638,6 +638,10 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all files in `affected` as required
   for (std::string line; std::getline(affected, line);) {
+    if (line.empty()) {
+      continue;
+    }
+
     // First try the raw input
     {
       const std::optional<std::size_t> index = graph.findPath(line);
@@ -655,34 +659,40 @@ void TrimUtil::trim(std::ostream& output,
     // If that does not indicate a path, try the absolute path
     std::filesystem::path p(line);
     if (!p.is_absolute()) {
-      const std::filesystem::path absolute = std::filesystem::absolute(p);
-      std::string absoluteStr = absolute.string();
-      const std::optional<std::size_t> index = graph.findPath(absoluteStr);
-      if (index.has_value()) {
-        if (explain && !isAffected[*index]) {
-          std::cerr << "Including '" << line
-                    << "' as it was marked as affected by the user"
-                    << std::endl;
+      std::error_code okay;
+      const std::filesystem::path absolute = std::filesystem::absolute(p, okay);
+      if (okay) {
+        std::string absoluteStr = absolute.string();
+        const std::optional<std::size_t> index = graph.findPath(absoluteStr);
+        if (index.has_value()) {
+          if (explain && !isAffected[*index]) {
+            std::cerr << "Including '" << line
+                      << "' as it was marked as affected by the user"
+                      << std::endl;
+          }
+          isAffected[*index] = true;
+          continue;
         }
-        isAffected[*index] = true;
-        continue;
       }
     }
 
     // If neither indicates a path, then try the path relative to the ninja
     // file
     if (!p.is_relative()) {
-      const std::filesystem::path relative = std::filesystem::relative(p);
-      std::string relativeStr = relative.string();
-      const std::optional<std::size_t> index = graph.findPath(relativeStr);
-      if (index.has_value()) {
-        if (explain && !isAffected[*index]) {
-          std::cerr << "Including '" << line
-                    << "' as it was marked as affected by the user"
-                    << std::endl;
+      std::error_code okay;
+      const std::filesystem::path relative = std::filesystem::relative(p, okay);
+      if (okay) {
+        std::string relativeStr = relative.string();
+        const std::optional<std::size_t> index = graph.findPath(relativeStr);
+        if (index.has_value()) {
+          if (explain && !isAffected[*index]) {
+            std::cerr << "Including '" << line
+                      << "' as it was marked as affected by the user"
+                      << std::endl;
+          }
+          isAffected[*index] = true;
+          continue;
         }
-        isAffected[*index] = true;
-        continue;
       }
     }
 
