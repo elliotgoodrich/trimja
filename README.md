@@ -92,3 +92,4 @@ files.
   7. Run `ninja`
   8. If the build is successful upload `.ninja_log` and `.ninja_deps` to the
      cache
+
