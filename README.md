@@ -2,9 +2,12 @@
 
 # trimja
 
-**trimja** is a command line utility to trim down
-[ninja build](https://ninja-build.org/) file to only those commands that
-are dependent or necessary for a specific subset of input files.
+[Ninja](https://ninja-build.org/) is a fast build system commonly used to build
+large C/C++ projects.  It does this by looking at a Ninja build file, which
+contains the build commands and describes dependencies between files.
+
+**trimja** is a command line utility to trim down Ninja build files to only
+those commands that are dependent or necessary for a subset of input files.
 
 This can be used to **speed up CI** to create only those build artifacts that
 are affected by the current pull request. For example, a pull request updating
