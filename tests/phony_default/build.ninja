@@ -1,0 +1,4 @@
+rule touch
+  command = ninja --version $in -> $out
+build out: touch in
+default out

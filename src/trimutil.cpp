@@ -254,6 +254,11 @@ struct BuildContext {
     // Add the build command
     const std::size_t commandIndex = commands.size();
     BuildCommand& buildCommand = commands.emplace_back();
+    if (isBuiltInRule(ruleIndex)) {
+      // Always print `phony` rules since it saves us time generating an
+      // identical `phony` rule later on.
+      buildCommand.resolution = BuildCommand::Print;
+    }
     buildCommand.partsIndex = partsIndex;
     buildCommand.validationStr = validationStr;
     buildCommand.outStr = outStr;
@@ -341,6 +346,7 @@ struct BuildContext {
 
     const std::size_t commandIndex = commands.size();
     BuildCommand& buildCommand = commands.emplace_back();
+    buildCommand.resolution = BuildCommand::Print;
     buildCommand.partsIndex = partsIndex;
     buildCommand.ruleIndex = BuildContext::defaultIndex;
 
