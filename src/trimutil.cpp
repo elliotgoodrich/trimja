@@ -643,10 +643,13 @@ void TrimUtil::trim(std::ostream& output,
   }
 
   // Mark all files in `affected` as required
+  std::vector<std::filesystem::path> attempted;
   for (std::string line; std::getline(affected, line);) {
     if (line.empty()) {
       continue;
     }
+
+    attempted.clear();
 
     // First try the raw input
     {
@@ -666,7 +669,8 @@ void TrimUtil::trim(std::ostream& output,
     std::filesystem::path p(line);
     if (!p.is_absolute()) {
       std::error_code okay;
-      const std::filesystem::path absolute = std::filesystem::absolute(p, okay);
+      const std::filesystem::path& absolute =
+          attempted.emplace_back(std::filesystem::absolute(p, okay));
       if (okay) {
         std::string absoluteStr = absolute.string();
         const std::optional<std::size_t> index = graph.findPath(absoluteStr);
@@ -686,7 +690,8 @@ void TrimUtil::trim(std::ostream& output,
     // file
     if (!p.is_relative()) {
       std::error_code okay;
-      const std::filesystem::path relative = std::filesystem::relative(p, okay);
+      const std::filesystem::path& relative =
+          attempted.emplace_back(std::filesystem::relative(p, okay));
       if (okay) {
         std::string relativeStr = relative.string();
         const std::optional<std::size_t> index = graph.findPath(relativeStr);
@@ -702,7 +707,17 @@ void TrimUtil::trim(std::ostream& output,
       }
     }
 
-    std::cerr << "'" << line << "' not found in input file" << std::endl;
+    std::cerr << "'" << line << "' not found in input file";
+    if (!attempted.empty()) {
+      std::cerr << " (also tried ";
+      const char* separator = "";
+      for (const std::filesystem::path& path : attempted) {
+        std::cerr << separator << "'" << path.string() << "'";
+        separator = ", ";
+      }
+      std::cerr << ')';
+    }
+    std::cerr << std::endl;
   }
 
   std::vector<bool> seen(graph.size());
