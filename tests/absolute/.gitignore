@@ -1,0 +1,4 @@
+# These files are generated at configure time
+changed.txt
+build.ninja
+expected.ninja
