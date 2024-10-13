@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.26.3)
-project(trimja VERSION 0.5.3)
+project(trimja VERSION 0.5.4)
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
