@@ -49,6 +49,17 @@ set(CPACK_NSIS_MODIFY_PATH ON)
 set(CPACK_NSIS_IGNORE_LICENSE_PAGE ON)
 include(CPack)
 
+# Generate test files for the absolute/relative unit test
+get_filename_component(ABSOLUTE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/relative" ABSOLUTE)
+string(REPLACE ":" "$:" ABSOLUTE_PATH_ESCAPED "${ABSOLUTE_PATH}")
+file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/changed.txt" "${ABSOLUTE_PATH}\nabsolute")
+string(APPEND NINJA_CONTENTS "rule copy\n")
+string(APPEND NINJA_CONTENTS "  command = ninja --version \$in -> \$out\n")
+string(APPEND NINJA_CONTENTS "build out_relative: copy absolute\n")
+string(APPEND NINJA_CONTENTS "build out_absolute: copy ${ABSOLUTE_PATH_ESCAPED}\n")
+file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/build.ninja" "${NINJA_CONTENTS}")
+file(COPY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/build.ninja" "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/expected.ninja")
+
 file(
     GLOB TRIMJA_TESTS
     LIST_DIRECTORIES true
