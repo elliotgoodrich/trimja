@@ -17,6 +17,7 @@ add_executable(
     src/builddirutil.cpp
     src/depsreader.cpp
     src/edgescope.cpp
+    src/evalstring.cpp
     src/graph.cpp
     src/fixed_string.cpp
     src/logreader.cpp
@@ -25,12 +26,13 @@ add_executable(
     src/ninja_clock.cpp
     src/rule.cpp
     src/trimutil.cpp
-    thirdparty/ninja/eval_env.cc
     thirdparty/ninja/lexer.cc
     thirdparty/ninja/util.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
 )
+
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
+target_include_directories(trimja PRIVATE src)
 target_include_directories(trimja PRIVATE thirdparty)
 target_compile_options(trimja PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>

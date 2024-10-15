@@ -30,6 +30,7 @@
 //   * Change 'ReadIdent' to return the key as a `string_view`
 //   * Store the filename as a `std::filesystem::path` and add `getFilename`
 //     accessor
+//   * Replace `EvalString` with `trimja::EvalString`
 
 #ifndef NINJA_LEXER_H_
 #define NINJA_LEXER_H_
@@ -38,7 +39,9 @@
 #include <string>
 #include <string_view>
 
-struct EvalString;
+namespace trimja {
+class EvalString;
+}  // namespace trimja
 
 struct Lexer {
   Lexer() {}
@@ -94,13 +97,13 @@ struct Lexer {
   /// Read a path (complete with $escapes).
   /// Returns false only on error, returned path may be empty if a delimiter
   /// (space, newline) is hit.
-  bool ReadPath(EvalString* path, std::string* err) {
+  bool ReadPath(trimja::EvalString* path, std::string* err) {
     return ReadEvalString(path, true, err);
   }
 
   /// Read the value side of a var = value line (complete with $escapes).
   /// Returns false only on error.
-  bool ReadVarValue(EvalString* value, std::string* err) {
+  bool ReadVarValue(trimja::EvalString* value, std::string* err) {
     return ReadEvalString(value, false, err);
   }
   bool SkipVarValue(std::string* err);
@@ -115,7 +118,7 @@ struct Lexer {
   void EatWhitespace();
 
   /// Read a $-escaped string.
-  bool ReadEvalString(EvalString* eval, bool path, std::string* err);
+  bool ReadEvalString(trimja::EvalString* eval, bool path, std::string* err);
 
   std::filesystem::path filename_;
   std::string_view input_;

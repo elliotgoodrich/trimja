@@ -24,9 +24,8 @@
 #define TRIMJA_EDGESCOPE
 
 #include "basicscope.h"
+#include "evalstring.h"
 #include "rule.h"
-
-#include <ninja/eval_env.h>
 
 #include <span>
 #include <string>

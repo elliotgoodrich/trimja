@@ -25,6 +25,7 @@
 #include "basicscope.h"
 #include "depsreader.h"
 #include "edgescope.h"
+#include "evalstring.h"
 #include "fixed_string.h"
 #include "graph.h"
 #include "logreader.h"
@@ -32,7 +33,6 @@
 #include "murmur_hash.h"
 #include "rule.h"
 
-#include <ninja/eval_env.h>
 #include <ninja/util.h>
 
 #include <cassert>

@@ -80,7 +80,7 @@ const EvalString& VariableReader::value() {
   expectToken(m_lexer, Lexer::EQUALS);
 
   std::string err;
-  m_storage->Clear();
+  m_storage->clear();
   if (!m_lexer->ReadVarValue(m_storage, &err)) {
     throw std::runtime_error(err);
   }
@@ -148,7 +148,7 @@ PathRangeReader::iterator::operator*() const {
 
 PathRangeReader::iterator& PathRangeReader::iterator::operator++() {
   std::string err;
-  m_storage->Clear();
+  m_storage->clear();
   if (!m_lexer->ReadPath(m_storage, &err)) {
     throw std::runtime_error(err);
   }
@@ -270,7 +270,7 @@ PathRangeReader DefaultReader::paths() {
 
 const EvalString& IncludeReader::path() {
   std::string err;
-  m_storage->Clear();
+  m_storage->clear();
   if (!m_lexer->ReadPath(m_storage, &err)) {
     throw std::runtime_error(err);
   }
