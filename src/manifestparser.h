@@ -23,7 +23,8 @@
 #ifndef TRIMJA_PARSER
 #define TRIMJA_PARSER
 
-#include <ninja/eval_env.h>
+#include "evalstring.h"
+
 #include <ninja/lexer.h>
 
 #include <cstddef>

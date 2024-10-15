@@ -23,15 +23,13 @@
 #ifndef TRIMJA_RULE
 #define TRIMJA_RULE
 
-#include <ninja/eval_env.h>
-
 #include <string_view>
 #include <utility>
 #include <vector>
 
-struct EvalString;
-
 namespace trimja {
+
+class EvalString;
 
 /**
  * @class Rule

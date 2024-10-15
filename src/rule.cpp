@@ -22,7 +22,7 @@
 
 #include "rule.h"
 
-#include <ninja/eval_env.h>
+#include "evalstring.h"
 
 namespace trimja {
 

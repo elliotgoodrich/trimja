@@ -15,10 +15,10 @@
 
 #include "lexer.h"
 
-#include "eval_env.h"
+#include "evalstring.h"
 
 bool Lexer::SkipVarValue(std::string *err) {
-  EvalString tmp;
+  trimja::EvalString tmp;
   return ReadEvalString(&tmp, false, err);
 }
 
@@ -689,7 +689,7 @@ yy95:
   return true;
 }
 
-bool Lexer::ReadEvalString(EvalString *eval, bool path, std::string* err) {
+bool Lexer::ReadEvalString(trimja::EvalString *eval, bool path, std::string* err) {
   const char* p = ofs_;
   const char* q;
   const char* start;
@@ -757,7 +757,7 @@ yy102:
 		goto yy102;
 	}
 	{
-	  eval->AddText(std::string_view(start, p - start));
+	  eval->appendText(std::string_view(start, p - start));
       continue;
     }
 yy105:
@@ -769,7 +769,7 @@ yy105:
       } else {
         if (*start == '\n')
           break;
-	    eval->AddText(std::string_view(start, 1));
+	    eval->appendText(std::string_view(start, 1));
         continue;
       }
     }
@@ -834,13 +834,13 @@ yy117:
 yy118:
 	++p;
 	{
-      eval->AddText(" ");
+      eval->appendText(" ");
       continue;
     }
 yy120:
 	++p;
 	{
-      eval->AddText("$");
+      eval->appendText("$");
       continue;
     }
 yy122:
@@ -850,13 +850,13 @@ yy122:
 	}
 	{
 	// TODO:
-      eval->AddSpecial(std::string_view(start + 1, p - start - 1));
+      eval->appendVariable(std::string_view(start + 1, p - start - 1));
       continue;
     }
 yy125:
 	++p;
 	{
-      eval->AddText(":");
+      eval->appendText(":");
       continue;
     }
 yy127:
@@ -882,7 +882,7 @@ yy131:
 yy134:
 	++p;
 	{
-      eval->AddSpecial(std::string_view(start + 2, p - start - 3));
+      eval->appendVariable(std::string_view(start + 2, p - start - 3));
       continue;
     }
 }
