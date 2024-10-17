@@ -33,7 +33,7 @@ add_executable(
 
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
 target_include_directories(trimja PRIVATE src)
-target_include_directories(trimja PRIVATE thirdparty)
+target_include_directories(trimja SYSTEM PRIVATE thirdparty)
 target_compile_options(trimja PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>

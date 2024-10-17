@@ -33,7 +33,7 @@ namespace trimja {
  * changed after construction.
  *
  * This class is useful as the key to an associative container since these are
- * immutable after construction. It has no small-string optimization (yet).
+ * immutable after construction. It has no small-string optimization.
  */
 class fixed_string {
   std::string_view m_data;
@@ -79,8 +79,24 @@ class fixed_string {
 
   ~fixed_string();
 
-  fixed_string(const fixed_string&) = delete;
-  fixed_string& operator=(const fixed_string&) = delete;
+  /**
+   * @brief Move construct from another fixed_string.
+   *
+   * `other` will be left as an empty string.
+   *
+   * @param str The fixed_string to move from.
+   */
+  fixed_string(fixed_string&& other) noexcept;
+
+  /**
+   * @brief Move assign from another fixed_string.
+   *
+   * `other` will be left as an empty string.
+   *
+   * @param str The fixed_string to move assign from.
+   * @return A reference to this.
+   */
+  fixed_string& operator=(fixed_string&& rhs) noexcept;
 
   /**
    * @brief Implicit conversion operator to std::string_view.
@@ -115,6 +131,14 @@ bool operator==(const fixed_string& lhs, const fixed_string& rhs);
  */
 bool operator!=(const fixed_string& lhs, const fixed_string& rhs);
 
+/**
+ * @brief Computes the hash value for a fixed_string.
+ *
+ * @param str The fixed_string to hash.
+ * @return The hash value of the fixed_string.
+ */
+std::size_t hash_value(const fixed_string& str);
+
 }  // namespace trimja
 
 namespace std {
@@ -130,9 +154,7 @@ struct hash<trimja::fixed_string> {
    * @param str The fixed_string to hash.
    * @return The hash value of the fixed_string.
    */
-  size_t operator()(const trimja::fixed_string& str) const {
-    return hash<std::string_view>{}(str.view());
-  }
+  size_t operator()(const trimja::fixed_string& str) const;
 };
 
 }  // namespace std

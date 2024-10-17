@@ -25,9 +25,10 @@
 
 #include "fixed_string.h"
 
+#include <boost/boost_unordered.hpp>
+
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 namespace trimja {
 
@@ -36,7 +37,7 @@ namespace trimja {
  * @brief Manages a scope of variables for evaluation and substitution.
  */
 class BasicScope {
-  std::unordered_map<fixed_string, std::string> m_variables;
+  boost::unordered_flat_map<fixed_string, std::string> m_variables;
 
  public:
   /**

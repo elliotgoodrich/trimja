@@ -51,6 +51,16 @@ fixed_string::~fixed_string() {
   delete[] m_data.data();
 }
 
+fixed_string::fixed_string(fixed_string&& other) noexcept
+    : m_data(std::exchange(other.m_data, std::string_view{nullptr, 0})) {}
+
+fixed_string& fixed_string::operator=(fixed_string&& rhs) noexcept {
+  fixed_string tmp{std::move(rhs)};
+  using std::swap;
+  swap(m_data, tmp.m_data);
+  return *this;
+}
+
 fixed_string::operator std::string_view() const {
   return m_data;
 }
@@ -67,4 +77,17 @@ bool operator!=(const fixed_string& lhs, const fixed_string& rhs) {
   return lhs.view() != rhs.view();
 }
 
+std::size_t hash_value(const fixed_string& str) {
+  return std::hash<fixed_string>{}(str);
+}
+
 }  // namespace trimja
+
+namespace std {
+
+size_t hash<trimja::fixed_string>::operator()(
+    const trimja::fixed_string& str) const {
+  return hash<std::string_view>{}(str.view());
+}
+
+}  // namespace std
