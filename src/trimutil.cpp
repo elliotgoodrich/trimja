@@ -34,6 +34,7 @@
 #include "rule.h"
 
 #include <ninja/util.h>
+#include <boost/boost_unordered.hpp>
 
 #include <cassert>
 #include <forward_list>
@@ -103,7 +104,10 @@ struct BuildContext {
   std::vector<std::pair<Rule, std::size_t>> rules;
 
   // Our rules keyed by name
-  std::unordered_map<fixed_string, std::size_t> ruleLookup;
+  boost::unordered_flat_map<fixed_string,
+                            std::size_t,
+                            std::hash<trimja::fixed_string>>
+      ruleLookup;
 
   // Our top-level variables
   BasicScope fileScope;

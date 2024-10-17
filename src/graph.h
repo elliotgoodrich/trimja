@@ -25,12 +25,13 @@
 
 #include "fixed_string.h"
 
+#include <boost/boost_unordered.hpp>
+
 #include <numeric>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace trimja {
@@ -42,15 +43,22 @@ namespace trimja {
  */
 class Graph {
   struct PathHash {
+    // We need `PathHash` to have some size, otherwise we hit a compilation
+    // issue with `boost::unordered_flat_map`.
+    void* _;
     std::size_t operator()(const fixed_string& v) const;
   };
 
   struct PathEqual {
+    // We need `PathEqual` to have some size, otherwise we hit a compilation
+    // issue with `boost::unordered_flat_map`.
+    void* _;
     bool operator()(const fixed_string& left, const fixed_string& right) const;
   };
 
+ private:
   // A look up from path to vertex index.
-  std::unordered_map<fixed_string, std::size_t, PathHash, PathEqual>
+  boost::unordered_flat_map<fixed_string, std::size_t, PathHash, PathEqual>
       m_pathToIndex;
 
   // An adjacency list of input -> output
@@ -60,7 +68,8 @@ class Graph {
   std::vector<std::set<std::size_t>> m_outputToInput;
 
   // Names of paths (this points to the keys in `m_pathToIndex`, which is always
-  // valid since `std::unordered_map` has pointer stability.
+  // valid since `fixed_string` has no small-string optimization and always
+  // allocates on the heap.
   std::vector<std::string_view> m_path;
 
   std::size_t m_defaultIndex = std::numeric_limits<std::size_t>::max();
