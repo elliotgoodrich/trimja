@@ -23,6 +23,7 @@
 #ifndef TRIMJA_FIXED_STRING
 #define TRIMJA_FIXED_STRING
 
+#include <functional>
 #include <string_view>
 
 namespace trimja {
@@ -32,51 +33,34 @@ namespace trimja {
  * @brief A non-null terminated string with a fixed length that cannot be
  * changed after construction.
  *
- * This class is useful as the key to an associative container since these are
- * immutable after construction. It has no small-string optimization.
+ * This class is incredibly simple and will be slightly more optimal than
+ * `std::string` for paths, which will overflow the small-string optimization.
+ * Since `fixed_string` always allocates it is possible to create referencing
+ * `std::string_view`s that will always be valid even if the `fixed_string`
+ * is moved.
+ *
+ * Since `fixed_string` is move-only it is impossible to accidentally create
+ * copies.
  */
 class fixed_string {
   std::string_view m_data;
 
  public:
   /**
-   * @struct copy_from_string_view_t
-   * @brief Helper struct to create a fixed_string from a std::string_view.
+   * @brief Default constructor for fixed_string.
    */
-  struct copy_from_string_view_t {
-    std::string_view data;
-  };
+  fixed_string();
 
   /**
-   * @brief Create a temporary const fixed_string reference.
+   * @brief Constructs a fixed_string from a std::string_view.
    *
-   * The lifetime of the returned reference is the same as the lifetime of
-   * the std::string_view.
-   *
-   * @param str The string view to create the fixed_string from.
-   * @return A const reference to the created fixed_string.
+   * @param str The std::string_view to construct from.
    */
-  static const fixed_string& make_temp(const std::string_view& str) noexcept;
+  explicit fixed_string(std::string_view str);
 
   /**
-   * @brief Create an object that can construct a fixed_string from a string.
-   *
-   * @param str The string view to create the fixed_string from.
-   * @return A copy_from_string_view_t object containing the string view.
+   * @brief Destructor for fixed_string.
    */
-  static copy_from_string_view_t create(const std::string_view& str);
-
-  /**
-   * @brief Construct a fixed_string from a string.
-   *
-   * We do not have a constructor from std::string_view in case users forget
-   * to call make_temp when looking up values and we construct a temporary
-   * fixed_string.
-   *
-   * @param str The copy_from_string_view_t object containing the string view.
-   */
-  fixed_string(const copy_from_string_view_t& str);
-
   ~fixed_string();
 
   /**
@@ -84,7 +68,7 @@ class fixed_string {
    *
    * `other` will be left as an empty string.
    *
-   * @param str The fixed_string to move from.
+   * @param other The fixed_string to move from.
    */
   fixed_string(fixed_string&& other) noexcept;
 
@@ -93,7 +77,7 @@ class fixed_string {
    *
    * `other` will be left as an empty string.
    *
-   * @param str The fixed_string to move assign from.
+   * @param rhs The fixed_string to move assign from.
    * @return A reference to this.
    */
   fixed_string& operator=(fixed_string&& rhs) noexcept;
@@ -148,13 +132,35 @@ namespace std {
  */
 template <>
 struct hash<trimja::fixed_string> {
+  using is_transparent = void;
+
   /**
    * @brief Compute the hash value for a fixed_string.
    *
-   * @param str The fixed_string to hash.
-   * @return The hash value of the fixed_string.
+   * @param str The string to hash.
+   * @return The hash value of the string.
    */
+  size_t operator()(const string_view& str) const;
   size_t operator()(const trimja::fixed_string& str) const;
+};
+
+template <>
+/**
+ * @brief Functor for comparing a string_view and a fixed_string for equality.
+ */
+struct equal_to<trimja::fixed_string> {
+  using is_transparent = void;
+
+  /**
+   * @brief Compares two strings for equality.
+   * @param lhs The first string to compare.
+   * @param rhs The second string to compare.
+   * @return Whether the strings are equal.
+   */
+  bool operator()(const string_view& lhs,
+                  const trimja::fixed_string& rhs) const;
+  bool operator()(const trimja::fixed_string& lhs,
+                  const trimja::fixed_string& rhs) const;
 };
 
 }  // namespace std

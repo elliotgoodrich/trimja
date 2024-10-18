@@ -29,10 +29,14 @@
 namespace trimja {
 
 std::size_t Graph::PathHash::operator()(const fixed_string& v) const {
+  return (*this)(v.view());
+}
+
+std::size_t Graph::PathHash::operator()(std::string_view v) const {
   // FNV-1a hash algorithm but on Windows we swap all backslashes with forward
   // slashes
   std::size_t hash = 14695981039346656037ull;
-  for (const char ch : v.view()) {
+  for (const char ch : v) {
 #ifdef _WIN32
     hash ^= ch == '\\' ? '/' : ch;
 #else
@@ -45,14 +49,18 @@ std::size_t Graph::PathHash::operator()(const fixed_string& v) const {
 
 bool Graph::PathEqual::operator()(const fixed_string& left,
                                   const fixed_string& right) const {
+  return (*this)(left.view(), right);
+}
+
+bool Graph::PathEqual::operator()(std::string_view left,
+                                  const fixed_string& right) const {
 #ifdef _WIN32
-  return std::equal(left.view().begin(), left.view().end(),
-                    right.view().begin(), right.view().end(),
-                    [](char l, char r) {
+  return std::equal(left.begin(), left.end(), right.view().begin(),
+                    right.view().end(), [](char l, char r) {
                       return (l == '\\' ? '/' : l) == (r == '\\' ? '/' : r);
                     });
 #else
-  return left.view() == right.view();
+  return left == right.view();
 #endif
 }
 
@@ -61,8 +69,7 @@ Graph::Graph() = default;
 std::size_t Graph::addPath(std::string& path) {
   const std::size_t nextIndex = m_inputToOutput.size();
   CanonicalizePath(&path);
-  const auto [it, inserted] =
-      m_pathToIndex.emplace(fixed_string::create(path), nextIndex);
+  const auto [it, inserted] = m_pathToIndex.try_emplace(path, nextIndex);
   if (inserted) {
     m_inputToOutput.emplace_back();
     m_outputToInput.emplace_back();
@@ -85,8 +92,7 @@ std::size_t Graph::addNormalizedPath(std::string_view path) {
   CanonicalizePath(&copy);
   assert(copy == path);
 #endif
-  const auto [it, inserted] =
-      m_pathToIndex.emplace(fixed_string::create(path), nextIndex);
+  const auto [it, inserted] = m_pathToIndex.try_emplace(path, nextIndex);
   if (inserted) {
     m_inputToOutput.emplace_back();
     m_outputToInput.emplace_back();
@@ -97,7 +103,7 @@ std::size_t Graph::addNormalizedPath(std::string_view path) {
 
 std::optional<std::size_t> Graph::findPath(std::string& path) const {
   CanonicalizePath(&path);
-  const auto it = m_pathToIndex.find(fixed_string::make_temp(path));
+  const auto it = m_pathToIndex.find(path);
   if (it == m_pathToIndex.end()) {
     return std::nullopt;
   } else {
@@ -113,7 +119,7 @@ std::optional<std::size_t> Graph::findPath(std::string& path) const {
 
 std::optional<std::size_t> Graph::findNormalizedPath(
     std::string_view path) const {
-  const auto it = m_pathToIndex.find(fixed_string::make_temp(path));
+  const auto it = m_pathToIndex.find(path);
   if (it == m_pathToIndex.end()) {
     return std::nullopt;
   } else {
@@ -163,7 +169,7 @@ const std::set<std::size_t>& Graph::in(std::size_t pathIndex) const {
 }
 
 std::size_t Graph::getPath(std::string_view path) const {
-  return m_pathToIndex.find(fixed_string::make_temp(path))->second;
+  return m_pathToIndex.find(path)->second;
 }
 
 std::size_t Graph::size() const {

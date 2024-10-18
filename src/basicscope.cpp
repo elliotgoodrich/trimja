@@ -30,19 +30,17 @@ std::string_view BasicScope::set(std::string_view key, std::string&& value) {
   // By design to avoid accidental copies, `fixed_string` does not have a copy
   // constructor so we cannot use `operator[]`.  Instead we can use `emplace` to
   // achieve basically the same performance.
-  return m_variables.emplace(fixed_string::create(key), "").first->second =
-             std::move(value);
+  return m_variables.try_emplace(key, std::move(value)).first->second;
 }
 
 std::string& BasicScope::resetValue(std::string_view key) {
-  std::string& value =
-      m_variables.emplace(fixed_string::create(key), "").first->second;
+  std::string& value = m_variables.try_emplace(key, "").first->second;
   value.clear();
   return value;
 }
 
 bool BasicScope::appendValue(std::string& output, std::string_view name) const {
-  const auto it = m_variables.find(fixed_string::make_temp(name));
+  const auto it = m_variables.find(name);
   if (it == m_variables.end()) {
     return false;
   } else {
