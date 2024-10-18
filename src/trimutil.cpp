@@ -140,8 +140,7 @@ struct BuildContext {
       const std::size_t partsIndex = parts.size();
       const std::size_t ruleIndex = rules.size();
       parts.emplace_back("");
-      const auto ruleIt =
-          ruleLookup.emplace(fixed_string::create(builtIn), ruleIndex).first;
+      const auto ruleIt = ruleLookup.try_emplace(builtIn, ruleIndex).first;
       rules.emplace_back(ruleIt->first, partsIndex);
     }
     assert(rules[BuildContext::phonyIndex].first.name() == "phony");
@@ -210,7 +209,7 @@ struct BuildContext {
     std::string_view ruleName = r.name();
 
     const std::size_t ruleIndex = [&] {
-      const auto ruleIt = ruleLookup.find(fixed_string::make_temp(ruleName));
+      const auto ruleIt = ruleLookup.find(ruleName);
       if (ruleIt == ruleLookup.end()) {
         throw std::runtime_error("Unable to find " + std::string(ruleName) +
                                  " rule");
@@ -310,8 +309,7 @@ struct BuildContext {
   void operator()(RuleReader& r) {
     std::string_view name = r.name();
     const std::size_t ruleIndex = rules.size();
-    const auto [ruleIt, inserted] =
-        ruleLookup.emplace(fixed_string::create(name), ruleIndex);
+    const auto [ruleIt, inserted] = ruleLookup.try_emplace(name, ruleIndex);
     if (!inserted) {
       std::string msg;
       msg += "Duplicate rule '";

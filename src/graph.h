@@ -43,17 +43,23 @@ namespace trimja {
  */
 class Graph {
   struct PathHash {
+    using is_transparent = void;
+
     // We need `PathHash` to have some size, otherwise we hit a compilation
     // issue with `boost::unordered_flat_map`.
     void* _;
     std::size_t operator()(const fixed_string& v) const;
+    std::size_t operator()(std::string_view v) const;
   };
 
   struct PathEqual {
+    using is_transparent = void;
+
     // We need `PathEqual` to have some size, otherwise we hit a compilation
     // issue with `boost::unordered_flat_map`.
     void* _;
     bool operator()(const fixed_string& left, const fixed_string& right) const;
+    bool operator()(std::string_view left, const fixed_string& right) const;
   };
 
  private:

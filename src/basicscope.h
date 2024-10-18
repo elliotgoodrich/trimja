@@ -37,7 +37,10 @@ namespace trimja {
  * @brief Manages a scope of variables for evaluation and substitution.
  */
 class BasicScope {
-  boost::unordered_flat_map<fixed_string, std::string> m_variables;
+  boost::unordered_flat_map<fixed_string,
+                            std::string,
+                            std::hash<trimja::fixed_string>>
+      m_variables;
 
  public:
   /**

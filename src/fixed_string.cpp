@@ -26,33 +26,28 @@
 
 namespace trimja {
 
-const fixed_string& fixed_string::make_temp(
-    const std::string_view& str) noexcept {
-  // This is only defined as `fixed_string` is standard layout (meaning all its
-  // members must be standard layout too) and so we can `reinterpret_cast`
-  // ourselves to the first member variable.
-  static_assert(std::is_standard_layout_v<fixed_string>);
-  return reinterpret_cast<const fixed_string&>(str);
-}
+namespace {
 
-fixed_string::copy_from_string_view_t fixed_string::create(
-    const std::string_view& str) {
-  return copy_from_string_view_t{str};
-}
-
-fixed_string::fixed_string(const copy_from_string_view_t& str) : m_data{} {
-  const std::size_t length = str.data.size();
+std::string_view cloneStringView(std::string_view str) {
+  const std::size_t length = str.size();
   char* data = new char[length];
-  std::copy_n(str.data.data(), length, data);
-  m_data = std::string_view{data, length};
+  std::copy_n(str.data(), length, data);
+  return std::string_view{data, length};
 }
+
+}  // namespace
+
+fixed_string::fixed_string() : m_data{nullptr, 0} {}
+
+fixed_string::fixed_string(std::string_view str)
+    : m_data{cloneStringView(str)} {}
 
 fixed_string::~fixed_string() {
   delete[] m_data.data();
 }
 
 fixed_string::fixed_string(fixed_string&& other) noexcept
-    : m_data(std::exchange(other.m_data, std::string_view{nullptr, 0})) {}
+    : m_data{std::exchange(other.m_data, std::string_view{nullptr, 0})} {}
 
 fixed_string& fixed_string::operator=(fixed_string&& rhs) noexcept {
   fixed_string tmp{std::move(rhs)};
@@ -85,9 +80,25 @@ std::size_t hash_value(const fixed_string& str) {
 
 namespace std {
 
+size_t hash<trimja::fixed_string>::operator()(const string_view& str) const {
+  return hash<string_view>{}(str);
+}
+
 size_t hash<trimja::fixed_string>::operator()(
     const trimja::fixed_string& str) const {
-  return hash<std::string_view>{}(str.view());
+  return hash<string_view>{}(str.view());
+}
+
+bool equal_to<trimja::fixed_string>::operator()(
+    const string_view& lhs,
+    const trimja::fixed_string& rhs) const {
+  return lhs == rhs.view();
+}
+
+bool equal_to<trimja::fixed_string>::operator()(
+    const trimja::fixed_string& lhs,
+    const trimja::fixed_string& rhs) const {
+  return lhs == rhs;
 }
 
 }  // namespace std
