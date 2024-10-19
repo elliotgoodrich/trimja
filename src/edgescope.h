@@ -35,25 +35,9 @@ namespace trimja {
 
 namespace detail {
 
-class EdgeScopeBase {
- protected:
-  std::span<const std::string> m_ins;
-  std::span<const std::string> m_outs;
-  BasicScope m_local;
-  const Rule& m_rule;
-
-  static void appendPaths(std::string& output,
-                          std::span<const std::string> paths,
-                          const char separator);
-
- public:
-  EdgeScopeBase(const Rule& rule,
-                std::span<const std::string> ins,
-                std::span<const std::string> outs);
-
-  std::string_view set(std::string_view key, std::string&& value);
-  std::string& resetValue(std::string_view key);
-};
+void appendPaths(std::string& output,
+                 std::span<const std::string> paths,
+                 const char separator);
 
 }  // namespace detail
 
@@ -68,7 +52,11 @@ class EdgeScopeBase {
  * @tparam SCOPE The type of the parent scope.
  */
 template <typename SCOPE>
-class EdgeScope : private detail::EdgeScopeBase {
+class EdgeScope {
+  std::span<const std::string> m_ins;
+  std::span<const std::string> m_outs;
+  BasicScope m_local;
+  const Rule& m_rule;
   SCOPE& m_parent;
 
  public:
@@ -84,7 +72,7 @@ class EdgeScope : private detail::EdgeScopeBase {
             const Rule& rule,
             std::span<const std::string> ins,
             std::span<const std::string> outs)
-      : detail::EdgeScopeBase(rule, ins, outs), m_parent(parent) {}
+      : m_ins{ins}, m_outs{outs}, m_local{}, m_rule{rule}, m_parent{parent} {}
 
   /**
    * @brief Sets a local variable in the edge scope.
@@ -97,7 +85,9 @@ class EdgeScope : private detail::EdgeScopeBase {
    * @param value The value to assign to the variable.
    * @return A string view of the stored value.
    */
-  using detail::EdgeScopeBase::set;
+  std::string_view set(std::string_view key, std::string&& value) {
+    return m_local.set(key, std::move(value));
+  }
 
   /**
    * @brief Resets the value of a variable in the scope.
@@ -108,7 +98,9 @@ class EdgeScope : private detail::EdgeScopeBase {
    * @param key The name of the variable to reset.
    * @return A reference to the reset value.
    */
-  using detail::EdgeScopeBase::resetValue;
+  std::string& resetValue(std::string_view key) {
+    return m_local.resetValue(key);
+  }
 
   /**
    * @brief Appends the value of a variable to the output string.
@@ -135,13 +127,13 @@ class EdgeScope : private detail::EdgeScopeBase {
     //   5. Variables from the file that included that file using the subninja
     //      keyword.
     if (name == "in") {
-      appendPaths(output, m_ins, ' ');
+      detail::appendPaths(output, m_ins, ' ');
       return true;
     } else if (name == "out") {
-      appendPaths(output, m_outs, ' ');
+      detail::appendPaths(output, m_outs, ' ');
       return true;
     } else if (name == "in_newline") {
-      appendPaths(output, m_ins, '\n');
+      detail::appendPaths(output, m_ins, '\n');
       return true;
     } else if (m_local.appendValue(output, name)) {
       return true;
