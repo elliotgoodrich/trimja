@@ -139,13 +139,13 @@ std::size_t Graph::addDefault() {
 
 void Graph::addEdge(std::size_t in, std::size_t out) {
   assert(in != out);
-  m_inputToOutput[in].insert(out);
-  m_outputToInput[out].insert(in);
+  m_inputToOutput[in].push_back(out);
+  m_outputToInput[out].push_back(in);
 }
 
 void Graph::addOneWayEdge(std::size_t in, std::size_t out) {
   assert(in != out);
-  m_inputToOutput[in].insert(out);
+  m_inputToOutput[in].push_back(out);
 }
 
 bool Graph::isDefault(std::size_t pathIndex) const {
@@ -160,11 +160,11 @@ std::string_view Graph::path(std::size_t pathIndex) const {
   return m_path[pathIndex];
 }
 
-const std::set<std::size_t>& Graph::out(std::size_t pathIndex) const {
+const std::vector<std::size_t>& Graph::out(std::size_t pathIndex) const {
   return m_inputToOutput[pathIndex];
 }
 
-const std::set<std::size_t>& Graph::in(std::size_t pathIndex) const {
+const std::vector<std::size_t>& Graph::in(std::size_t pathIndex) const {
   return m_outputToInput[pathIndex];
 }
 

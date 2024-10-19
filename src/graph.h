@@ -29,7 +29,6 @@
 
 #include <numeric>
 #include <optional>
-#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -68,10 +67,10 @@ class Graph {
       m_pathToIndex;
 
   // An adjacency list of input -> output
-  std::vector<std::set<std::size_t>> m_inputToOutput;
+  std::vector<std::vector<std::size_t>> m_inputToOutput;
 
   // An adjacency list of output -> Input
-  std::vector<std::set<std::size_t>> m_outputToInput;
+  std::vector<std::vector<std::size_t>> m_outputToInput;
 
   // Names of paths (this points to the keys in `m_pathToIndex`, which is always
   // valid since `fixed_string` has no small-string optimization and always
@@ -163,19 +162,19 @@ class Graph {
   std::string_view path(std::size_t pathIndex) const;
 
   /**
-   * @brief Gets the set of output nodes for the specified path index.
+   * @brief Gets the vector of output nodes for the specified path index.
    * @param pathIndex The index of the path.
-   * @return The set of output nodes.
+   * @return The vector of output nodes.
    */
-  const std::set<std::size_t>& out(std::size_t pathIndex) const;
+  const std::vector<std::size_t>& out(std::size_t pathIndex) const;
 
   /**
-   * @brief Gets the set of input nodes for the specified path index.  Note that
-   * this does not include order-only dependencies.
+   * @brief Gets the vector of input nodes for the specified path index.  Note
+   * that this does not include order-only dependencies.
    * @param pathIndex The index of the path.
-   * @return The set of input nodes.
+   * @return The vector of input nodes.
    */
-  const std::set<std::size_t>& in(std::size_t pathIndex) const;
+  const std::vector<std::size_t>& in(std::size_t pathIndex) const;
 
   /**
    * @brief Gets the index of the specified path.
