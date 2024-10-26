@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include "allocationprofiler.h"
 #include "builddirutil.h"
 #include "trimutil.h"
 #ifdef _WIN32
@@ -107,6 +108,10 @@ static const option g_longOptions[] = {
 
 int main(int argc, char* argv[]) try {
   using namespace trimja;
+
+#ifdef TRIMJA_ENABLE_ALLOCATION_PROFILER
+  AllocationProfiler::start();
+#endif
 
   struct StdIn {};
   std::variant<std::monostate, StdIn, std::filesystem::path> affectedFile;
@@ -272,6 +277,12 @@ int main(int argc, char* argv[]) try {
       outputFile);
   TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
   output.flush();
+
+#ifdef TRIMJA_ENABLE_ALLOCATION_PROFILER
+  AllocationProfiler::print(std::cout, 10);
+  std::cout.flush();
+#endif
+
   if (!expectedFile.has_value()) {
     std::_Exit(EXIT_SUCCESS);
   }
