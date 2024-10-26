@@ -13,6 +13,7 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 add_executable(
     trimja
     src/trimja.m.cpp
+    src/allocationprofiler.cpp
     src/basicscope.cpp
     src/builddirutil.cpp
     src/depsreader.cpp
@@ -38,6 +39,15 @@ target_compile_options(trimja PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
+target_compile_definitions(trimja PRIVATE
+    # debug iterators cause default ctor of std::string and std::vector to allocate
+    $<$<CXX_COMPILER_ID:MSVC>:_ITERATOR_DEBUG_LEVEL=0>
+    $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
+)
+
+# Uncomment to enable allocation profiling
+#target_compile_definitions(trimja PRIVATE TRIMJA_ENABLE_ALLOCATION_PROFILER)
+
 install(TARGETS trimja RUNTIME DESTINATION bin)
 
 if(WIN32)
