@@ -108,7 +108,7 @@ bool LogReader::read(LogEntry* output) {
         ninja_clock::time_point{ninja_clock::duration{ticks}});
   }
 
-  output->output = parts[3];
+  output->out = parts[3];
   std::from_chars(parts[4].data(), parts[4].data() + parts[4].size(),
                   output->hash, 16);
   return true;

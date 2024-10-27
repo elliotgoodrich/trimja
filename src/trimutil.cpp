@@ -527,7 +527,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   for (const LogEntry& entry : LogReader(deps)) {
     // Entries in `.ninja_log` are already normalized when written
     const std::optional<std::size_t> index =
-        graph.findNormalizedPath(entry.output.string());
+        graph.findNormalizedPath(entry.out);
     if (!index) {
       // If we don't have the path then it was since removed from the ninja
       // build file

@@ -25,10 +25,10 @@
 
 #include <chrono>
 #include <cstddef>
-#include <filesystem>
 #include <iosfwd>
 #include <iterator>
 #include <string>
+#include <string_view>
 
 namespace trimja {
 
@@ -44,7 +44,7 @@ struct LogEntry {
   std::chrono::duration<std::int32_t, std::milli> startTime;
   std::chrono::duration<std::int32_t, std::milli> endTime;
   std::chrono::file_clock::time_point mtime;
-  std::filesystem::path output;
+  std::string_view out;
   std::uint64_t hash;
 };
 
