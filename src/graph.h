@@ -26,6 +26,7 @@
 #include "fixed_string.h"
 
 #include <boost/boost_unordered.hpp>
+#include <gch/small_vector.hpp>
 
 #include <numeric>
 #include <optional>
@@ -67,10 +68,10 @@ class Graph {
       m_pathToIndex;
 
   // An adjacency list of input -> output
-  std::vector<std::vector<std::size_t>> m_inputToOutput;
+  std::vector<gch::small_vector<std::size_t>> m_inputToOutput;
 
   // An adjacency list of output -> Input
-  std::vector<std::vector<std::size_t>> m_outputToInput;
+  std::vector<gch::small_vector<std::size_t>> m_outputToInput;
 
   // Names of paths (this points to the keys in `m_pathToIndex`, which is always
   // valid since `fixed_string` has no small-string optimization and always
@@ -166,7 +167,7 @@ class Graph {
    * @param pathIndex The index of the path.
    * @return The vector of output nodes.
    */
-  const std::vector<std::size_t>& out(std::size_t pathIndex) const;
+  const gch::small_vector<std::size_t>& out(std::size_t pathIndex) const;
 
   /**
    * @brief Gets the vector of input nodes for the specified path index.  Note
@@ -174,7 +175,7 @@ class Graph {
    * @param pathIndex The index of the path.
    * @return The vector of input nodes.
    */
-  const std::vector<std::size_t>& in(std::size_t pathIndex) const;
+  const gch::small_vector<std::size_t>& in(std::size_t pathIndex) const;
 
   /**
    * @brief Gets the index of the specified path.
