@@ -47,6 +47,48 @@ namespace trimja {
 
 namespace {
 
+// A vector of strings that are reused to avoid reallocations
+class PathVector {
+  std::vector<std::string> m_paths;
+  std::size_t m_size;
+
+ public:
+  PathVector() : m_paths{}, m_size{0} {}
+
+  std::string& operator[](std::size_t index) {
+    assert(index < m_size);
+    return m_paths[index];
+  }
+
+  std::string& emplace_back() {
+    if (m_size < m_paths.size()) {
+      return m_paths[m_size++];
+    } else {
+      // Give each path a reasonable size to avoid reallocations
+      std::string& back = m_paths.emplace_back();
+      back.reserve(1024);
+      ++m_size;
+      return back;
+    }
+  }
+
+  void clear() {
+    // Keep the objects around but just call `clear()` so that we
+    // keep the memory around to be reused.
+    std::for_each(m_paths.begin(), m_paths.begin() + m_size,
+                  [](std::string& path) { path.clear(); });
+    m_size = 0;
+  }
+
+  std::string* begin() { return m_paths.data(); }
+  std::string* end() { return m_paths.data() + m_size; }
+
+  const std::string* data() const { return m_paths.data(); }
+
+  std::size_t size() const { return m_size; }
+  bool empty() const { return m_size == 0; }
+};
+
 class NestedScope {
   std::vector<BasicScope> m_scopes;
 
@@ -168,6 +210,15 @@ struct BuildContext {
   // Our graph
   Graph graph;
 
+  // Variables to be reused to avoid reallocations
+  struct {
+    PathVector outs;
+    PathVector ins;
+    PathVector orderOnlyDeps;
+    std::vector<std::size_t> outIndices;
+    std::string command;
+  } tmp;
+
   // Return whether `ruleIndex` is a built-in rule (i.e. `default` or `phony`)
   static bool isBuiltInRule(std::size_t ruleIndex) {
     static_assert(phonyIndex == 0);
@@ -238,22 +289,18 @@ struct BuildContext {
   }
 
   void operator()(BuildReader& r) {
-    std::vector<std::string> outs;
-    auto evaluatePath = [&](const EvalString& path) {
-      std::string result;
-      evaluate(result, path, fileScope);
-      return result;
-    };
+    PathVector& outs = tmp.outs;
+    outs.clear();
 
     for (const EvalString& path : r.out()) {
-      outs.push_back(evaluatePath(path));
+      evaluate(outs.emplace_back(), path, fileScope);
     }
     if (outs.empty()) {
       throw std::runtime_error("Missing output paths in build command");
     }
     const std::size_t outSize = outs.size();
     for (const EvalString& path : r.implicitOut()) {
-      outs.push_back(evaluatePath(path));
+      evaluate(outs.emplace_back(), path, fileScope);
     }
 
     // Mark the outputs for later
@@ -271,19 +318,21 @@ struct BuildContext {
     }();
 
     // Collect inputs
-    std::vector<std::string> ins;
+    PathVector& ins = tmp.ins;
+    ins.clear();
     for (const EvalString& path : r.in()) {
-      ins.push_back(evaluatePath(path));
+      evaluate(ins.emplace_back(), path, fileScope);
     }
     const std::size_t inSize = ins.size();
 
     for (const EvalString& path : r.implicitIn()) {
-      ins.push_back(evaluatePath(path));
+      evaluate(ins.emplace_back(), path, fileScope);
     }
 
-    std::vector<std::string> orderOnlyDeps;
+    PathVector& orderOnlyDeps = tmp.orderOnlyDeps;
+    orderOnlyDeps.clear();
     for (const EvalString& path : r.orderOnlyDeps()) {
-      orderOnlyDeps.push_back(evaluatePath(path));
+      evaluate(orderOnlyDeps.emplace_back(), path, fileScope);
     }
 
     // Collect validations but ignore what they are. If we include a build
@@ -321,7 +370,8 @@ struct BuildContext {
     buildCommand.ruleIndex = ruleIndex;
 
     // Add outputs to the graph and link to the build command
-    std::vector<std::size_t> outIndices;
+    std::vector<std::size_t>& outIndices = tmp.outIndices;
+    outIndices.clear();
     for (std::string& out : outs) {
       const std::size_t outIndex = getPathIndex(out);
       outIndices.push_back(outIndex);
@@ -347,7 +397,8 @@ struct BuildContext {
     }
 
     {
-      std::string command;
+      std::string& command = tmp.command;
+      command.clear();
       scope.appendValue(command, "command");
       std::string rspcontent;
       scope.appendValue(rspcontent, "rspfile_content");
@@ -389,11 +440,10 @@ struct BuildContext {
   }
 
   void operator()(DefaultReader& r) {
-    std::vector<std::string> ins;
+    PathVector& ins = tmp.ins;
+    ins.clear();
     for (const EvalString& path : r.paths()) {
-      std::string result;
-      evaluate(result, path, fileScope);
-      ins.push_back(std::move(result));
+      evaluate(ins.emplace_back(), path, fileScope);
     }
 
     const std::size_t partsIndex = parts.size();
