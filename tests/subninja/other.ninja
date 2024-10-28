@@ -1,6 +1,8 @@
 var = 4
 file2 = in2
 build out1: copy $file1
-rule copy2
-  command = ninja --version copy2 $in -> $out $var
-build out2: copy2 $file2
+rule copy
+  command = ninja --version copy.other.ninja $in -> $out $var
+build out2: copy $file2
+rule tar
+  command = ninja --version tar.other.ninja $in -> $out

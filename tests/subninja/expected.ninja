@@ -1,13 +1,16 @@
 rule copy
-  command = ninja --version $in -> $out $var
+  command = ninja --version copy.build.ninja $in -> $out $var
 file1 = in1
 var = 3
 var = 4
 file2 = in2
 build out1: copy $file1
 rule copy2
-  command = ninja --version copy2 $in -> $out $var
+  command = ninja --version copy.other.ninja $in -> $out $var
 build out2: copy2 $file2
 var = 3
 file2 =
 build out3: copy in3
+rule tar2
+  command = ninja --version tar.build.ninja $in -> $out
+build out4: tar2 in4

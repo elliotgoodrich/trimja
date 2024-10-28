@@ -152,7 +152,7 @@ struct BuildCommand {
   Resolution resolution = Phony;
 
   // The location of our entire build command inside `BuildContext::parts`
-  std::size_t partsIndex = std::numeric_limits<std::size_t>::max();
+  gch::small_vector<std::size_t, 3> partsIndices;
 
   // The hash of the build command
   std::uint64_t hash = 0;
@@ -171,6 +171,26 @@ struct BuildCommand {
   std::size_t ruleIndex = std::numeric_limits<std::size_t>::max();
 };
 
+struct RuleCommand {
+  // Our list of variables
+  Rule variables;
+
+  // The name of our rule
+  std::string_view name;
+
+  // The number of rules (including this one) that have this name. e.g. if this
+  // is the first rule with this name then `instance` will be 1.
+  std::size_t instance = 1;
+
+  // The location of our entire rule inside `BuildContext::parts`
+  gch::small_vector<std::size_t, 3> partsIndices;
+
+  // An id of the file that defined this rule
+  std::size_t fileId = std::numeric_limits<std::size_t>::max();
+
+  RuleCommand(std::string_view name) : name{name} {}
+};
+
 struct BuildContext {
   // The indexes of the built-in rules within `rules`
   static const std::size_t phonyIndex = 0;
@@ -182,6 +202,10 @@ struct BuildContext {
   // all parsing has finished.  We use a `std::forward_list` so that we get
   // stable references to the contents.
   std::forward_list<std::string> stringStorage;
+
+  // A place to hold numbers as strings that can be put into `parts` if we have
+  // duplicate rules and need a suffix.
+  std::vector<fixed_string> numbers;
 
   // All parts of the input build file, possibly indexing into an element of
   // `stringStorage`.  Note that we may swap out build command sections with
@@ -195,14 +219,33 @@ struct BuildContext {
   // value that isn't an output to a build command (i.e. a source file)
   std::vector<std::size_t> nodeToCommand;
 
-  // Our list of rules along with their index into `m_parts`
-  std::vector<std::pair<Rule, std::size_t>> rules;
+  // Our list of rules
+  std::vector<RuleCommand> rules;
+
+  struct RuleBits {
+    // The index of the rule in `rules`
+    std::size_t ruleIndex;
+
+    // How many rules have this name
+    std::size_t duplicates;
+
+    explicit RuleBits(std::size_t ruleIndex)
+        : ruleIndex{ruleIndex}, duplicates{1} {}
+  };
 
   // Our rules keyed by name
   boost::unordered_flat_map<fixed_string,
-                            std::size_t,
+                            RuleBits,
                             std::hash<trimja::fixed_string>>
       ruleLookup;
+
+  // A stack of rules that have shadowed rules in their parent file.
+  std::vector<std::vector<std::size_t>> shadowedRules;
+
+  // When entering into subninja files we keep a stack of the file ids
+  // that are generated from an incremental counter.
+  std::size_t nextFileId = 0;
+  std::vector<std::size_t> fileIds;
 
   // Our top-level variables
   NestedScope fileScope;
@@ -238,17 +281,23 @@ struct BuildContext {
     }
   }
 
-  BuildContext() {
-    // Push back an empty part for the built-in rules
-    for (const auto builtIn : {"phony", "default"}) {
-      const std::size_t partsIndex = parts.size();
-      const std::size_t ruleIndex = rules.size();
-      parts.emplace_back("");
-      const auto ruleIt = ruleLookup.try_emplace(builtIn, ruleIndex).first;
-      rules.emplace_back(ruleIt->first, partsIndex);
+  std::string_view to_string_view(std::size_t n) {
+    for (std::size_t i = numbers.size(); i <= n; ++i) {
+      numbers.emplace_back(std::to_string(i));
     }
-    assert(rules[BuildContext::phonyIndex].first.name() == "phony");
-    assert(rules[BuildContext::defaultIndex].first.name() == "default");
+
+    return numbers[n];
+  }
+
+  BuildContext() {
+    fileIds.push_back(nextFileId++);
+
+    rules.emplace_back(
+        ruleLookup.try_emplace("phony", rules.size()).first->first);
+    assert(rules[BuildContext::phonyIndex].name == "phony");
+    rules.emplace_back(
+        ruleLookup.try_emplace("default", rules.size()).first->first);
+    assert(rules[BuildContext::defaultIndex].name == "default");
   }
 
   std::size_t getPathIndex(std::string& path) {
@@ -314,7 +363,7 @@ struct BuildContext {
         throw std::runtime_error("Unable to find " + std::string(ruleName) +
                                  " rule");
       }
-      return ruleIt->second;
+      return ruleIt->second.ruleIndex;
     }();
 
     // Collect inputs
@@ -341,30 +390,50 @@ struct BuildContext {
     // `phony`ed out.
     const char* validationStart = r.position();
     consume(r.validations());
-    std::string_view validationStr(validationStart,
-                                   r.position() - validationStart);
+    const std::string_view validationStr{
+        validationStart,
+        static_cast<std::size_t>(r.position() - validationStart)};
 
-    EdgeScope scope(fileScope, rules[ruleIndex].first,
-                    std::span(ins.data(), inSize),
-                    std::span(outs.data(), outSize));
+    EdgeScope scope{fileScope, rules[ruleIndex].variables,
+                    std::span{ins.data(), inSize},
+                    std::span{outs.data(), outSize}};
 
     for (VariableReader v : r.variables()) {
       const std::string_view name = v.name();
       evaluate(scope.resetValue(name), v.value(), scope);
     }
 
-    const std::size_t partsIndex = parts.size();
-    parts.emplace_back(r.start(), r.bytesParsed());
-
     // Add the build command
     const std::size_t commandIndex = commands.size();
     BuildCommand& buildCommand = commands.emplace_back();
-    if (isBuiltInRule(ruleIndex)) {
-      // Always print `phony` rules since it saves us time generating an
-      // identical `phony` rule later on.
-      buildCommand.resolution = BuildCommand::Print;
+
+    // Always print `phony` rules since it saves us time generating an
+    // identical `phony` rule later on.
+    buildCommand.resolution =
+        isBuiltInRule(ruleIndex) ? BuildCommand::Print : BuildCommand::Phony;
+
+    if (rules[ruleIndex].instance == 1) {
+      buildCommand.partsIndices.push_back(
+          parts.emplace(parts.end(), r.start(), r.bytesParsed()) -
+          parts.begin());
+    } else {
+      const char* endOfName = ruleName.data() + ruleName.size();
+      buildCommand.partsIndices.push_back(
+          parts.emplace(parts.end(), r.start(), endOfName - r.start()) -
+          parts.begin());
+      buildCommand.partsIndices.push_back(
+          parts.emplace(parts.end(),
+                        to_string_view(rules[ruleIndex].instance)) -
+          parts.begin());
+      buildCommand.partsIndices.push_back(
+          parts.emplace(parts.end(), endOfName,
+                        r.bytesParsed() - (endOfName - r.start())) -
+          parts.begin());
     }
-    buildCommand.partsIndex = partsIndex;
+    // Check we aren't actually allocating
+    assert(buildCommand.partsIndices.size() <=
+           buildCommand.partsIndices.inline_capacity_v);
+
     buildCommand.validationStr = validationStr;
     buildCommand.outStr = outStr;
     buildCommand.ruleIndex = ruleIndex;
@@ -412,20 +481,60 @@ struct BuildContext {
 
   void operator()(RuleReader& r) {
     std::string_view name = r.name();
-    const std::size_t ruleIndex = rules.size();
-    const auto [ruleIt, inserted] = ruleLookup.try_emplace(name, ruleIndex);
-    if (!inserted) {
-      std::string msg;
-      msg += "Duplicate rule '";
-      msg += name;
-      msg += "' found!";
-      throw std::runtime_error(msg);
+    const auto [ruleIt, isNew] = ruleLookup.try_emplace(name, rules.size());
+
+    if (!isNew) {
+      if (isBuiltInRule(ruleIt->second.ruleIndex)) {
+        // We cannot shadow the built-in rules
+        std::string msg;
+        msg += "Cannot create a rule with the name '";
+        msg += name;
+        msg += "' as it is a built-in ninja rule!";
+        throw std::runtime_error{msg};
+      }
+
+      RuleCommand& ruleCommand = rules[ruleIt->second.ruleIndex];
+      if (ruleCommand.fileId == fileIds.back()) {
+        // Throw an exception if we have a duplicate rule in the same file
+        std::string msg;
+        msg += "Duplicate rule '";
+        msg += name;
+        msg += "' found!";
+        throw std::runtime_error{msg};
+      }
+
+      RuleBits& bits = ruleIt->second;
+      if (!shadowedRules.empty()) {
+        // The root ninja file may shadow existing rules added through
+        // subninja, but we never need to unshadow these
+        shadowedRules.back().push_back(bits.ruleIndex);
+      }
+      bits.ruleIndex = rules.size();
+      ++bits.duplicates;
     }
 
-    Rule& rule = rules.emplace_back(ruleIt->first, parts.size()).first;
+    const char* endOfName = name.data() + name.size();
+    const std::size_t bytesToEndOfName = endOfName - r.start();
+
+    RuleCommand& rule = rules.emplace_back(name);
+    rule.fileId = fileIds.back();
+    rule.instance = ruleIt->second.duplicates;
+    if (!isNew) {
+      // If shadowed we need to add the rule suffix to the list of parts to
+      // print
+      rule.partsIndices.push_back(
+          parts.emplace(parts.end(), r.start(), bytesToEndOfName) -
+          parts.begin());
+
+      rule.partsIndices.push_back(
+          parts.emplace(parts.end(),
+                        to_string_view(ruleIt->second.duplicates)) -
+          parts.begin());
+    }
+
     for (VariableReader v : r.variables()) {
       const std::string_view key = v.name();
-      if (!rule.add(key, v.value())) {
+      if (!rule.variables.add(key, v.value())) {
         std::string msg;
         msg += "Unexpected variable '";
         msg += key;
@@ -436,7 +545,22 @@ struct BuildContext {
       }
     }
 
-    parts.emplace_back(r.start(), r.bytesParsed());
+    if (!isNew) {
+      // Include the rest of the variables if we're shadowed
+      rule.partsIndices.push_back(
+          parts.emplace(parts.end(), endOfName,
+                        r.bytesParsed() - bytesToEndOfName) -
+          parts.begin());
+      assert(rule.partsIndices.size() == 3);
+    } else {
+      // If we're not shadowed then we can include the whole rule
+      rule.partsIndices.push_back(
+          parts.emplace(parts.end(), r.start(), r.bytesParsed()) -
+          parts.begin());
+      assert(rule.partsIndices.size() == 1);
+    }
+    // Check we aren't actually allocating
+    assert(rule.partsIndices.size() <= rule.partsIndices.inline_capacity_v);
   }
 
   void operator()(DefaultReader& r) {
@@ -452,7 +576,7 @@ struct BuildContext {
     const std::size_t commandIndex = commands.size();
     BuildCommand& buildCommand = commands.emplace_back();
     buildCommand.resolution = BuildCommand::Print;
-    buildCommand.partsIndex = partsIndex;
+    buildCommand.partsIndices.push_back(partsIndex);
     buildCommand.ruleIndex = BuildContext::defaultIndex;
 
     const std::size_t outIndex = getDefault();
@@ -495,7 +619,7 @@ struct BuildContext {
       const EvalString& pathEval = r.path();
       std::string path;
       evaluate(path, pathEval, fileScope);
-      return std::filesystem::path(r.parent()).remove_filename() / path;
+      return std::filesystem::path{r.parent()}.remove_filename() / path;
     }();
 
     if (!std::filesystem::exists(file)) {
@@ -503,18 +627,32 @@ struct BuildContext {
       msg += "Unable to find ";
       msg += file.string();
       msg += "!";
-      throw std::runtime_error(msg);
+      throw std::runtime_error{msg};
     }
 
+    fileScope.push();
+    shadowedRules.emplace_back();
+
     std::stringstream ninjaCopy;
-    std::ifstream ninja(file);
+    std::ifstream ninja{file};
     ninjaCopy << ninja.rdbuf();
     stringStorage.push_front(ninjaCopy.str());
 
-    fileScope.push();
+    fileIds.push_back(nextFileId++);
     parse(file, stringStorage.front());
+    fileIds.pop_back();
+
     stringStorage.push_front(fileScope.pop());
     parts.push_back(stringStorage.front());
+
+    // For all the shadowed rules, set name to ruleIndex lookup back to the
+    // shadowed index.  We have to grab the name and then find since
+    // `unordered_flat_map` doesn't have iterator/reference stability by default
+    for (const std::size_t shadowedRuleIndex : shadowedRules.back()) {
+      const RuleCommand& shadowedRule = rules[shadowedRuleIndex];
+      ruleLookup.find(shadowedRule.name)->second.ruleIndex = shadowedRuleIndex;
+    }
+    shadowedRules.pop_back();
   }
 };
 
@@ -754,7 +892,7 @@ void TrimUtil::trim(std::ostream& output,
   if (const std::filesystem::path ninjaLog = builddir / ".ninja_log";
       !std::filesystem::exists(ninjaLog)) {
     // If we don't have a `.ninja_log` file then either the user didn't have
-    // it,which is an error, or our previous run did not include any build
+    // it, which is an error, or our previous run did not include any build
     // commands.
     if (explain) {
       std::cerr << "Unable to find '" << ninjaLog
@@ -879,7 +1017,7 @@ void TrimUtil::trim(std::ostream& output,
   // `phony` out the build edges that weren't affected.
   std::forward_list<std::string> phonyStorage;
   std::vector<bool> ruleReferenced(ctx.rules.size());
-  for (const BuildCommand& command : ctx.commands) {
+  for (BuildCommand& command : ctx.commands) {
     if (command.resolution == BuildCommand::Print) {
       ruleReferenced[command.ruleIndex] = true;
     } else {
@@ -902,14 +1040,23 @@ void TrimUtil::trim(std::ostream& output,
                             return std::copy(part.begin(), part.end(), outIt);
                           });
       assert(it == phony.end());
-      ctx.parts[command.partsIndex] = std::string_view{phony};
+
+      // Clear all parts and replace them with 1 part that is the phony string
+      assert(!command.partsIndices.empty());
+      ctx.parts[command.partsIndices.front()] = std::string_view{phony};
+      std::for_each(std::next(command.partsIndices.begin()),
+                    command.partsIndices.end(),
+                    [&](std::size_t index) { ctx.parts[index] = ""; });
+      // There is no need to clear `partsIndices` as it's not used again
     }
   }
 
   // Remove all rules that weren't referenced
   for (std::size_t ruleIndex = 0; ruleIndex < ctx.rules.size(); ++ruleIndex) {
     if (!ruleReferenced[ruleIndex]) {
-      ctx.parts[ctx.rules[ruleIndex].second] = "";
+      RuleCommand& rule = ctx.rules[ruleIndex];
+      std::for_each(rule.partsIndices.begin(), rule.partsIndices.end(),
+                    [&](std::size_t index) { ctx.parts[index] = ""; });
     }
   }
 
