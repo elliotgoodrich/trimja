@@ -26,7 +26,7 @@
 
 namespace trimja {
 
-Rule::Rule(std::string_view name) : m_name(name), m_bindings() {}
+Rule::Rule() = default;
 
 std::size_t Rule::getLookupIndex(std::string_view varName) {
   return std::find(std::begin(reserved), std::end(reserved), varName) -
@@ -62,10 +62,6 @@ const EvalString* Rule::lookupVar(std::string_view varName) const {
         return *binding.first == varName;
       });
   return it != m_bindings.cend() ? &it->second : nullptr;
-}
-
-std::string_view Rule::name() const {
-  return m_name;
 }
 
 }  // namespace trimja

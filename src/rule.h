@@ -47,8 +47,6 @@ class Rule {
   };
 
  private:
-  std::string_view m_name;
-
   // The std::string_view* points to an element of reserved
   std::vector<std::pair<const std::string_view*, EvalString>> m_bindings;
 
@@ -62,19 +60,9 @@ class Rule {
   static std::size_t getLookupIndex(std::string_view varName);
 
   /**
-   * @brief Constructs a Rule with the given name.
-   *
-   * @param name The name of the rule. The lifetime of the string pointed to by
-   * name must outlive this object.
+   * @brief Constructs a Rule
    */
-  explicit Rule(std::string_view name);
-
-  /**
-   * @brief Gets the name of the rule.
-   *
-   * @return The name of the rule.
-   */
-  std::string_view name() const;
+  Rule();
 
   /**
    * @brief Adds a variable and its value to the rule.
