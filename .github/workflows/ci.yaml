@@ -13,7 +13,7 @@ jobs:
       matrix:
         environment: [
           {name: Linux, os: ubuntu-20.04, cpp: clang++-12, c: clang-12},
-          {name: MacOS, os: macos-12, cpp: clang++, c: clang},
+          {name: MacOS, os: macos-13, cpp: clang++, c: clang},
           {name: Windows, os: windows-latest, cpp: cl, c: cl},
         ]
         build_type: [Debug, Release]
