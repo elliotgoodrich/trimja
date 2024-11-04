@@ -44,6 +44,7 @@ target_compile_definitions(trimja PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:_ITERATOR_DEBUG_LEVEL=0>
     $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
 )
+set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 
 # Uncomment to enable allocation profiling
 #target_compile_definitions(trimja PRIVATE TRIMJA_ENABLE_ALLOCATION_PROFILER)
