@@ -196,16 +196,27 @@ set_tests_properties(
 # --memory
 if(WIN32)
     add_test(
-        NAME trimja.snapshot.--memory
+        NAME trimja.--memory
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
         COMMAND trimja
         --memory=3
-        --expected expected.ninja
         --affected changed.txt
     )
     set_tests_properties(
-        trimja.snapshot.--memory
+        trimja.--memory
         PROPERTIES FIXTURES_REQUIRED trimja.snapshot.passthrough.fixture
+    )
+
+    add_test(
+        NAME trimja.--memory2
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/builddir/
+        COMMAND trimja
+        --memory=3
+        --builddir
+    )
+    set_tests_properties(
+        trimja.--memory2
+        PROPERTIES FIXTURES_REQUIRED trimja.snapshot.builddir.fixture
     )
 endif()
 

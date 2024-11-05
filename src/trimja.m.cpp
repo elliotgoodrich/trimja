@@ -73,7 +73,7 @@ Options:
   --builddir                print the $builddir variable relative to the cwd)HELP"
 #if WIN32
     R"HELP(
-  --memory[=N]              print memory stats and top N allocating functions)HELP"
+  --memory=N                print memory stats and top N allocating functions)HELP"
 #endif
     R"HELP(
   -h, --help                print help
@@ -105,13 +105,26 @@ static const option g_longOptions[] = {
     {"affected", required_argument, nullptr, 'a'},
     {"version", no_argument, nullptr, 'v'},
     {"write", no_argument, nullptr, 'w'},
-    {"memory", OPTIONAL_ARG, nullptr, 'm'},
+    {"memory", required_argument, nullptr, 'm'},
     {},
+};
+
+std::size_t topAllocatingStacks = 0;
+bool instrumentMemory = false;
+
+[[noreturn]] void leave(int rc) {
+  if (instrumentMemory) {
+    trimja::AllocationProfiler::print(std::cerr, topAllocatingStacks);
+    std::cerr.flush();
+  }
+  std::_Exit(rc);
 };
 
 }  // namespace
 
-int main(int argc, char* argv[]) try {
+[[noreturn]] int main(int argc, char* argv[]) try {
+  // Decorate as [[noreturn]] to make sure we always call `leave`, which
+  // avoids the overhead of destructing objects on the stack.
   using namespace trimja;
 
   struct StdIn {};
@@ -140,8 +153,6 @@ int main(int argc, char* argv[]) try {
   std::filesystem::path ninjaFile = "build.ninja";
   bool explain = false;
   bool builddir = false;
-  std::size_t topAllocatingStacks = 0;
-  bool instrumentMemory = false;
 
   int ch;
   while ((ch = getopt_long(argc, argv, "a:f:ho:vw", g_longOptions, nullptr)) !=
@@ -153,7 +164,7 @@ int main(int argc, char* argv[]) try {
         } else {
           std::cerr << "Cannot specify --affected when - was given"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         }
         break;
       case 'b':
@@ -167,55 +178,53 @@ int main(int argc, char* argv[]) try {
         break;
       case 'h':
         std::cout << g_helpText << std::endl;
-        std::_Exit(EXIT_SUCCESS);
-      case 'm':
-        if (optarg) {
-          const char* last = optarg + std::strlen(optarg);
-          auto [ptr, ec] = std::from_chars(optarg, last, topAllocatingStacks);
-          if (ec != std::errc{} || ptr != last) {
-            std::string msg;
-            msg = "'";
-            msg += optarg;
-            msg += "' is an invalid value for --memory!";
-            throw std::runtime_error{msg};
-          }
+        leave(EXIT_SUCCESS);
+      case 'm': {
+        const char* last = optarg + std::strlen(optarg);
+        auto [ptr, ec] = std::from_chars(optarg, last, topAllocatingStacks);
+        if (ec != std::errc{} || ptr != last) {
+          std::string msg;
+          msg = "'";
+          msg += optarg;
+          msg += "' is an invalid value for --memory!";
+          throw std::runtime_error{msg};
         }
         instrumentMemory = true;
         AllocationProfiler::start();
-        break;
+      } break;
       case 'o':
         if (std::get_if<Stdout>(&outputFile)) {
           outputFile.emplace<std::filesystem::path>(optarg);
         } else if (std::get_if<Write>(&outputFile)) {
           std::cerr << "Cannot specify --output when --write was given"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         } else if (std::get_if<Expected>(&outputFile)) {
           std::cerr << "Cannot specify --output when --expected was given"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         } else {
           assert(false);
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         }
         break;
       case 'v':
         std::cout << TRIMJA_VERSION << "" << std::endl;
-        std::_Exit(EXIT_SUCCESS);
+        leave(EXIT_SUCCESS);
       case 'w':
         if (std::get_if<Stdout>(&outputFile)) {
           outputFile.emplace<Write>();
         } else if (std::get_if<std::filesystem::path>(&outputFile)) {
           std::cerr << "Cannot specify --write when --output was given"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         } else if (std::get_if<Expected>(&outputFile)) {
           std::cerr << "Cannot specify --write when --expected was given"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         } else {
           assert(false);
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         }
         break;
       case 'x':
@@ -225,22 +234,22 @@ int main(int argc, char* argv[]) try {
         } else if (std::get_if<std::filesystem::path>(&outputFile)) {
           std::cerr << "Cannot specify --expected when --output was given"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         } else if (std::get_if<Write>(&outputFile)) {
           std::cerr << "Cannot specify --expected when --write was given"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         } else {
           assert(false);
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         }
         break;
       case '?':
         std::cerr << "Unknown option" << std::endl;
-        std::_Exit(EXIT_FAILURE);
+        leave(EXIT_FAILURE);
       default:
         std::cerr << "Unknown command line parsing error" << std::endl;
-        std::_Exit(EXIT_FAILURE);
+        leave(EXIT_FAILURE);
     }
   }
 
@@ -257,7 +266,7 @@ int main(int argc, char* argv[]) try {
   if (builddir) {
     std::cout << BuildDirUtil::builddir(ninjaFile, ninjaFileContents).string()
               << std::endl;
-    std::_Exit(EXIT_SUCCESS);
+    leave(EXIT_SUCCESS);
   }
 
   std::ifstream affectedFileStream;
@@ -268,7 +277,7 @@ int main(int argc, char* argv[]) try {
           std::cerr << "A list of affected files needs to be supplied with "
                        "either --affected [FILE] or - to read from stdin"
                     << std::endl;
-          std::_Exit(EXIT_FAILURE);
+          leave(EXIT_FAILURE);
         } else if constexpr (std::is_same_v<T, StdIn>) {
           return std::cin;
         } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
@@ -296,13 +305,8 @@ int main(int argc, char* argv[]) try {
   TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
   output.flush();
 
-  if (instrumentMemory) {
-    AllocationProfiler::print(std::cout, topAllocatingStacks);
-    std::cout.flush();
-  }
-
   if (!expectedFile.has_value()) {
-    std::_Exit(EXIT_SUCCESS);
+    leave(EXIT_SUCCESS);
   }
 
   // Remove CR characters on Windows from the output so that we can cleanly
@@ -327,16 +331,16 @@ int main(int argc, char* argv[]) try {
               << actual << "---\n"
               << "expected (size " << expected.size() << "):\n"
               << expected << std::endl;
-    std::_Exit(EXIT_FAILURE);
+    leave(EXIT_FAILURE);
   } else {
     std::cout << "Files are equal!\n"
               << "actual:\n"
               << actual << "---\n"
               << "expected:\n"
               << expected << std::endl;
-    std::_Exit(EXIT_SUCCESS);
+    leave(EXIT_SUCCESS);
   }
 } catch (const std::exception& e) {
   std::cout << e.what() << std::endl;
-  std::_Exit(EXIT_FAILURE);
+  leave(EXIT_FAILURE);
 }

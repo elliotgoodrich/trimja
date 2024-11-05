@@ -53,6 +53,7 @@ Options:
   -w, --write               overwrite input ninja build file
   --explain                 print why each part of the build file was kept
   --builddir                print the $builddir variable relative to the cwd
+  --memory=N                print memory stats and top N allocating functions
   -h, --help                print help
   -v, --version             print trimja version
 
