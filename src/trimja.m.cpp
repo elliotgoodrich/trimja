@@ -23,14 +23,13 @@
 #include "allocationprofiler.h"
 #include "builddirutil.h"
 #include "trimutil.h"
-#ifdef _WIN32
+
 #include <ninja/getopt.h>
-#else
-#include <getopt.h>
-#endif
 
 #include <algorithm>
 #include <cassert>
+#include <charconv>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -71,7 +70,12 @@ Options:
   -o OUT, --output=OUT      output file path [default=stdout]
   -w, --write               overwrite input ninja build file
   --explain                 print why each part of the build file was kept
-  --builddir                print the $builddir variable relative to the cwd
+  --builddir                print the $builddir variable relative to the cwd)HELP"
+#if WIN32
+    R"HELP(
+  --memory[=N]              print memory stats and top N allocating functions)HELP"
+#endif
+    R"HELP(
   -h, --help                print help
   -v, --version             print trimja version ()HELP" TRIMJA_VERSION
     R"HELP()
@@ -101,6 +105,7 @@ static const option g_longOptions[] = {
     {"affected", required_argument, nullptr, 'a'},
     {"version", no_argument, nullptr, 'v'},
     {"write", no_argument, nullptr, 'w'},
+    {"memory", OPTIONAL_ARG, nullptr, 'm'},
     {},
 };
 
@@ -108,10 +113,6 @@ static const option g_longOptions[] = {
 
 int main(int argc, char* argv[]) try {
   using namespace trimja;
-
-#ifdef TRIMJA_ENABLE_ALLOCATION_PROFILER
-  AllocationProfiler::start();
-#endif
 
   struct StdIn {};
   std::variant<std::monostate, StdIn, std::filesystem::path> affectedFile;
@@ -139,6 +140,8 @@ int main(int argc, char* argv[]) try {
   std::filesystem::path ninjaFile = "build.ninja";
   bool explain = false;
   bool builddir = false;
+  std::size_t topAllocatingStacks = 0;
+  bool instrumentMemory = false;
 
   int ch;
   while ((ch = getopt_long(argc, argv, "a:f:ho:vw", g_longOptions, nullptr)) !=
@@ -165,6 +168,21 @@ int main(int argc, char* argv[]) try {
       case 'h':
         std::cout << g_helpText << std::endl;
         std::_Exit(EXIT_SUCCESS);
+      case 'm':
+        if (optarg) {
+          const char* last = optarg + std::strlen(optarg);
+          auto [ptr, ec] = std::from_chars(optarg, last, topAllocatingStacks);
+          if (ec != std::errc{} || ptr != last) {
+            std::string msg;
+            msg = "'";
+            msg += optarg;
+            msg += "' is an invalid value for --memory!";
+            throw std::runtime_error{msg};
+          }
+        }
+        instrumentMemory = true;
+        AllocationProfiler::start();
+        break;
       case 'o':
         if (std::get_if<Stdout>(&outputFile)) {
           outputFile.emplace<std::filesystem::path>(optarg);
@@ -278,10 +296,10 @@ int main(int argc, char* argv[]) try {
   TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
   output.flush();
 
-#ifdef TRIMJA_ENABLE_ALLOCATION_PROFILER
-  AllocationProfiler::print(std::cout, 10);
-  std::cout.flush();
-#endif
+  if (instrumentMemory) {
+    AllocationProfiler::print(std::cout, topAllocatingStacks);
+    std::cout.flush();
+  }
 
   if (!expectedFile.has_value()) {
     std::_Exit(EXIT_SUCCESS);
