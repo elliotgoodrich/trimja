@@ -151,13 +151,9 @@ void AllocationProfiler::print(std::ostream& out, std::size_t top) {
   for (auto it = topAllocations.begin(); it != topEnd; ++it) {
     out << it->second << " allocations\n";
     for (const void* frame : it->first) {
-      DWORD64 address;
-      static_assert(sizeof(frame) == sizeof(address));
-      std::copy_n(reinterpret_cast<const char*>(&frame), sizeof(frame),
-                  reinterpret_cast<char*>(&address));
-
+      const DWORD64 address = std::bit_cast<DWORD64>(frame);
       char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
-      PSYMBOL_INFO symbol = (PSYMBOL_INFO)buffer;
+      PSYMBOL_INFO symbol = reinterpret_cast<PSYMBOL_INFO>(buffer);
       symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
       symbol->MaxNameLen = MAX_SYM_NAME;
 
