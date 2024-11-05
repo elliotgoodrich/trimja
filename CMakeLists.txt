@@ -46,9 +46,6 @@ target_compile_definitions(trimja PRIVATE
 )
 set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 
-# Uncomment to enable allocation profiling
-#target_compile_definitions(trimja PRIVATE TRIMJA_ENABLE_ALLOCATION_PROFILER)
-
 install(TARGETS trimja RUNTIME DESTINATION bin)
 
 if(WIN32)
@@ -195,6 +192,22 @@ set_tests_properties(
     trimja.stdin
     PROPERTIES FIXTURES_REQUIRED trimja.snapshot.simple.fixture
 )
+
+# --memory
+if(WIN32)
+    add_test(
+        NAME trimja.snapshot.--memory
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
+        COMMAND trimja
+        --memory=3
+        --expected expected.ninja
+        --affected changed.txt
+    )
+    set_tests_properties(
+        trimja.snapshot.--memory
+        PROPERTIES FIXTURES_REQUIRED trimja.snapshot.passthrough.fixture
+    )
+endif()
 
 # --builddir
 add_test(

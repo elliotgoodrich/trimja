@@ -26,6 +26,7 @@
 #include <boost/boost_unordered.hpp>
 
 #include <algorithm>
+#include <iomanip>
 #include <ostream>
 #include <span>
 #include <stdexcept>
@@ -64,6 +65,27 @@ struct StackEq {
   }
 };
 
+void printBytes(std::ostream& out, std::size_t bytes) {
+  const std::string_view suffixes[] = {
+      "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB",
+  };
+  auto suffix = suffixes;
+  while (bytes >= 1024) {
+    bytes /= 1024;
+    ++suffix;
+  }
+
+  if (bytes >= 1000) {
+    out << bytes << ' ' << *suffix;
+  } else {
+    const std::size_t rounded = bytes * 1000;
+    const std::streamsize precision =
+        rounded < 10000 ? 2 : (rounded < 100000 ? 1 : 0);
+    out << std::setprecision(precision) << std::fixed;
+    out << (rounded / 1000.0) << ' ' << *suffix;
+  }
+}
+
 bool s_collect = false;
 boost::unordered_flat_map<std::vector<const void*>,
                           std::size_t,
@@ -71,6 +93,7 @@ boost::unordered_flat_map<std::vector<const void*>,
                           StackEq>
     s_allocations;
 std::vector<const void*> s_tmp(62);
+std::size_t s_totalAllocated = 0;
 
 int hook([[maybe_unused]] int allocType,
          [[maybe_unused]] void* userData,
@@ -80,6 +103,7 @@ int hook([[maybe_unused]] int allocType,
          [[maybe_unused]] const unsigned char* filename,
          [[maybe_unused]] int lineNumber) {
   if (allocType == _HOOK_ALLOC && size > 0 && s_collect) {
+    s_totalAllocated += size;
     s_collect = false;
 
     void* stack[62];
@@ -96,7 +120,7 @@ int hook([[maybe_unused]] int allocType,
 }  // namespace
 
 void AllocationProfiler::start() {
-  if (SymInitialize(GetCurrentProcess(), NULL, TRUE) == FALSE) {
+  if (SymInitialize(GetCurrentProcess(), nullptr, TRUE) == FALSE) {
     throw std::runtime_error("Failed to call SymInitialize.");
   }
   SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
@@ -106,6 +130,13 @@ void AllocationProfiler::start() {
 
 void AllocationProfiler::print(std::ostream& out, std::size_t top) {
   s_collect = false;
+  out << "Total allocated: ";
+  printBytes(out, s_totalAllocated);
+  out << "\n\n";
+  if (top == 0) {
+    return;
+  }
+
   std::vector<std::pair<std::span<const void* const>, std::size_t>>
       topAllocations(s_allocations.size());
   std::copy(s_allocations.cbegin(), s_allocations.cend(),
@@ -143,6 +174,21 @@ void AllocationProfiler::print(std::ostream& out, std::size_t top) {
     out << '\n';
   }
   s_collect = true;
+}
+
+}  // namespace trimja
+#else
+
+#include <stdexcept>
+
+namespace trimja {
+
+void AllocationProfiler::start() {
+  throw std::runtime_error{"Memory profiling not supported on this platform."};
+}
+
+void AllocationProfiler::print(std::ostream&, std::size_t) {
+  throw std::runtime_error{"Memory profiling not supported on this platform."};
 }
 
 }  // namespace trimja
