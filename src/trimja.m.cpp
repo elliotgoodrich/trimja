@@ -22,6 +22,7 @@
 
 #include "allocationprofiler.h"
 #include "builddirutil.h"
+#include "cpuprofiler.h"
 #include "trimutil.h"
 
 #include <ninja/getopt.h>
@@ -73,9 +74,10 @@ Options:
   --builddir                print the $builddir variable relative to the cwd)HELP"
 #if WIN32
     R"HELP(
-  --memory=N                print memory stats and top N allocating functions)HELP"
+  --memory-stats=N          print memory stats and top N allocating functions)HELP"
 #endif
     R"HELP(
+  --cpu-stats               print timing stats
   -h, --help                print help
   -v, --version             print trimja version ()HELP" TRIMJA_VERSION
     R"HELP()
@@ -105,7 +107,8 @@ static const option g_longOptions[] = {
     {"affected", required_argument, nullptr, 'a'},
     {"version", no_argument, nullptr, 'v'},
     {"write", no_argument, nullptr, 'w'},
-    {"memory", required_argument, nullptr, 'm'},
+    {"memory-stats", required_argument, nullptr, 'm'},
+    {"cpu-stats", no_argument, nullptr, 'u'},
     {},
 };
 
@@ -115,6 +118,10 @@ bool instrumentMemory = false;
 [[noreturn]] void leave(int rc) {
   if (instrumentMemory) {
     trimja::AllocationProfiler::print(std::cerr, topAllocatingStacks);
+    std::cerr.flush();
+  }
+  if (trimja::CPUProfiler::isEnabled()) {
+    trimja::CPUProfiler::print(std::cerr);
     std::cerr.flush();
   }
   std::_Exit(rc);
@@ -244,6 +251,9 @@ bool instrumentMemory = false;
           leave(EXIT_FAILURE);
         }
         break;
+      case 'u':
+        CPUProfiler::enable();
+        break;
       case '?':
         std::cerr << "Unknown option" << std::endl;
         leave(EXIT_FAILURE);
@@ -256,6 +266,7 @@ bool instrumentMemory = false;
   // Copy everything from the ninja into a stringstream in case we
   // are overwriting the same input file
   const std::string ninjaFileContents = [&] {
+    const Timer ninjaRead = CPUProfiler::start(".ninja read");
     std::stringstream ninjaCopy;
     std::ifstream ninja(ninjaFile);
     ninjaCopy << ninja.rdbuf();

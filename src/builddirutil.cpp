@@ -23,6 +23,7 @@
 #include "builddirutil.h"
 
 #include "basicscope.h"
+#include "cpuprofiler.h"
 #include "manifestparser.h"
 
 #include <fstream>
@@ -119,7 +120,10 @@ std::filesystem::path BuildDirUtil::builddir(
     const std::filesystem::path& ninjaFile,
     const std::string& ninjaFileContents) {
   BuildDirContext ctx;
-  ctx.parse(ninjaFile, ninjaFileContents);
+  {
+    const Timer t = CPUProfiler::start(".ninja parse");
+    ctx.parse(ninjaFile, ninjaFileContents);
+  }
   std::string builddir;
   ctx.fileScope.appendValue(builddir, "builddir");
   return std::filesystem::path(ninjaFile).remove_filename() / builddir;
