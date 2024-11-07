@@ -16,6 +16,7 @@ add_executable(
     src/allocationprofiler.cpp
     src/basicscope.cpp
     src/builddirutil.cpp
+    src/cpuprofiler.cpp
     src/depsreader.cpp
     src/edgescope.cpp
     src/evalstring.cpp
@@ -193,32 +194,45 @@ set_tests_properties(
     PROPERTIES FIXTURES_REQUIRED trimja.snapshot.simple.fixture
 )
 
-# --memory
+# --memory-stats
 if(WIN32)
     add_test(
-        NAME trimja.--memory
+        NAME trimja.--memory-stats
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
         COMMAND trimja
-        --memory=3
+        --memory-stats=3
         --affected changed.txt
     )
     set_tests_properties(
-        trimja.--memory
+        trimja.--memory-stats
         PROPERTIES FIXTURES_REQUIRED trimja.snapshot.passthrough.fixture
     )
 
     add_test(
-        NAME trimja.--memory2
+        NAME trimja.--memory-stats2
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/builddir/
         COMMAND trimja
-        --memory=3
+        --memory-stats=3
         --builddir
     )
     set_tests_properties(
-        trimja.--memory2
+        trimja.--memory-stats2
         PROPERTIES FIXTURES_REQUIRED trimja.snapshot.builddir.fixture
     )
 endif()
+
+# --cpu-stats
+add_test(
+    NAME trimja.--cpu-stats
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
+    COMMAND trimja
+    --cpu-stats
+    --affected changed.txt
+)
+set_tests_properties(
+    trimja.--cpu-stats
+    PROPERTIES FIXTURES_REQUIRED trimja.snapshot.passthrough.fixture
+)
 
 # --builddir
 add_test(

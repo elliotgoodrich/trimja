@@ -23,6 +23,7 @@
 #include "trimutil.h"
 
 #include "basicscope.h"
+#include "cpuprofiler.h"
 #include "depsreader.h"
 #include "edgescope.h"
 #include "evalstring.h"
@@ -862,7 +863,10 @@ void TrimUtil::trim(std::ostream& output,
 
   // Parse the build file, this needs to be the first thing so we choose the
   // canonical paths in the same way that ninja does
-  ctx.parse(ninjaFile, ninjaFileContents);
+  {
+    const Timer t = CPUProfiler::start(".ninja parse");
+    ctx.parse(ninjaFile, ninjaFileContents);
+  }
 
   Graph& graph = ctx.graph;
 
@@ -881,6 +885,7 @@ void TrimUtil::trim(std::ostream& output,
   // Add all dynamic dependencies from `.ninja_deps` to the graph
   if (const std::filesystem::path ninjaDeps = builddir / ".ninja_deps";
       std::filesystem::exists(ninjaDeps)) {
+    const Timer t = CPUProfiler::start(".ninja_deps parse");
     parseDepFile(ninjaDeps, graph, ctx);
   }
 
@@ -900,6 +905,7 @@ void TrimUtil::trim(std::ostream& output,
     }
     isAffected.assign(isAffected.size(), true);
   } else {
+    const Timer t = CPUProfiler::start(".ninja_log parse");
     parseLogFile(
         ninjaLog, ctx, isAffected,
         [&](const std::size_t index) {
@@ -989,6 +995,7 @@ void TrimUtil::trim(std::ostream& output,
   std::vector<bool> seen(graph.size());
 
   // Mark all outputs that have an affected input as affected
+  Timer trimTimer = CPUProfiler::start("trim time");
   for (std::size_t index = 0; index < graph.size(); ++index) {
     markIfChildrenAffected(index, seen, isAffected, ctx, explain);
   }
@@ -1059,7 +1066,9 @@ void TrimUtil::trim(std::ostream& output,
                     [&](std::size_t index) { ctx.parts[index] = ""; });
     }
   }
+  trimTimer.stop();
 
+  const Timer writeTimer = CPUProfiler::start("output time");
   std::copy(ctx.parts.begin(), ctx.parts.end(),
             std::ostream_iterator<std::string_view>(output));
 }
