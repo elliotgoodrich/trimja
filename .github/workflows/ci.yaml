@@ -51,18 +51,18 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
       run: cmake --build output --config ${{ matrix.build_type }} --target package
     - name: Generate Changelog
-      run: git show -s --format='%b' > build/CHANGELOG.txt
+      run: git show -s --format='%b' > output/CHANGELOG.txt
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
     - name: Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release'
       with:
-        body_path: build/CHANGELOG.txt
+        body_path: output/CHANGELOG.txt
         files: |
-          build/trimja-*-Linux.tar.gz
-          build/trimja-*-Darwin.tar.gz
-          build/trimja-*-win64.exe
-          build/trimja-*.zip
+          output/trimja-*-Linux.tar.gz
+          output/trimja-*-Darwin.tar.gz
+          output/trimja-*-win64.exe
+          output/trimja-*.zip
   format:
     runs-on: ubuntu-latest
     steps:
