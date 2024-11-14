@@ -28,9 +28,9 @@
 // prefixed with the length of the segment, stored as an `Offset` type.  The
 // leading bit of this is set to 1 if the segment is a variable, otherwise it is
 // 0 if the segment is text.  Additionally there is an extra member variable
-// `m_lastSegmentLength` that has the same value as the last `Offset`.  This
-// allows us to jump back to the last segment to extend it if it is a text
-// segment.
+// `m_lastTextSegmentLength` that has the length of the last text section or 0
+// if the last section was not text.  This allows us to jump back to the last
+// segment to extend it.
 //
 // This has the benefit that `EvalString` if very cache-friendly when iterating
 // and requires only one allocation.  Moves and copies should be as cheap as
@@ -101,18 +101,18 @@ bool operator!=(EvalString::const_iterator lhs,
   return !(lhs == rhs);
 }
 
-EvalString::EvalString() : m_data(sizeof(Offset), '\0'), m_lastSegmentLength{} {
+EvalString::EvalString() : m_data{}, m_lastTextSegmentLength{0} {
   assert(empty());
 }
 
 void EvalString::clear() {
-  m_data.assign(sizeof(Offset), '\0');
-  m_lastSegmentLength = 0;
+  m_data.clear();
+  m_lastTextSegmentLength = 0;
   assert(empty());
 }
 
 bool EvalString::empty() const {
-  return m_data.size() == sizeof(Offset);
+  return m_data.empty();
 }
 
 EvalString::const_iterator EvalString::begin() const {
@@ -124,27 +124,29 @@ EvalString::const_iterator EvalString::end() const {
 }
 
 void EvalString::appendText(std::string_view text) {
-  if (!hasLeadingBit(m_lastSegmentLength)) {
+  assert(!text.empty());
+  if (m_lastTextSegmentLength > 0) {
     // If the last part was plain text we can extend it
-    const Offset newLength = m_lastSegmentLength + text.size();
+    const Offset newLength = m_lastTextSegmentLength + text.size();
     std::copy_n(reinterpret_cast<const char*>(&newLength), sizeof(newLength),
-                m_data.end() - sizeof(Offset) - m_lastSegmentLength);
+                m_data.end() - sizeof(Offset) - m_lastTextSegmentLength);
     m_data.append(text);
-    m_lastSegmentLength = newLength;
+    m_lastTextSegmentLength = newLength;
   } else {
     // Otherwise write new segment
-    m_lastSegmentLength = text.size();
-    m_data.append(reinterpret_cast<const char*>(&m_lastSegmentLength),
-                  sizeof(m_lastSegmentLength));
+    const Offset length = text.size();
+    m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
     m_data.append(text);
+    m_lastTextSegmentLength = length;
   }
 }
 
 void EvalString::appendVariable(std::string_view name) {
-  m_lastSegmentLength = setLeadingBit(name.size());
-  m_data.append(reinterpret_cast<const char*>(&m_lastSegmentLength),
-                sizeof(m_lastSegmentLength));
+  assert(!name.empty());
+  const Offset length = setLeadingBit(name.size());
+  m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
   m_data.append(name);
+  m_lastTextSegmentLength = 0;
 }
 
 }  // namespace trimja

@@ -4,7 +4,7 @@ pool bye
   depth = 100
 foo = 42
 rule copy
-  command = ninja --version $in -> $out foo=$foo bar=${bar} pool=$pool
+  command = ninja --version $in -> $out foo=$foo bar=${bar}$bar pool=$pool
   pool = hi
 build out1: copy in1
   foo = 1

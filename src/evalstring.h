@@ -42,7 +42,7 @@ class EvalString {
 
  private:
   std::string m_data;
-  Offset m_lastSegmentLength;
+  Offset m_lastTextSegmentLength;
 
  public:
   /**
@@ -102,13 +102,13 @@ class EvalString {
   /**
    * @brief Appends text to the EvalString, consolidating consecutive text
    * sections.
-   * @param text The text to append.
+   * @param text The text to append.  This must not be empty.
    */
   void appendText(std::string_view text);
 
   /**
    * @brief Appends a variable to the EvalString.
-   * @param name The name of the variable to append.
+   * @param name The name of the variable to append.  This must not be empty.
    */
   void appendVariable(std::string_view name);
 };
