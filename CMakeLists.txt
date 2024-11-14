@@ -12,6 +12,7 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 
 add_executable(
     trimja
+    src/all.natvis
     src/trimja.m.cpp
     src/allocationprofiler.cpp
     src/basicscope.cpp

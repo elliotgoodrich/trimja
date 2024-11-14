@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="trimja::EvalString">
+    <Expand>
+      <CustomListItems MaxItemsPerView="100">
+        <Variable Name="mask" InitialValue="((trimja::EvalString::Offset)1) &lt;&lt; (sizeof(trimja::EvalString::Offset) * 8 - 1)"/>
+        <Variable Name="rawLength" InitialValue="(trimja::EvalString::Offset)0"/>
+        <Variable Name="isVariable" InitialValue="false"/>
+        <Variable Name="length" InitialValue="(trimja::EvalString::Offset)0"/>
+        <Variable Name="it" InitialValue="m_data.isShortString() ? m_data._Mypair._Myval2._Bx._Buf : m_data._Mypair._Myval2._Bx._Ptr"/>
+        <Loop>
+          <Break Condition="*it == '\0'" />
+          <Exec>rawLength = *(const trimja::EvalString::Offset*)it</Exec>
+          <Exec>isVariable = (rawLength &amp; mask)</Exec>
+          <Exec>length = rawLength &amp; ~mask</Exec>
+          <If Condition="isVariable">
+            <Item Name="var">it + sizeof(trimja::EvalString::Offset),[length]s8b</Item>
+          </If>
+          <If Condition="!isVariable">
+            <Item Name="text">it + sizeof(trimja::EvalString::Offset),[length]s8</Item>
+          </If>
+          <Exec>it += length + sizeof(length)</Exec>
+        </Loop>
+      </CustomListItems>
+    </Expand>
+  </Type>
+
+  <Type Name="trimja::EvalString::const_iterator">
+    <Intrinsic Name="isEnd" Expression="*m_pos == '\0'"/>
+    <Intrinsic Name="rawLength" Expression="*(const trimja::EvalString::Offset*)m_pos"/>
+    <Intrinsic Name="mask" Expression="(trimja::EvalString::Offset)1 &lt;&lt; (sizeof(trimja::EvalString::Offset) * 8 - 1)"/>
+    <Intrinsic Name="isVariable" Expression="(rawLength() &amp; mask()) != 0"/>
+    <Intrinsic Name="length" Expression="rawLength() &amp; ~mask()"/>
+    <DisplayString Condition="isEnd()">{{ end }}</DisplayString>
+    <DisplayString Condition="!isEnd() &amp;&amp; isVariable()">{{ var = {m_pos + sizeof(trimja::EvalString::Offset),[length()]s8b} }}</DisplayString>
+    <DisplayString Condition="!isEnd() &amp;&amp; !isVariable()">{{ text = {m_pos + sizeof(trimja::EvalString::Offset),[length()]s8} }}</DisplayString>
+  </Type>
+</AutoVisualizer>
