@@ -50,8 +50,8 @@ class EvalString {
    * @brief Enum to represent the type of token.
    */
   enum class TokenType {
-    Text,     ///< Represents a text token.
-    Variable  ///< Represents a variable token.
+    Text = 0,      ///< Represents a text token.
+    Variable = 1,  ///< Represents a variable token.
   };
 
   /**
