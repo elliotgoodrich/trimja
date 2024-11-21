@@ -28,6 +28,7 @@
 #include <ninja/getopt.h>
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <charconv>
 #include <cstring>
@@ -270,7 +271,7 @@ bool instrumentMemory = false;
   const std::string ninjaFileContents = [&] {
     const Timer ninjaRead = CPUProfiler::start(".ninja read");
     std::stringstream ninjaCopy;
-    std::ifstream ninja(ninjaFile);
+    std::ifstream ninja(ninjaFile, std::ios_base::in | std::ios_base::binary);
     ninjaCopy << ninja.rdbuf();
     return ninjaCopy.str();
   }();
@@ -315,8 +316,13 @@ bool instrumentMemory = false;
         }
       },
       outputFile);
-  TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
-  output.flush();
+
+  {
+    std::array<char, 256 * 1024> writeBuffer;
+    output.rdbuf()->pubsetbuf(writeBuffer.data(), writeBuffer.size());
+    TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
+    output.flush();
+  }
 
   if (!expectedFile.has_value()) {
     leave(EXIT_SUCCESS);

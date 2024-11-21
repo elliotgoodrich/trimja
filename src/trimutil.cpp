@@ -635,7 +635,7 @@ struct BuildContext {
     shadowedRules.emplace_back();
 
     std::stringstream ninjaCopy;
-    std::ifstream ninja{file};
+    std::ifstream ninja{file, std::ios_base::in | std::ios_base::binary};
     ninjaCopy << ninja.rdbuf();
     stringStorage.push_front(ninjaCopy.str());
 
