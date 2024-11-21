@@ -73,9 +73,8 @@ std::pair<std::string_view, EvalString::TokenType>
 EvalString::const_iterator::operator*() const {
   Offset length;
   std::copy_n(m_pos, sizeof(length), reinterpret_cast<char*>(&length));
-  return std::make_pair(
-      std::string_view{m_pos + sizeof(length), clearLeadingBit(length)},
-      hasLeadingBit(length) ? TokenType::Variable : TokenType::Text);
+  return {{m_pos + sizeof(length), clearLeadingBit(length)},
+          static_cast<TokenType>(hasLeadingBit(length))};
 }
 
 EvalString::const_iterator& EvalString::const_iterator::operator++() {
