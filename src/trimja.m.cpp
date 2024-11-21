@@ -134,6 +134,8 @@ bool instrumentMemory = false;
   // avoids the overhead of destructing objects on the stack.
   using namespace trimja;
 
+  std::ios_base::sync_with_stdio(false);
+
   struct StdIn {};
   std::variant<std::monostate, StdIn, std::filesystem::path> affectedFile;
 
