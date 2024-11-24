@@ -68,22 +68,27 @@ std::size_t BaseReaderWithStart::bytesParsed() const {
 
 }  // namespace detail
 
-std::string_view VariableReader::name() {
-  std::string_view name;
-  if (!m_lexer->ReadIdent(&name)) {
+VariableReader::VariableReader(Lexer* lexer,
+                               EvalString* storage,
+                               const char* start)
+    : detail::BaseReaderWithStart{lexer, storage, start}, m_name{} {
+  if (!m_lexer->ReadIdent(&m_name)) {
     throw std::runtime_error("Missing variable name");
   }
-  return name;
-}
 
-const EvalString& VariableReader::value() {
   expectToken(m_lexer, Lexer::EQUALS);
-
   std::string err;
   m_storage->clear();
   if (!m_lexer->ReadVarValue(m_storage, &err)) {
     throw std::runtime_error(err);
   }
+}
+
+std::string_view VariableReader::name() const {
+  return m_name;
+}
+
+const EvalString& VariableReader::value() const {
   return *m_storage;
 }
 
@@ -194,30 +199,36 @@ PathRangeReader::sentinel PathRangeReader::end() const {
   return sentinel{};
 }
 
-std::string_view PoolReader::name() {
-  std::string_view name;
-  if (!m_lexer->ReadIdent(&name)) {
+PoolReader::PoolReader()
+    : detail::BaseReaderWithStart{nullptr, nullptr, nullptr}, m_name{} {}
+
+PoolReader::PoolReader(Lexer* lexer, EvalString* storage, const char* start)
+    : detail::BaseReaderWithStart{lexer, storage, start}, m_name{} {
+  if (!m_lexer->ReadIdent(&m_name)) {
     throw std::runtime_error("Missing name for pool");
   }
 
   expectToken(m_lexer, Lexer::NEWLINE);
-  return name;
 }
 
-LetRangeReader PoolReader::variables() {
+std::string_view PoolReader::name() const {
+  return m_name;
+}
+
+LetRangeReader PoolReader::readVariables() {
   return LetRangeReader{m_lexer, m_storage};
 };
 
-PathRangeReader BuildReader::out() {
+PathRangeReader BuildReader::readOut() {
   return PathRangeReader{m_lexer, m_storage};
 }
 
-PathRangeReader BuildReader::implicitOut() {
+PathRangeReader BuildReader::readImplicitOut() {
   return m_lexer->PeekToken(Lexer::PIPE) ? PathRangeReader{m_lexer, m_storage}
                                          : PathRangeReader{};
 }
 
-std::string_view BuildReader::name() {
+std::string_view BuildReader::readName() {
   expectToken(m_lexer, Lexer::COLON);
   std::string_view name;
   if (!m_lexer->ReadIdent(&name)) {
@@ -226,55 +237,64 @@ std::string_view BuildReader::name() {
   return name;
 }
 
-PathRangeReader BuildReader::in() {
+PathRangeReader BuildReader::readIn() {
   return PathRangeReader{m_lexer, m_storage};
 }
 
-PathRangeReader BuildReader::implicitIn() {
+PathRangeReader BuildReader::readImplicitIn() {
   return m_lexer->PeekToken(Lexer::PIPE) ? PathRangeReader{m_lexer, m_storage}
                                          : PathRangeReader{};
 }
 
-PathRangeReader BuildReader::orderOnlyDeps() {
+PathRangeReader BuildReader::readOrderOnlyDeps() {
   return m_lexer->PeekToken(Lexer::PIPE2) ? PathRangeReader{m_lexer, m_storage}
                                           : PathRangeReader{};
 }
 
-PathRangeReader BuildReader::validations() {
+PathRangeReader BuildReader::readValidations() {
   return m_lexer->PeekToken(Lexer::PIPEAT) ? PathRangeReader{m_lexer, m_storage}
                                            : PathRangeReader{};
 }
 
-LetRangeReader BuildReader::variables() {
+LetRangeReader BuildReader::readVariables() {
   expectToken(m_lexer, Lexer::NEWLINE);
   return LetRangeReader{m_lexer, m_storage};
 }
 
-std::string_view RuleReader::name() {
-  std::string_view name;
-  if (!m_lexer->ReadIdent(&name)) {
+RuleReader::RuleReader(Lexer* lexer, EvalString* storage, const char* start)
+    : detail::BaseReaderWithStart{lexer, storage, start}, m_name{} {
+  if (!m_lexer->ReadIdent(&m_name)) {
     throw std::runtime_error("Missing name for rule");
   }
 
   expectToken(m_lexer, Lexer::NEWLINE);
-  return name;
 }
 
-LetRangeReader RuleReader::variables() {
+std::string_view RuleReader::name() const {
+  return m_name;
+}
+
+LetRangeReader RuleReader::readVariables() {
   return LetRangeReader{m_lexer, m_storage};
 };
 
-PathRangeReader DefaultReader::paths() {
+PathRangeReader DefaultReader::readPaths() {
   return PathRangeReader{m_lexer, m_storage, Lexer::NEWLINE};
 }
 
-const EvalString& IncludeReader::path() {
+IncludeReader::IncludeReader(Lexer* lexer,
+                             EvalString* storage,
+                             const char* start)
+    : detail::BaseReaderWithStart{lexer, storage, start} {
   std::string err;
   m_storage->clear();
   if (!m_lexer->ReadPath(m_storage, &err)) {
     throw std::runtime_error(err);
   }
   expectToken(m_lexer, Lexer::NEWLINE);
+}
+
+const EvalString& IncludeReader::path() const {
   return *m_storage;
 }
 
@@ -282,13 +302,19 @@ const std::filesystem::path& IncludeReader::parent() const {
   return m_lexer->getFilename();
 }
 
-const EvalString& SubninjaReader::path() {
+SubninjaReader::SubninjaReader(Lexer* lexer,
+                               EvalString* storage,
+                               const char* start)
+    : detail::BaseReaderWithStart{lexer, storage, start} {
   std::string err;
   m_storage->clear();
   if (!m_lexer->ReadPath(m_storage, &err)) {
     throw std::runtime_error(err);
   }
   expectToken(m_lexer, Lexer::NEWLINE);
+}
+
+const EvalString& SubninjaReader::path() const {
   return *m_storage;
 }
 
@@ -297,8 +323,7 @@ const std::filesystem::path& SubninjaReader::parent() const {
 }
 
 ManifestReader::iterator::iterator(Lexer* lexer, EvalString* storage)
-    : detail::BaseReader{lexer, storage},
-      m_value{PoolReader{nullptr, nullptr, nullptr}} {
+    : detail::BaseReader{lexer, storage}, m_value{PoolReader{}} {
   // We need to set `m_value` to anything so just choose `PoolReader`
   ++*this;
 }

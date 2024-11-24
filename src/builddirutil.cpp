@@ -39,15 +39,9 @@ struct BuildDirContext {
 
   BuildDirContext() = default;
 
-  static void consume(PathRangeReader&& range) {
-    for ([[maybe_unused]] const EvalString& r : range) {
-    }
-  }
-
-  static void consume(LetRangeReader&& range) {
-    for (VariableReader&& r : range) {
-      [[maybe_unused]] const std::string_view name = r.name();
-      [[maybe_unused]] const EvalString& value = r.value();
+  template <typename RANGE>
+  static void consume(RANGE&& range) {
+    for ([[maybe_unused]] auto&& _ : range) {
     }
   }
 
@@ -58,35 +52,28 @@ struct BuildDirContext {
     }
   }
 
-  void operator()(PoolReader& r) const {
-    [[maybe_unused]] const std::string_view name = r.name();
-    consume(r.variables());
-  }
+  void operator()(PoolReader& r) const { consume(r.readVariables()); }
 
   void operator()(BuildReader& r) const {
-    consume(r.out());
-    consume(r.implicitOut());
-    [[maybe_unused]] const std::string_view ruleName = r.name();
-    consume(r.in());
-    consume(r.implicitIn());
-    consume(r.orderOnlyDeps());
-    consume(r.validations());
-    consume(r.variables());
+    consume(r.readOut());
+    consume(r.readImplicitOut());
+    [[maybe_unused]] const std::string_view ruleName = r.readName();
+    consume(r.readIn());
+    consume(r.readImplicitIn());
+    consume(r.readOrderOnlyDeps());
+    consume(r.readValidations());
+    consume(r.readVariables());
   }
 
-  void operator()(RuleReader& r) const {
-    [[maybe_unused]] const std::string_view name = r.name();
-    consume(r.variables());
+  void operator()(RuleReader& r) const { consume(r.readVariables()); }
+
+  void operator()(DefaultReader& r) const { consume(r.readPaths()); }
+
+  void operator()(const VariableReader& r) {
+    evaluate(fileScope.resetValue(r.name()), r.value(), fileScope);
   }
 
-  void operator()(DefaultReader& r) const { consume(r.paths()); }
-
-  void operator()(VariableReader& r) {
-    const std::string_view name = r.name();
-    evaluate(fileScope.resetValue(name), r.value(), fileScope);
-  }
-
-  void operator()(IncludeReader& r) {
+  void operator()(const IncludeReader& r) {
     const std::filesystem::path file = [&] {
       const EvalString& pathEval = r.path();
       std::string path;
@@ -107,10 +94,9 @@ struct BuildDirContext {
     parse(file, ninjaCopy.str());
   }
 
-  void operator()(SubninjaReader& r) const {
+  void operator()(const SubninjaReader&) const {
     // subninja introduces a new scope so we can never modify the top-level
     // `builddir` variable
-    [[maybe_unused]] const EvalString& p = r.path();
   }
 };
 

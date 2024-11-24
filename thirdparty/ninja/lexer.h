@@ -22,8 +22,6 @@
 //   * Replace `StringPiece` by `std::string_view`
 //   * Duplicate `ReadIdent` to `SkipIdent` and modify it so it doesn't
 //     output to any `std::string`
-//   * Create `SkipVarValue`, that creates a temporary `EvalString` and
-//     calls `ReadEvalString`
 //   * Run clang-format across `lexer.h` and `lexer.cc`
 //   * Add `const char* position()` to return the current position in the
 //     ninja file
@@ -106,7 +104,6 @@ struct Lexer {
   bool ReadVarValue(trimja::EvalString* value, std::string* err) {
     return ReadEvalString(value, false, err);
   }
-  bool SkipVarValue(std::string* err);
 
   /// Construct an error message with context.
   bool Error(const std::string_view& message, std::string* err);
