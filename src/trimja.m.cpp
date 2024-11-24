@@ -315,7 +315,11 @@ bool instrumentMemory = false;
         }
       },
       outputFile);
-  TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
+
+  // Keep the variables used in `trim` alive so that we can skip destruction
+  // and its overhead when we call `leave`.
+  [[maybe_unused]] const std::shared_ptr<void> state =
+      TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
   output.flush();
 
   if (!expectedFile.has_value()) {

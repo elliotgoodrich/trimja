@@ -25,6 +25,7 @@
 
 #include <filesystem>
 #include <iosfwd>
+#include <memory>
 #include <string>
 
 namespace trimja {
@@ -42,12 +43,14 @@ struct TrimUtil {
    * @param ninjaFileContents The contents of the original Ninja build file.
    * @param affected The input stream containing the list of affected files.
    * @param explain If true, prints to stderr why each build command was kept.
+   * @return A shared pointer containing the internal variables used in the
+   * algorithm to defer or avoid destruction.
    */
-  static void trim(std::ostream& output,
-                   const std::filesystem::path& ninjaFile,
-                   const std::string& ninjaFileContents,
-                   std::istream& affected,
-                   bool explain);
+  static std::shared_ptr<void> trim(std::ostream& output,
+                                    const std::filesystem::path& ninjaFile,
+                                    const std::string& ninjaFileContents,
+                                    std::istream& affected,
+                                    bool explain);
 };
 
 }  // namespace trimja
