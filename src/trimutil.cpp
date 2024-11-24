@@ -844,12 +844,13 @@ void ifAffectedMarkAllChildren(std::size_t index,
 
 }  // namespace
 
-void TrimUtil::trim(std::ostream& output,
-                    const std::filesystem::path& ninjaFile,
-                    const std::string& ninjaFileContents,
-                    std::istream& affected,
-                    bool explain) {
-  BuildContext ctx;
+std::shared_ptr<void> TrimUtil::trim(std::ostream& output,
+                                     const std::filesystem::path& ninjaFile,
+                                     const std::string& ninjaFileContents,
+                                     std::istream& affected,
+                                     bool explain) {
+  auto state = std::make_shared<BuildContext>();
+  BuildContext& ctx = *state;
 
   // Parse the build file, this needs to be the first thing so we choose the
   // canonical paths in the same way that ninja does
@@ -1061,6 +1062,8 @@ void TrimUtil::trim(std::ostream& output,
   const Timer writeTimer = CPUProfiler::start("output time");
   std::copy(ctx.parts.begin(), ctx.parts.end(),
             std::ostream_iterator<std::string_view>(output));
+
+  return state;
 }
 
 }  // namespace trimja
