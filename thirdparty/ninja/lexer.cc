@@ -17,11 +17,6 @@
 
 #include "evalstring.h"
 
-bool Lexer::SkipVarValue(std::string *err) {
-  trimja::EvalString tmp;
-  return ReadEvalString(&tmp, false, err);
-}
-
 bool Lexer::Error(const std::string_view& message, std::string* err) {
   // Compute line/column.
   int line = 1;

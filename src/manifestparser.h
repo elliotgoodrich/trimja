@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 namespace trimja {
@@ -72,10 +73,22 @@ struct BaseReaderWithStart : public BaseReader {
  * @brief Class for reading variable definitions in a Ninja build file.
  */
 class VariableReader : public detail::BaseReaderWithStart {
+  std::string_view m_name;
+
  public:
-  using detail::BaseReaderWithStart::BaseReaderWithStart;
-  std::string_view name();
-  const EvalString& value();
+  VariableReader(Lexer* lexer, EvalString* storage, const char* start);
+  std::string_view name() const;
+  const EvalString& value() const;
+
+  template <std::size_t I>
+  std::tuple_element_t<I, VariableReader> get() const& {
+    if constexpr (I == 0) {
+      return m_name;
+    }
+    if constexpr (I == 1) {
+      return *m_storage;
+    }
+  }
 };
 
 /**
@@ -152,10 +165,13 @@ class PathRangeReader : public detail::BaseReader {
  * @brief Class for reading pool definitions in a Ninja build file.
  */
 class PoolReader : public detail::BaseReaderWithStart {
+  std::string_view m_name;
+
  public:
-  using detail::BaseReaderWithStart::BaseReaderWithStart;
-  std::string_view name();
-  LetRangeReader variables();
+  PoolReader();  ///<  For private use
+  PoolReader(Lexer* lexer, EvalString* storage, const char* start);
+  std::string_view name() const;
+  LetRangeReader readVariables();
 };
 
 /**
@@ -165,14 +181,14 @@ class PoolReader : public detail::BaseReaderWithStart {
 class BuildReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
-  PathRangeReader out();
-  PathRangeReader implicitOut();
-  std::string_view name();
-  PathRangeReader in();
-  PathRangeReader implicitIn();
-  PathRangeReader orderOnlyDeps();
-  PathRangeReader validations();
-  LetRangeReader variables();
+  PathRangeReader readOut();
+  PathRangeReader readImplicitOut();
+  std::string_view readName();
+  PathRangeReader readIn();
+  PathRangeReader readImplicitIn();
+  PathRangeReader readOrderOnlyDeps();
+  PathRangeReader readValidations();
+  LetRangeReader readVariables();
 };
 
 /**
@@ -180,10 +196,12 @@ class BuildReader : public detail::BaseReaderWithStart {
  * @brief Class for reading rule definitions in a Ninja build file.
  */
 class RuleReader : public detail::BaseReaderWithStart {
+  std::string_view m_name;
+
  public:
-  using detail::BaseReaderWithStart::BaseReaderWithStart;
-  std::string_view name();
-  LetRangeReader variables();
+  RuleReader(Lexer* lexer, EvalString* storage, const char* start);
+  std::string_view name() const;
+  LetRangeReader readVariables();
 };
 
 /**
@@ -193,7 +211,7 @@ class RuleReader : public detail::BaseReaderWithStart {
 class DefaultReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
-  PathRangeReader paths();
+  PathRangeReader readPaths();
 };
 
 /**
@@ -202,11 +220,10 @@ class DefaultReader : public detail::BaseReaderWithStart {
  */
 class IncludeReader : public detail::BaseReaderWithStart {
  public:
-  using detail::BaseReaderWithStart::BaseReaderWithStart;
-  const EvalString& path();
+  IncludeReader(Lexer* lexer, EvalString* storage, const char* start);
+  const EvalString& path() const;
 
-  // Return the path passed in to the `ManifestReader` constructor. Note that
-  // this method can be called before or after `path`.
+  // Return the path passed in to the `ManifestReader` constructor.
   const std::filesystem::path& parent() const;
 };
 
@@ -216,11 +233,10 @@ class IncludeReader : public detail::BaseReaderWithStart {
  */
 class SubninjaReader : public detail::BaseReaderWithStart {
  public:
-  using detail::BaseReaderWithStart::BaseReaderWithStart;
-  const EvalString& path();
+  SubninjaReader(Lexer* lexer, EvalString* storage, const char* start);
+  const EvalString& path() const;
 
-  // Return the path passed in to the `ManifestReader` constructor. Note that
-  // this method can be called before or after `path`.
+  // Return the path passed in to the `ManifestReader` constructor.
   const std::filesystem::path& parent() const;
 };
 
@@ -266,5 +282,22 @@ class ManifestReader {
 };
 
 }  // namespace trimja
+
+namespace std {
+template <>
+struct tuple_size<trimja::VariableReader> {
+  static constexpr size_t value = 2;
+};
+
+template <>
+struct tuple_element<0, trimja::VariableReader> {
+  using type = std::string_view;
+};
+
+template <>
+struct tuple_element<1, trimja::VariableReader> {
+  using type = const trimja::EvalString&;
+};
+}  // namespace std
 
 #endif

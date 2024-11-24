@@ -270,15 +270,9 @@ struct BuildContext {
     return ruleIndex < 2;
   }
 
-  static void consume(PathRangeReader&& range) {
-    for ([[maybe_unused]] const EvalString& r : range) {
-    }
-  }
-
-  static void consume(LetRangeReader&& range) {
-    for (VariableReader&& r : range) {
-      [[maybe_unused]] const std::string_view name = r.name();
-      [[maybe_unused]] const EvalString& value = r.value();
+  template <typename RANGE>
+  static void consume(RANGE&& range) {
+    for ([[maybe_unused]] auto&& _ : range) {
     }
   }
 
@@ -333,8 +327,7 @@ struct BuildContext {
   }
 
   void operator()(PoolReader& r) {
-    [[maybe_unused]] const std::string_view name = r.name();
-    consume(r.variables());
+    consume(r.readVariables());
     parts.emplace_back(r.start(), r.bytesParsed());
   }
 
@@ -342,21 +335,21 @@ struct BuildContext {
     PathVector& outs = tmp.outs;
     outs.clear();
 
-    for (const EvalString& path : r.out()) {
+    for (const EvalString& path : r.readOut()) {
       evaluate(outs.emplace_back(), path, fileScope);
     }
     if (outs.empty()) {
       throw std::runtime_error("Missing output paths in build command");
     }
     const std::size_t outSize = outs.size();
-    for (const EvalString& path : r.implicitOut()) {
+    for (const EvalString& path : r.readImplicitOut()) {
       evaluate(outs.emplace_back(), path, fileScope);
     }
 
     // Mark the outputs for later
     const std::string_view outStr(r.start(), r.bytesParsed());
 
-    std::string_view ruleName = r.name();
+    std::string_view ruleName = r.readName();
 
     const std::size_t ruleIndex = [&] {
       const auto ruleIt = ruleLookup.find(ruleName);
@@ -370,18 +363,18 @@ struct BuildContext {
     // Collect inputs
     PathVector& ins = tmp.ins;
     ins.clear();
-    for (const EvalString& path : r.in()) {
+    for (const EvalString& path : r.readIn()) {
       evaluate(ins.emplace_back(), path, fileScope);
     }
     const std::size_t inSize = ins.size();
 
-    for (const EvalString& path : r.implicitIn()) {
+    for (const EvalString& path : r.readImplicitIn()) {
       evaluate(ins.emplace_back(), path, fileScope);
     }
 
     PathVector& orderOnlyDeps = tmp.orderOnlyDeps;
     orderOnlyDeps.clear();
-    for (const EvalString& path : r.orderOnlyDeps()) {
+    for (const EvalString& path : r.readOrderOnlyDeps()) {
       evaluate(orderOnlyDeps.emplace_back(), path, fileScope);
     }
 
@@ -390,7 +383,7 @@ struct BuildContext {
     // required input then we include that, otherwise the validation is
     // `phony`ed out.
     const char* validationStart = r.position();
-    consume(r.validations());
+    consume(r.readValidations());
     const std::string_view validationStr{
         validationStart,
         static_cast<std::size_t>(r.position() - validationStart)};
@@ -399,9 +392,8 @@ struct BuildContext {
                     std::span{ins.data(), inSize},
                     std::span{outs.data(), outSize}};
 
-    for (VariableReader v : r.variables()) {
-      const std::string_view name = v.name();
-      evaluate(scope.resetValue(name), v.value(), scope);
+    for (const auto& [name, value] : r.readVariables()) {
+      evaluate(scope.resetValue(name), value, scope);
     }
 
     // Add the build command
@@ -533,9 +525,8 @@ struct BuildContext {
           parts.begin());
     }
 
-    for (VariableReader v : r.variables()) {
-      const std::string_view key = v.name();
-      if (!rule.variables.add(key, v.value())) {
+    for (const auto& [key, value] : r.readVariables()) {
+      if (!rule.variables.add(key, value)) {
         std::string msg;
         msg += "Unexpected variable '";
         msg += key;
@@ -567,7 +558,7 @@ struct BuildContext {
   void operator()(DefaultReader& r) {
     PathVector& ins = tmp.ins;
     ins.clear();
-    for (const EvalString& path : r.paths()) {
+    for (const EvalString& path : r.readPaths()) {
       evaluate(ins.emplace_back(), path, fileScope);
     }
 
@@ -587,13 +578,12 @@ struct BuildContext {
     }
   }
 
-  void operator()(VariableReader& r) {
-    std::string_view name = r.name();
-    evaluate(fileScope.resetValue(name), r.value(), fileScope);
+  void operator()(const VariableReader& r) {
+    evaluate(fileScope.resetValue(r.name()), r.value(), fileScope);
     parts.emplace_back(r.start(), r.bytesParsed());
   }
 
-  void operator()(IncludeReader& r) {
+  void operator()(const IncludeReader& r) {
     const std::filesystem::path file = [&] {
       const EvalString& pathEval = r.path();
       std::string path;
@@ -615,7 +605,7 @@ struct BuildContext {
     parse(file, stringStorage.front());
   }
 
-  void operator()(SubninjaReader& r) {
+  void operator()(const SubninjaReader& r) {
     const std::filesystem::path file = [&] {
       const EvalString& pathEval = r.path();
       std::string path;
