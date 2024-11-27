@@ -30,11 +30,28 @@
 
 namespace trimja {
 
+namespace detail {
+class BuildContext;
+}  // namespace detail
+
 /**
- * @struct TrimUtil
+ * @class TrimUtil
  * @brief Utility to trim a Ninja build file based on a list of affected files.
  */
-struct TrimUtil {
+class TrimUtil {
+  std::unique_ptr<detail::BuildContext> m_imp;
+
+ public:
+  /**
+   * @brief Default constructor for TrimUtil.
+   */
+  TrimUtil();
+
+  /**
+   * @brief Destructor for TrimUtil.
+   */
+  ~TrimUtil();
+
   /**
    * @brief Trims the given Ninja build file based on the affected files.
    *
@@ -43,14 +60,12 @@ struct TrimUtil {
    * @param ninjaFileContents The contents of the original Ninja build file.
    * @param affected The input stream containing the list of affected files.
    * @param explain If true, prints to stderr why each build command was kept.
-   * @return A shared pointer containing the internal variables used in the
-   * algorithm to defer or avoid destruction.
    */
-  static std::shared_ptr<void> trim(std::ostream& output,
-                                    const std::filesystem::path& ninjaFile,
-                                    const std::string& ninjaFileContents,
-                                    std::istream& affected,
-                                    bool explain);
+  void trim(std::ostream& output,
+            const std::filesystem::path& ninjaFile,
+            const std::string& ninjaFileContents,
+            std::istream& affected,
+            bool explain);
 };
 
 }  // namespace trimja
