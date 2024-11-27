@@ -32,9 +32,10 @@
 
 namespace trimja {
 
-namespace {
+namespace detail {
 
-struct BuildDirContext {
+class BuildDirContext {
+ public:
   BasicScope fileScope;
 
   BuildDirContext() = default;
@@ -100,18 +101,25 @@ struct BuildDirContext {
   }
 };
 
-}  // namespace
+}  // namespace detail
+
+BuildDirUtil::BuildDirUtil() : m_imp{nullptr} {}
+
+BuildDirUtil::~BuildDirUtil() = default;
 
 std::filesystem::path BuildDirUtil::builddir(
     const std::filesystem::path& ninjaFile,
     const std::string& ninjaFileContents) {
-  BuildDirContext ctx;
+  // Keep our state inside `m_imp` so that we defer cleanup until the destructor
+  // of `BuildDirUtil`. This allows the calling code to skip all destructors
+  // when calling `std::_Exit`.
+  m_imp = std::make_unique<detail::BuildDirContext>();
   {
     const Timer t = CPUProfiler::start(".ninja parse");
-    ctx.parse(ninjaFile, ninjaFileContents);
+    m_imp->parse(ninjaFile, ninjaFileContents);
   }
   std::string builddir;
-  ctx.fileScope.appendValue(builddir, "builddir");
+  m_imp->fileScope.appendValue(builddir, "builddir");
   return std::filesystem::path(ninjaFile).remove_filename() / builddir;
 }
 

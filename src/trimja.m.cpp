@@ -277,7 +277,8 @@ bool instrumentMemory = false;
 
   // If we have `--builddir` then ignore all other flags other than -f
   if (builddir) {
-    std::cout << BuildDirUtil::builddir(ninjaFile, ninjaFileContents).string()
+    BuildDirUtil util;
+    std::cout << util.builddir(ninjaFile, ninjaFileContents).string()
               << std::endl;
     leave(EXIT_SUCCESS);
   }
@@ -316,10 +317,8 @@ bool instrumentMemory = false;
       },
       outputFile);
 
-  // Keep the variables used in `trim` alive so that we can skip destruction
-  // and its overhead when we call `leave`.
-  [[maybe_unused]] const std::shared_ptr<void> state =
-      TrimUtil::trim(output, ninjaFile, ninjaFileContents, affected, explain);
+  TrimUtil util;
+  util.trim(output, ninjaFile, ninjaFileContents, affected, explain);
   output.flush();
 
   if (!expectedFile.has_value()) {

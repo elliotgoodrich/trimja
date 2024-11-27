@@ -192,7 +192,12 @@ struct RuleCommand {
   RuleCommand(std::string_view name) : name{name} {}
 };
 
-struct BuildContext {
+}  // namespace
+
+namespace detail {
+
+class BuildContext {
+ public:
   // The indexes of the built-in rules within `rules`
   static const std::size_t phonyIndex = 0;
   static const std::size_t defaultIndex = 1;
@@ -647,9 +652,13 @@ struct BuildContext {
   }
 };
 
+}  // namespace detail
+
+namespace {
+
 void parseDepFile(const std::filesystem::path& ninjaDeps,
                   Graph& graph,
-                  BuildContext& ctx) {
+                  detail::BuildContext& ctx) {
   // Later entries may override earlier entries so don't touch the graph until
   // we have parsed the whole file
   std::vector<std::string> paths;
@@ -692,7 +701,7 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
 
 template <typename GET_HASH>
 void parseLogFile(const std::filesystem::path& ninjaLog,
-                  const BuildContext& ctx,
+                  const detail::BuildContext& ctx,
                   std::vector<bool>& isAffected,
                   GET_HASH&& get_hash,
                   bool explain) {
@@ -725,7 +734,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
     }
 
     // buil-in rules don't appear in the build log so skip them
-    if (BuildContext::isBuiltInRule(
+    if (detail::BuildContext::isBuiltInRule(
             ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
       continue;
     }
@@ -754,7 +763,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
 void markIfChildrenAffected(std::size_t index,
                             std::vector<bool>& seen,
                             std::vector<bool>& isAffected,
-                            const BuildContext& ctx,
+                            const detail::BuildContext& ctx,
                             bool explain) {
   if (seen[index]) {
     return;
@@ -780,7 +789,7 @@ void markIfChildrenAffected(std::size_t index,
   if (it != inIndices.end()) {
     if (explain) {
       // Only mention user-defined rules since built-in rules are always kept
-      if (!BuildContext::isBuiltInRule(
+      if (!detail::BuildContext::isBuiltInRule(
               ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
         std::cerr << "Including '" << graph.path(index)
                   << "' as it has the affected input '" << graph.path(*it)
@@ -798,7 +807,7 @@ void ifAffectedMarkAllChildren(std::size_t index,
                                std::vector<bool>& seen,
                                std::vector<bool>& isAffected,
                                std::vector<bool>& needsAllInputs,
-                               const BuildContext& ctx,
+                               const detail::BuildContext& ctx,
                                bool explain) {
   if (seen[index]) {
     return;
@@ -815,7 +824,7 @@ void ifAffectedMarkAllChildren(std::size_t index,
     return;
   }
 
-  if (!BuildContext::isBuiltInRule(
+  if (!detail::BuildContext::isBuiltInRule(
           ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
     if (isAffected[index]) {
       needsAllInputs[index] = true;
@@ -844,13 +853,20 @@ void ifAffectedMarkAllChildren(std::size_t index,
 
 }  // namespace
 
-std::shared_ptr<void> TrimUtil::trim(std::ostream& output,
-                                     const std::filesystem::path& ninjaFile,
-                                     const std::string& ninjaFileContents,
-                                     std::istream& affected,
-                                     bool explain) {
-  auto state = std::make_shared<BuildContext>();
-  BuildContext& ctx = *state;
+TrimUtil::TrimUtil() : m_imp{nullptr} {}
+
+TrimUtil::~TrimUtil() = default;
+
+void TrimUtil::trim(std::ostream& output,
+                    const std::filesystem::path& ninjaFile,
+                    const std::string& ninjaFileContents,
+                    std::istream& affected,
+                    bool explain) {
+  // Keep our state inside `m_imp` so that we defer cleanup until the destructor
+  // of `TrimUtil`. This allows the calling code to skip all destructors when
+  // calling `std::_Exit`.
+  m_imp = std::make_unique<detail::BuildContext>();
+  detail::BuildContext& ctx = *m_imp;
 
   // Parse the build file, this needs to be the first thing so we choose the
   // canonical paths in the same way that ninja does
@@ -1062,8 +1078,6 @@ std::shared_ptr<void> TrimUtil::trim(std::ostream& output,
   const Timer writeTimer = CPUProfiler::start("output time");
   std::copy(ctx.parts.begin(), ctx.parts.end(),
             std::ostream_iterator<std::string_view>(output));
-
-  return state;
 }
 
 }  // namespace trimja
