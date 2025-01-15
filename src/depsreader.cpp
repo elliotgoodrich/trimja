@@ -22,7 +22,6 @@
 
 #include "depsreader.h"
 #include "graph.h"
-#include "ninja_clock.h"
 
 #include <algorithm>
 #include <ios>
@@ -124,8 +123,7 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
       m_depsStorage.resize(numDependencies);
       std::generate_n(m_depsStorage.begin(), numDependencies,
                       [&] { return readBinary<std::int32_t>(m_deps); });
-      *output = DepsRecordView{outIndex, ninja_clock::to_file_clock(mtime),
-                               m_depsStorage};
+      *output = DepsRecordView{outIndex, mtime, m_depsStorage};
     }
   } catch (const std::ios_base::failure& e) {
     std::string msg;

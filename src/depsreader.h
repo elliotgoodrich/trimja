@@ -23,7 +23,8 @@
 #ifndef TRIMJA_DEPSREADER
 #define TRIMJA_DEPSREADER
 
-#include <chrono>
+#include "ninja_clock.h"
+
 #include <filesystem>
 #include <fstream>
 #include <span>
@@ -49,7 +50,7 @@ struct PathRecordView {
  */
 struct DepsRecordView {
   std::int32_t outIndex;
-  std::chrono::file_clock::time_point mtime;
+  ninja_clock::time_point mtime;
   std::span<const std::int32_t> deps;
 };
 
