@@ -58,7 +58,7 @@ EvalString::Offset setLeadingBit(EvalString::Offset in) {
 }
 
 bool hasLeadingBit(EvalString::Offset in) {
-  return in >> (std::numeric_limits<EvalString::Offset>::digits - 1u);
+  return in >> (std::numeric_limits<EvalString::Offset>::digits - 1U);
 }
 
 }  // namespace

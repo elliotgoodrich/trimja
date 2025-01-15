@@ -24,8 +24,7 @@
 
 #include <ninja/util.h>
 
-namespace trimja {
-namespace detail {
+namespace trimja::detail {
 
 void appendPaths(std::string& output,
                  std::span<const std::string> paths,
@@ -44,6 +43,4 @@ void appendPaths(std::string& output,
   }
 }
 
-}  // namespace detail
-
-}  // namespace trimja
+}  // namespace trimja::detail

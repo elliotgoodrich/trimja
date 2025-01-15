@@ -36,7 +36,7 @@ namespace {
 const std::size_t NINJA_MAX_RECORD_SIZE = 0b11'1111'1111'1111'1111;
 
 template <typename TYPE>
-TYPE readBinary(std::istream& in) {
+TYPE readFromStream(std::istream& in) {
   TYPE value;
   in.read(reinterpret_cast<char*>(&value), sizeof(value));
   return value;
@@ -86,7 +86,7 @@ DepsReader::DepsReader(const std::filesystem::path& ninja_deps)
     throw std::runtime_error("Unable to find ninjadeps signature");
   }
 
-  const std::int32_t header = readBinary<std::int32_t>(m_deps);
+  const auto header = readFromStream<std::int32_t>(m_deps);
   if (header != 4) {
     throw std::runtime_error("Only version 4 supported of ninjadeps");
   }
@@ -97,7 +97,7 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
     if (m_deps.peek() == EOF) {
       return false;
     }
-    const std::uint32_t rawRecordSize = readBinary<std::uint32_t>(m_deps);
+    const auto rawRecordSize = readFromStream<std::uint32_t>(m_deps);
     const std::uint32_t recordSize = rawRecordSize & 0x7FFFFFFF;
     if (recordSize > NINJA_MAX_RECORD_SIZE) {
       throw std::runtime_error("Record exceeding the maximum size found");
@@ -110,19 +110,18 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
       const std::size_t padding =
           (end[-1] == '\0') + (end[-2] == '\0') + (end[-3] == '\0');
       m_storage.erase(m_storage.size() - padding);
-      const std::uint32_t checksum = readBinary<std::uint32_t>(m_deps);
+      const auto checksum = readFromStream<std::uint32_t>(m_deps);
       const std::int32_t id = ~checksum;
       *output = PathRecordView{id, m_storage};
     } else {
-      const std::int32_t outIndex = readBinary<std::int32_t>(m_deps);
-      const ninja_clock::time_point mtime =
-          readBinary<ninja_clock::time_point>(m_deps);
+      const auto outIndex = readFromStream<std::int32_t>(m_deps);
+      const auto mtime = readFromStream<ninja_clock::time_point>(m_deps);
       const std::uint32_t numDependencies =
           (recordSize - sizeof(std::int32_t) - 2 * sizeof(std::uint32_t)) /
           sizeof(std::int32_t);
       m_depsStorage.resize(numDependencies);
       std::generate_n(m_depsStorage.begin(), numDependencies,
-                      [&] { return readBinary<std::int32_t>(m_deps); });
+                      [&] { return readFromStream<std::int32_t>(m_deps); });
       *output = DepsRecordView{outIndex, mtime, m_depsStorage};
     }
   } catch (const std::ios_base::failure& e) {

@@ -46,7 +46,7 @@ Timer::~Timer() {
   stop();
 }
 
-void Timer::stop() {
+void Timer::stop() {  // NOLINT(readability-make-member-function-const)
   if (m_output) {
     *m_output = std::chrono::steady_clock::now() - m_start;
   }

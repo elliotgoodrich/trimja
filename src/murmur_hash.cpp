@@ -34,7 +34,7 @@ std::uint64_t murmur_hash::hash(const void* key, std::size_t length) {
   // did too), to use a hard-coded seed that is used within `ninja`, and to
   // generally be brought up to modern C++ standards.
 
-  const unsigned char* data = static_cast<const unsigned char*>(key);
+  const auto* data = static_cast<const unsigned char*>(key);
 
   const std::uint64_t m = 0xc6a4'a793'5bd1'e995;
   const int r = 47;

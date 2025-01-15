@@ -6,6 +6,19 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 
+# Add an option to enable or disable clang-tidy
+option(ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" OFF)
+
+if(ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
+    if(CLANG_TIDY_EXE)
+        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    else()
+        message(WARNING "clang-tidy not found. Static analysis will be skipped.")
+    endif()
+endif()
+
+
 ###############################################################################
 # trimja                                                                      #
 ###############################################################################
@@ -32,6 +45,13 @@ add_executable(
     thirdparty/ninja/lexer.cc
     thirdparty/ninja/util.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
+)
+
+set_source_files_properties(
+    thirdparty/ninja/lexer.cc
+    thirdparty/ninja/util.cc
+    thirdparty/ninja/getopt.cc
+    PROPERTIES SKIP_LINTING ON
 )
 
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")

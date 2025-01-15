@@ -26,7 +26,7 @@ namespace trimja {
 
 BasicScope::BasicScope() = default;
 
-BasicScope::BasicScope(BasicScope&&) = default;
+BasicScope::BasicScope(BasicScope&&) noexcept = default;
 
 BasicScope::BasicScope(const BasicScope& other) {
   for (const auto& [name, value] : other.m_variables) {
@@ -34,7 +34,7 @@ BasicScope::BasicScope(const BasicScope& other) {
   }
 }
 
-BasicScope& BasicScope::operator=(BasicScope&&) = default;
+BasicScope& BasicScope::operator=(BasicScope&&) noexcept = default;
 
 BasicScope& BasicScope::operator=(const BasicScope& rhs) {
   BasicScope tmp{rhs};

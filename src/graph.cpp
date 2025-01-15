@@ -35,14 +35,14 @@ std::size_t Graph::PathHash::operator()(const fixed_string& v) const {
 std::size_t Graph::PathHash::operator()(std::string_view v) const {
   // FNV-1a hash algorithm but on Windows we swap all backslashes with forward
   // slashes
-  std::size_t hash = 14695981039346656037ull;
+  std::size_t hash = 14695981039346656037ULL;
   for (const char ch : v) {
 #ifdef _WIN32
     hash ^= ch == '\\' ? '/' : ch;
 #else
     hash ^= ch;
 #endif
-    hash *= 1099511628211ull;
+    hash *= 1099511628211ULL;
   }
   return hash;
 }
@@ -132,7 +132,7 @@ std::size_t Graph::addDefault() {
   const std::size_t nextIndex = m_inputToOutput.size();
   m_inputToOutput.emplace_back();
   m_outputToInput.emplace_back();
-  m_path.push_back("default");
+  m_path.emplace_back("default");
   m_defaultIndex = nextIndex;
   return nextIndex;
 }

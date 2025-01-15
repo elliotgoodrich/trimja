@@ -663,7 +663,7 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
        DepsReader(ninjaDeps)) {
     switch (record.index()) {
       case 0: {
-        const PathRecordView& view = std::get<PathRecordView>(record);
+        const auto& view = std::get<PathRecordView>(record);
         if (static_cast<std::size_t>(view.index) >= paths.size()) {
           paths.resize(view.index + 1);
         }
@@ -672,7 +672,7 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
         break;
       }
       case 1: {
-        const DepsRecordView& view = std::get<DepsRecordView>(record);
+        const auto& view = std::get<DepsRecordView>(record);
         if (static_cast<std::size_t>(view.outIndex) >= deps.size()) {
           deps.resize(view.outIndex + 1);
         }
@@ -772,6 +772,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
 // If `index` has not been seen (using `seen`) then call
 // `markIfChildrenAffected` for all inputs to `index` and then set
 // `isAffected[index]` if any child is affected. Return whether this
+// NOLINTNEXTLINE(misc-no-recursion)
 void markIfChildrenAffected(std::size_t index,
                             std::vector<bool>& seen,
                             std::vector<bool>& isAffected,
@@ -814,7 +815,8 @@ void markIfChildrenAffected(std::size_t index,
 
 // If `index` has not been seen (using `seen`) then call
 // `ifAffectedMarkAllChildren` for all outputs to `index` and then set
-// `isAffected[index]` if any child is affected. Return whether this
+// `isAffected[index]` if any child is affected.
+// NOLINTNEXTLINE(misc-no-recursion)
 void ifAffectedMarkAllChildren(std::size_t index,
                                std::vector<bool>& seen,
                                std::vector<bool>& isAffected,
