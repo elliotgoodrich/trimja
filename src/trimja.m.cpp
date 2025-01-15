@@ -96,7 +96,8 @@ branch, note the lone '-' argument to specify we are reading from stdin,
 
 For more information visit the homepage https://github.com/elliotgoodrich/trimja)HELP";
 
-static const option g_longOptions[] = {
+// NOLINTNEXTLINE(modernize-avoid-c-arrays)
+const option g_longOptions[] = {
     // TODO: Remove `--expected` and replace with comparing files within CTest
     {"builddir", no_argument, nullptr, 'b'},
     {"explain", no_argument, nullptr, 'e'},
@@ -163,7 +164,7 @@ bool instrumentMemory = false;
   bool explain = false;
   bool builddir = false;
 
-  int ch;
+  int ch = -1;
   while ((ch = getopt_long(argc, argv, "a:f:ho:vw", g_longOptions, nullptr)) !=
          -1) {
     switch (ch) {

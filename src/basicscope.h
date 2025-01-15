@@ -52,7 +52,7 @@ class BasicScope {
    * @brief Move constructor.
    * @param other The BasicScope to move from.
    */
-  BasicScope(BasicScope&& other);
+  BasicScope(BasicScope&& other) noexcept;
 
   /**
    * @brief Copy constructor.
@@ -65,7 +65,7 @@ class BasicScope {
    * @param rhs The BasicScope to move assign from.
    * @return A reference to the assigned BasicScope.
    */
-  BasicScope& operator=(BasicScope&& rhs);
+  BasicScope& operator=(BasicScope&& rhs) noexcept;
 
   /**
    * @brief Copy assignment operator.
