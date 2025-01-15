@@ -74,11 +74,34 @@ bool operator!=(const LogReader::iterator& iter, LogReader::sentinel) {
   return iter.m_reader != nullptr;
 }
 
-LogReader::LogReader(std::istream& logs) : m_logs(&logs), m_nextLine() {
+LogReader::LogReader(std::istream& logs, int fields)
+    : m_logs{&logs},
+      m_nextLine{},
+      m_hashType{static_cast<HashType>(-1)},
+      m_fields{fields} {
   std::getline(*m_logs, m_nextLine, '\n');
-  if (m_nextLine != "# ninja log v5") {
-    throw std::runtime_error("Unable to find log file signature");
+  const std::string_view prefix = "# ninja log v";
+  if (!m_nextLine.starts_with(prefix)) {
+    throw std::runtime_error{"Unable to find log file signature"};
   }
+
+  const std::string_view versionStr =
+      std::string_view{m_nextLine}.substr(prefix.size());
+  // We support the following versions of the log file format:
+  // * 5 has high-resolution timestamps
+  // * 6 is identical https://github.com/ninja-build/ninja/pull/2240
+  // * 7 only changes the hash function
+  //   https://github.com/ninja-build/ninja/pull/2519
+  if (versionStr != "5" && versionStr != "6" && versionStr != "7") {
+    std::string msg;
+    msg += "Unsupported log file version (";
+    msg += versionStr;
+    msg += ") found";
+    throw std::runtime_error{msg};
+  }
+
+  assert(versionStr.size() == 1);
+  m_hashType = versionStr[0] == '7' ? HashType::rapidhash : HashType::murmur;
 }
 
 bool LogReader::read(LogEntry* output) {
@@ -89,28 +112,34 @@ bool LogReader::read(LogEntry* output) {
 
   std::array<std::string_view, 5> parts = splitOnTab<5>(m_nextLine);
 
-  {
+  if (m_fields & LogEntry::Fields::startTime) {
     std::int32_t ticks;
     std::from_chars(parts[0].data(), parts[0].data() + parts[0].size(), ticks);
     output->startTime = std::chrono::duration<std::int32_t, std::milli>{ticks};
   }
 
-  {
+  if (m_fields & LogEntry::Fields::endTime) {
     std::int32_t ticks;
     std::from_chars(parts[1].data(), parts[1].data() + parts[1].size(), ticks);
     output->endTime = std::chrono::duration<std::int32_t, std::milli>{ticks};
   }
 
-  {
+  if (m_fields & LogEntry::Fields::mtime) {
     ninja_clock::rep ticks;
     std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), ticks);
     output->mtime = ninja_clock::to_file_clock(
         ninja_clock::time_point{ninja_clock::duration{ticks}});
   }
 
-  output->out = parts[3];
-  std::from_chars(parts[4].data(), parts[4].data() + parts[4].size(),
-                  output->hash, 16);
+  if (m_fields & LogEntry::Fields::out) {
+    output->out = parts[3];
+  }
+
+  if (m_fields & LogEntry::Fields::hash) {
+    std::from_chars(parts[4].data(), parts[4].data() + parts[4].size(),
+                    output->hash, 16);
+    output->hashType = m_hashType;
+  }
   return true;
 }
 

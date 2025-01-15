@@ -35,6 +35,7 @@
 #include "rule.h"
 
 #include <ninja/util.h>
+#include <rapidhash/rapidhash.h>
 #include <boost/boost_unordered.hpp>
 
 #include <cassert>
@@ -155,8 +156,8 @@ struct BuildCommand {
   // The location of our entire build command inside `BuildContext::parts`
   gch::small_vector<std::size_t, 3> partsIndices;
 
-  // The hash of the build command
-  std::uint64_t hash = 0;
+  // The build command (+ rspfile_content) that gets hashed by ninja
+  std::string hashTarget;
 
   // Map each output index to the string containing the
   // "build out1 out$ 2 | implicitOut3" (note no newline and no trailing `|`
@@ -265,7 +266,6 @@ class BuildContext {
     PathVector ins;
     PathVector orderOnlyDeps;
     std::vector<std::size_t> outIndices;
-    std::string command;
   } tmp;
 
   // Return whether `ruleIndex` is a built-in rule (i.e. `default` or `phony`)
@@ -463,17 +463,13 @@ class BuildContext {
       }
     }
 
-    {
-      std::string& command = tmp.command;
-      command.clear();
-      scope.appendValue(command, "command");
-      std::string rspcontent;
-      scope.appendValue(rspcontent, "rspfile_content");
-      if (!rspcontent.empty()) {
-        command += ";rspfile=";
-        command += rspcontent;
-      }
-      buildCommand.hash = murmur_hash::hash(command.data(), command.size());
+    scope.appendValue(buildCommand.hashTarget, "command");
+    const std::size_t initialSize = buildCommand.hashTarget.size();
+    scope.appendValue(buildCommand.hashTarget, "rspfile_content");
+
+    // If `rspfile_content` is not empty we have to inject a separator
+    if (buildCommand.hashTarget.size() != initialSize) {
+      buildCommand.hashTarget.insert(initialSize, ";rspfile=");
     }
   }
 
@@ -699,11 +695,11 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
   }
 }
 
-template <typename GET_HASH>
+template <typename F>
 void parseLogFile(const std::filesystem::path& ninjaLog,
                   const detail::BuildContext& ctx,
                   std::vector<bool>& isAffected,
-                  GET_HASH&& get_hash,
+                  F&& getBuildCommand,
                   bool explain) {
   std::ifstream deps(ninjaLog);
 
@@ -712,7 +708,9 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   const Graph& graph = ctx.graph;
   std::vector<bool> seen(graph.size());
   std::vector<bool> hashMismatch(graph.size());
-  for (const LogEntry& entry : LogReader(deps)) {
+  std::vector<std::optional<std::uint64_t>> cachedHashes(graph.size());
+  for (const LogEntry& entry :
+       LogReader{deps, LogEntry::Fields::out | LogEntry::Fields::hash}) {
     // Entries in `.ninja_log` are already normalized when written
     const std::optional<std::size_t> index =
         graph.findNormalizedPath(entry.out);
@@ -723,7 +721,21 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
     }
 
     seen[*index] = true;
-    hashMismatch[*index] = entry.hash != get_hash(*index);
+    std::optional<std::uint64_t>& cachedHash = cachedHashes[*index];
+    if (!cachedHash) {
+      const std::string_view command = getBuildCommand(*index);
+      switch (entry.hashType) {
+        case HashType::murmur:
+          cachedHash.emplace(murmur_hash::hash(command.data(), command.size()));
+          break;
+        case HashType::rapidhash:
+          cachedHash.emplace(rapidhash(command.data(), command.size()));
+          break;
+        default:
+          assert(false);  // TODO: `std::unreachable` in C++23
+      }
+    }
+    hashMismatch[*index] = (entry.hash != *cachedHash);
   }
 
   // Mark all build commands that are new or have been changed as required
@@ -850,7 +862,6 @@ void ifAffectedMarkAllChildren(std::size_t index,
     needsAllInputs[index] = true;
   }
 }
-
 }  // namespace
 
 TrimUtil::TrimUtil() : m_imp{nullptr} {}
@@ -915,8 +926,8 @@ void TrimUtil::trim(std::ostream& output,
     const Timer t = CPUProfiler::start(".ninja_log parse");
     parseLogFile(
         ninjaLog, ctx, isAffected,
-        [&](const std::size_t index) {
-          return ctx.commands[ctx.nodeToCommand[index]].hash;
+        [&](const std::size_t index) -> std::string_view {
+          return ctx.commands[ctx.nodeToCommand[index]].hashTarget;
         },
         explain);
   }
