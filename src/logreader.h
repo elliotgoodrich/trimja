@@ -33,6 +33,15 @@
 namespace trimja {
 
 /**
+ * @enum HashType
+ * @brief Represents the type of hash function used to compute the build hash.
+ */
+enum class HashType {
+  murmur,
+  rapidhash,
+};
+
+/**
  * @struct LogEntry
  * @brief Represents a single log entry.
  *
@@ -41,11 +50,26 @@ namespace trimja {
  * value.
  */
 struct LogEntry {
+  /**
+   * @enum Fields
+   * @brief Represents the fields that can be read from a log entry.
+   */
+  struct Fields {
+    enum {
+      startTime = 1 << 1,
+      endTime = 1 << 2,
+      mtime = 1 << 3,
+      out = 1 << 4,
+      hash = 1 << 5,
+    };
+  };
+
   std::chrono::duration<std::int32_t, std::milli> startTime;
   std::chrono::duration<std::int32_t, std::milli> endTime;
   std::chrono::file_clock::time_point mtime;
   std::string_view out;
   std::uint64_t hash;
+  HashType hashType;
 };
 
 /**
@@ -58,6 +82,8 @@ struct LogEntry {
 class LogReader {
   std::istream* m_logs;
   std::string m_nextLine;
+  HashType m_hashType;
+  int m_fields;
 
  public:
   /**
@@ -126,8 +152,14 @@ class LogReader {
   /**
    * @brief Constructs a LogReader with the given input stream.
    * @param logs The input stream to read log entries from.
+   * @param fields The fields to read from the log entries.
    */
-  explicit LogReader(std::istream& logs);
+  explicit LogReader(std::istream& logs,
+                     int fields = LogEntry::Fields::startTime |
+                                  LogEntry::Fields::endTime |
+                                  LogEntry::Fields::mtime |
+                                  LogEntry::Fields::out |
+                                  LogEntry::Fields::hash);
 
   /**
    * @brief Reads the next log entry from the input stream.
