@@ -252,7 +252,7 @@ getopt_internal (int argc, char **argv, char *shortopts,
         match_chars = (possible_arg - argv[optind]) - optwhere;
       for (optindex = 0; longopts[optindex].name != NULL; optindex++)
         {
-          if (memcmp (argv[optind] + optwhere,
+          if (strncmp(argv[optind] + optwhere,
                       longopts[optindex].name, match_chars) == 0)
             {
               /* do we have an exact match? */

@@ -68,6 +68,17 @@ target_compile_definitions(trimja PRIVATE
 )
 set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 
+# Enable AddressSanitizer for Debug builds
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(MSVC)
+        target_compile_options(trimja PRIVATE /fsanitize=address)
+        target_link_options(trimja PRIVATE /fsanitize=address)
+    else()
+        target_compile_options(trimja PRIVATE -fsanitize=address)
+        target_link_options(trimja PRIVATE -fsanitize=address)
+    endif()
+endif()
+
 install(TARGETS trimja RUNTIME DESTINATION bin)
 
 if(WIN32)
