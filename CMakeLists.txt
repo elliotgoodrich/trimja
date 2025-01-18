@@ -68,14 +68,15 @@ target_compile_definitions(trimja PRIVATE
 )
 set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 
-# Enable AddressSanitizer for Debug builds
+# Enable AddressSanitizer and UBSan (if available) for Debug builds
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(MSVC)
         target_compile_options(trimja PRIVATE /fsanitize=address)
         target_link_options(trimja PRIVATE /fsanitize=address)
     else()
-        target_compile_options(trimja PRIVATE -fsanitize=address)
-        target_link_options(trimja PRIVATE -fsanitize=address)
+        target_compile_options(trimja PRIVATE -fsanitize=address -fsanitize=undefined)
+        # Keep frame pointers for better stack traces
+        target_link_options(trimja PRIVATE -fno-omit-frame-pointer -fsanitize=address)
     endif()
 endif()
 
