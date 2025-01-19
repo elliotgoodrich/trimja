@@ -10,6 +10,8 @@ The following are optional:
   * [ninja](https://ninja-build.org/) for running unit tests
   * [clang-format](https://clang.llvm.org/docs/ClangFormat.html) for formatting
     code before submitting pull requests
+  * [clang-tidy](https://clang.llvm.org/extra/clang-tidy/) for additional
+    linting (pass `-DENABLE_CLANG_TIDY=ON` when configuring CMake to enable)
 
 ## Building
 
