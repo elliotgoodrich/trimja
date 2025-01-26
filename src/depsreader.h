@@ -25,15 +25,14 @@
 
 #include "ninja_clock.h"
 
-#include <filesystem>
-#include <fstream>
+#include <istream>
 #include <span>
+#include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
 namespace trimja {
-
-class Graph;
 
 /**
  * @struct PathRecordView
@@ -59,10 +58,10 @@ struct DepsRecordView {
  * @brief Reads dependency records from a .ninja_deps file
  */
 class DepsReader {
-  std::ifstream m_deps;
+  std::istream* m_deps;
+  std::ios_base::iostate m_previousExceptionBits;
   std::string m_storage;
   std::vector<std::int32_t> m_depsStorage;
-  std::filesystem::path m_filePath;
 
  public:
   /**
@@ -124,12 +123,23 @@ class DepsReader {
     friend bool operator!=(const iterator& iter, sentinel s);
   };
 
+  explicit DepsReader(std::istream* input);
+
  public:
   /**
-   * @brief Constructs a DepsReader for the given Ninja deps file.
-   * @param ninja_deps The path to the Ninja .ninja_dep file.
+   * @brief Constructs a DepsReader for the given input stream to a Ninja
+   * dependency file setting the exception mask for the stream to throw on
+   * failure.  Note that `input` must outlive the DepsReader and should be
+   * open in binary mode.
+   * @param input The stream for the Ninja .ninja_dep file.
    */
-  explicit DepsReader(const std::filesystem::path& ninja_deps);
+  explicit DepsReader(std::istream& input);
+
+  /**
+   * @brief Reset the exception mask for the stream to the state of the stream
+   * passed in at the time of construction.
+   */
+  ~DepsReader() noexcept;
 
   /**
    * @brief Reads the next dependency record from the deps file.
