@@ -22,6 +22,8 @@
 
 #include "basicscope.h"
 
+#include <utility>
+
 namespace trimja {
 
 BasicScope::BasicScope() = default;
@@ -43,17 +45,8 @@ BasicScope& BasicScope::operator=(const BasicScope& rhs) {
   return *this;
 }
 
-std::string_view BasicScope::set(std::string_view key, std::string&& value) {
-  // By design to avoid accidental copies, `fixed_string` does not have a copy
-  // constructor so we cannot use `operator[]`.  Instead we can use `emplace` to
-  // achieve basically the same performance.
-  return m_variables.try_emplace(key, std::move(value)).first->second;
-}
-
-std::string& BasicScope::resetValue(std::string_view key) {
-  std::string& value = m_variables.try_emplace(key, "").first->second;
-  value.clear();
-  return value;
+void BasicScope::set(std::string_view key, std::string&& value) {
+  m_variables.insert_or_assign(key, std::move(value));
 }
 
 bool BasicScope::appendValue(std::string& output, std::string_view name) const {
