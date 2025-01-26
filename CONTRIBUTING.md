@@ -21,7 +21,7 @@ Microsoft Visual Studio supports opening CMake projects directly.
 A standard workflow to build a Debug version into the `build` folder would look
 like:
 
-  1. configure: `cmake -B build -DCMAKE_BUILD_TYPE=Debug`
+  1. configure: `cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja`
   2. build: `cmake --build build --config Debug`
   3. test: `ctest --test-dir build --build-config Debug --output-on-failure`
   4. package: `cmake --build build --config Debug --target package`
