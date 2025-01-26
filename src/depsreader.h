@@ -25,9 +25,10 @@
 
 #include "ninja_clock.h"
 
-#include <filesystem>
-#include <fstream>
+#include <iosfwd>
 #include <span>
+#include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -59,10 +60,9 @@ struct DepsRecordView {
  * @brief Reads dependency records from a .ninja_deps file
  */
 class DepsReader {
-  std::ifstream m_deps;
+  std::istream* m_deps;
   std::string m_storage;
   std::vector<std::int32_t> m_depsStorage;
-  std::filesystem::path m_filePath;
 
  public:
   /**
@@ -126,10 +126,11 @@ class DepsReader {
 
  public:
   /**
-   * @brief Constructs a DepsReader for the given Ninja deps file.
-   * @param ninja_deps The path to the Ninja .ninja_dep file.
+   * @brief Constructs a DepsReader for the given input stream to a Ninja
+   * dependency file.
+   * @param input The stream for the Ninja .ninja_dep file.
    */
-  explicit DepsReader(const std::filesystem::path& ninja_deps);
+  explicit DepsReader(std::istream& input);
 
   /**
    * @brief Reads the next dependency record from the deps file.
