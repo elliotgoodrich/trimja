@@ -47,7 +47,9 @@ fixed_string::~fixed_string() {
 }
 
 fixed_string::fixed_string(fixed_string&& other) noexcept
-    : m_data{std::exchange(other.m_data, std::string_view{nullptr, 0})} {}
+    : m_data{other.m_data} {
+  other.m_data = std::string_view{nullptr, 0};
+}
 
 fixed_string& fixed_string::operator=(fixed_string&& rhs) noexcept {
   fixed_string tmp{std::move(rhs)};

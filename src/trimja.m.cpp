@@ -25,7 +25,11 @@
 #include "cpuprofiler.h"
 #include "trimutil.h"
 
+#ifdef WIN32
 #include <ninja/getopt.h>
+#else
+#include <getopt.h>
+#endif
 
 #include <algorithm>
 #include <cassert>

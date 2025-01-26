@@ -22,6 +22,7 @@
 
 #include "evalstring.h"
 
+#include <algorithm>
 #include <limits>
 
 // The format of `EvalString` is a sequence of segments. Each segment is
