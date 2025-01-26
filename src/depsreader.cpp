@@ -23,7 +23,6 @@
 #include "depsreader.h"
 #include "graph.h"
 
-#include <algorithm>
 #include <ios>
 #include <istream>
 #include <span>
@@ -36,9 +35,9 @@ namespace {
 const std::size_t NINJA_MAX_RECORD_SIZE = 0b11'1111'1111'1111'1111;
 
 template <typename TYPE>
-TYPE readFromStream(std::istream& in) {
+TYPE readFromStream(std::istream* in) {
   TYPE value;
-  in.read(reinterpret_cast<char*>(&value), sizeof(value));
+  in->read(reinterpret_cast<char*>(&value), sizeof(value));
   return value;
 }
 
@@ -47,8 +46,8 @@ TYPE readFromStream(std::istream& in) {
 static_assert(std::input_iterator<DepsReader::iterator>);
 
 DepsReader::iterator::iterator(DepsReader* reader)
-    : m_reader(reader), m_entry() {
-  ++*this;
+    : m_reader{reader}, m_entry{} {
+  ++(*this);
 }
 
 const DepsReader::iterator::value_type& DepsReader::iterator::operator*()
@@ -75,13 +74,22 @@ bool operator!=(const DepsReader::iterator& iter, DepsReader::sentinel) {
   return iter.m_reader != nullptr;
 }
 
-DepsReader::DepsReader(const std::filesystem::path& ninja_deps)
-    : m_deps(ninja_deps, std::ios_base::binary),
-      m_storage(),
-      m_depsStorage(),
-      m_filePath(ninja_deps) {
-  m_deps.exceptions(std::ios_base::failbit | std::ios_base::badbit);
-  std::getline(m_deps, m_storage);
+DepsReader::DepsReader(std::istream* input)
+    : m_deps{input},
+      m_previousExceptionBits{m_deps->exceptions()},
+      m_storage{},
+      m_depsStorage{} {
+  m_deps->exceptions(std::ios_base::failbit | std::ios_base::badbit);
+}
+
+DepsReader::DepsReader(std::istream& input) : DepsReader{&input} {
+  // If we throw inside this constructor then the destructor of `DepsReader`
+  // won't be called and we won't reset the exception state.  To fix this
+  // we delegate to a private constructor that sets the exception state.  Once
+  // any constructor returns then the destructor will be called.
+
+  std::getline(*m_deps, m_storage);
+
   if (m_storage != "# ninjadeps") {
     throw std::runtime_error("Unable to find ninjadeps signature");
   }
@@ -92,56 +100,70 @@ DepsReader::DepsReader(const std::filesystem::path& ninja_deps)
   }
 }
 
+DepsReader::~DepsReader() noexcept {
+  m_deps->exceptions(m_previousExceptionBits);
+}
+
 bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
-  try {
-    if (m_deps.peek() == EOF) {
-      return false;
+  if (m_deps->peek() == EOF) {
+    return false;
+  }
+
+  const auto rawRecordSize = readFromStream<std::uint32_t>(m_deps);
+  const std::uint32_t recordSize = rawRecordSize & 0x7FFFFFFF;
+  if (recordSize > NINJA_MAX_RECORD_SIZE) {
+    throw std::runtime_error{"Record exceeding the maximum size found"};
+  }
+  const bool isPathRecord = (rawRecordSize >> 31) == 0;
+  if (isPathRecord) {
+    // A record has a 4 byte checksum and a non-empty path that is padded to a
+    // 4-byte boundary.
+    if (recordSize < sizeof(std::uint32_t) + 4) {
+      throw std::runtime_error{"Path record too small"};
     }
-    const auto rawRecordSize = readFromStream<std::uint32_t>(m_deps);
-    const std::uint32_t recordSize = rawRecordSize & 0x7FFFFFFF;
-    if (recordSize > NINJA_MAX_RECORD_SIZE) {
-      throw std::runtime_error("Record exceeding the maximum size found");
-    }
-    if (const bool isPathRecord = (rawRecordSize >> 31) == 0) {
+
+    const std::string_view path = [&] {
       const std::uint32_t pathSize = recordSize - sizeof(std::uint32_t);
       m_storage.resize(pathSize);
-      m_deps.read(m_storage.data(), pathSize);
+      m_deps->read(m_storage.data(), pathSize);
       const auto end = m_storage.end();
       const std::size_t padding =
           (end[-1] == '\0') + (end[-2] == '\0') + (end[-3] == '\0');
-      m_storage.erase(m_storage.size() - padding);
+      std::string_view path = m_storage;
+      path.remove_suffix(padding);
+      return path;
+    }();
+
+    const std::int32_t id = [&] {
       const auto checksum = readFromStream<std::uint32_t>(m_deps);
-      const std::int32_t id = ~checksum;
-      *output = PathRecordView{id, m_storage};
-    } else {
-      const auto outIndex = readFromStream<std::int32_t>(m_deps);
-      const auto mtime = readFromStream<ninja_clock::time_point>(m_deps);
-      const std::uint32_t numDependencies =
-          (recordSize - sizeof(std::int32_t) - 2 * sizeof(std::uint32_t)) /
-          sizeof(std::int32_t);
-      m_depsStorage.resize(numDependencies);
-      std::generate_n(m_depsStorage.begin(), numDependencies,
-                      [&] { return readFromStream<std::int32_t>(m_deps); });
-      *output = DepsRecordView{outIndex, mtime, m_depsStorage};
+      return static_cast<std::int32_t>(~checksum);
+    }();
+
+    *output = PathRecordView{id, path};
+  } else {
+    if (recordSize < sizeof(std::int32_t) + 2 * sizeof(std::uint32_t)) {
+      throw std::runtime_error{"Dependency record too small"};
     }
-  } catch (const std::ios_base::failure& e) {
-    std::string msg;
-    msg += "Error reading ";
-    msg += m_filePath.string();
-    msg += ": ";
-    msg += e.what();
-    throw std::runtime_error(msg);
+    const auto outIndex = readFromStream<std::int32_t>(m_deps);
+    const auto mtime = readFromStream<ninja_clock::time_point>(m_deps);
+    const std::uint32_t numDependencies =
+        (recordSize - sizeof(std::int32_t) - 2 * sizeof(std::uint32_t)) /
+        sizeof(std::int32_t);
+    m_depsStorage.resize(numDependencies);
+    m_deps->read(reinterpret_cast<char*>(m_depsStorage.data()),
+                 m_depsStorage.size() * sizeof(std::int32_t));
+    *output = DepsRecordView{outIndex, mtime, m_depsStorage};
   }
 
   return true;
 }
 
 DepsReader::iterator DepsReader::begin() {
-  return iterator(this);
+  return iterator{this};
 }
 
 DepsReader::sentinel DepsReader::end() {
-  return sentinel();
+  return sentinel{};
 }
 
 }  // namespace trimja

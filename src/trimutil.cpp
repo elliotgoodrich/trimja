@@ -659,27 +659,32 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
   // we have parsed the whole file
   std::vector<std::string> paths;
   std::vector<std::vector<std::int32_t>> deps;
-  for (const std::variant<PathRecordView, DepsRecordView>& record :
-       DepsReader(ninjaDeps)) {
-    switch (record.index()) {
-      case 0: {
-        const auto& view = std::get<PathRecordView>(record);
-        if (static_cast<std::size_t>(view.index) >= paths.size()) {
-          paths.resize(view.index + 1);
-        }
-        // Entries in `.ninja_deps` are already normalized when written
-        paths[view.index] = view.path;
-        break;
-      }
-      case 1: {
-        const auto& view = std::get<DepsRecordView>(record);
-        if (static_cast<std::size_t>(view.outIndex) >= deps.size()) {
-          deps.resize(view.outIndex + 1);
-        }
-        deps[view.outIndex].assign(view.deps.begin(), view.deps.end());
-        break;
-      }
+  std::ifstream depStream{ninjaDeps, std::ios_base::binary};
+  try {
+    for (const std::variant<PathRecordView, DepsRecordView>& record :
+         DepsReader{depStream}) {
+      std::visit(
+          [&](auto&& view) {
+            using T = std::decay_t<decltype(view)>;
+            if constexpr (std::is_same<T, PathRecordView>()) {
+              paths.resize(std::max<std::size_t>(paths.size(), view.index + 1));
+              // Entries in `.ninja_deps` are already normalized when written
+              paths[view.index] = view.path;
+            } else {
+              deps.resize(
+                  std::max<std::size_t>(deps.size(), view.outIndex + 1));
+              deps[view.outIndex].assign(view.deps.begin(), view.deps.end());
+            }
+          },
+          record);
     }
+  } catch (const std::exception& e) {
+    std::string msg;
+    msg += "Error processing ";
+    msg += ninjaDeps.string();
+    msg += ": ";
+    msg += e.what();
+    throw std::runtime_error{msg};
   }
 
   std::vector<std::size_t> lookup(paths.size());
