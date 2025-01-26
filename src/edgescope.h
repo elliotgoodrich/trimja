@@ -83,23 +83,9 @@ class EdgeScope {
    *
    * @param key The name of the variable to set.
    * @param value The value to assign to the variable.
-   * @return A string view of the stored value.
    */
-  std::string_view set(std::string_view key, std::string&& value) {
-    return m_local.set(key, std::move(value));
-  }
-
-  /**
-   * @brief Resets the value of a variable in the scope.
-   *
-   * This method sets the value associated with the specified key to an empty
-   * string. If the key does not exist, it inserts the key with an empty value.
-   *
-   * @param key The name of the variable to reset.
-   * @return A reference to the reset value.
-   */
-  std::string& resetValue(std::string_view key) {
-    return m_local.resetValue(key);
+  void set(std::string_view key, std::string&& value) {
+    m_local.set(key, std::move(value));
   }
 
   /**

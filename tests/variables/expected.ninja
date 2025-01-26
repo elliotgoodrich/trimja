@@ -6,6 +6,9 @@ foo = 42
 build out1: phony
 build out2: phony
 build out3: phony
-filename = in1
+recursive = n
+recursive = ${recursive}1
+recursive = i${recursive}
+filename = $recursive
 build $filename.out: phony
 build $filename.out2: phony
