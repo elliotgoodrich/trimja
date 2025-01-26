@@ -129,12 +129,8 @@ class NestedScope {
     return ninja;
   }
 
-  std::string_view set(std::string_view key, std::string&& value) {
-    return m_scopes.back().set(key, std::move(value));
-  }
-
-  std::string& resetValue(std::string_view key) {
-    return m_scopes.back().resetValue(key);
+  void set(std::string_view key, std::string&& value) {
+    m_scopes.back().set(key, std::move(value));
   }
 
   bool appendValue(std::string& output, std::string_view name) const {
@@ -398,7 +394,9 @@ class BuildContext {
                     std::span{outs.data(), outSize}};
 
     for (const auto& [name, value] : r.readVariables()) {
-      evaluate(scope.resetValue(name), value, scope);
+      std::string varValue;
+      evaluate(varValue, value, scope);
+      scope.set(name, std::move(varValue));
     }
 
     // Add the build command
@@ -580,7 +578,9 @@ class BuildContext {
   }
 
   void operator()(const VariableReader& r) {
-    evaluate(fileScope.resetValue(r.name()), r.value(), fileScope);
+    std::string value;
+    evaluate(value, r.value(), fileScope);
+    fileScope.set(r.name(), std::move(value));
     parts.emplace_back(r.start(), r.bytesParsed());
   }
 

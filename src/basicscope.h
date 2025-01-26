@@ -78,20 +78,8 @@ class BasicScope {
    * @brief Sets a variable in the scope.
    * @param key The name of the variable.
    * @param value The value of the variable.
-   * @return A reference to the inserted value.
    */
-  std::string_view set(std::string_view key, std::string&& value);
-
-  /**
-   * @brief Resets the value of a variable in the scope.
-   *
-   * This method sets the value associated with the specified key to an empty
-   * string. If the key does not exist, it inserts the key with an empty value.
-   *
-   * @param key The name of the variable to reset.
-   * @return A reference to the reset value.
-   */
-  std::string& resetValue(std::string_view key);
+  void set(std::string_view key, std::string&& value);
 
   /**
    * @brief Appends the value of a variable to the output string.

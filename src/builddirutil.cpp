@@ -71,7 +71,9 @@ class BuildDirContext {
   void operator()(DefaultReader& r) const { consume(r.readPaths()); }
 
   void operator()(const VariableReader& r) {
-    evaluate(fileScope.resetValue(r.name()), r.value(), fileScope);
+    std::string value;
+    evaluate(value, r.value(), fileScope);
+    fileScope.set(r.name(), std::move(value));
   }
 
   void operator()(const IncludeReader& r) {
