@@ -24,6 +24,8 @@
 
 #include "evalstring.h"
 
+#include <algorithm>
+
 namespace trimja {
 
 Rule::Rule() = default;
