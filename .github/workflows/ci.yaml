@@ -12,13 +12,20 @@ jobs:
       fail-fast: false
       matrix:
         environment: [
-          {name: Linux, os: ubuntu-20.04, cpp: clang++-12, c: clang-12},
-          {name: MacOS, os: macos-13, cpp: clang++, c: clang},
-          {name: Windows, os: windows-latest, cpp: cl, c: cl},
+          # Linux (Clang) and MacOS must use the oldest GitHub Action runner
+          # since we want to compile against the oldest libc version
+          # possible.  This means that all binaries created will be compatible
+          # with all GitHub Action runners. For Linux (GCC) with choose the
+          # oldest version that supports everything we have on the other
+          # platforms to maximise compiler compatibility.
+          {name: Linux (clang), image: ubuntu-20.04, cpp: clang++-12, c: clang-12, generator: Ninja, clang-tidy: true},
+          {name: Linux (gcc), image: ubuntu-22.04, cpp: g++-12, c: gcc-12, generator: Ninja},
+          {name: MacOS, image: macos-13, cpp: clang++, c: clang, generator: Ninja},
+          {name: Windows, image: windows-latest, cpp: cl, c: cl},
         ]
         build_type: [Debug, Release]
     name: ${{ matrix.environment.name }} (${{ matrix.build_type }})
-    runs-on: ${{ matrix.environment.os }}
+    runs-on: ${{ matrix.environment.image }}
     permissions:
       contents: write
     steps:
@@ -32,8 +39,8 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.environment.cpp }}
         -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
         ${{ format('-D{0}={1}', matrix.environment.name == 'Windows' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
-        ${{ matrix.environment.name != 'Windows' && '-G Ninja' || ''}}
-        ${{ matrix.environment.name == 'Linux' && '-DENABLE_CLANG_TIDY=ON' || ''}}
+        ${{ matrix.environment.generator != '' && format('-G {0}', matrix.environment.generator) || ''}}
+        ${{ matrix.environment.clang-tidy && '-DENABLE_CLANG_TIDY=ON' || ''}}
     - uses: elliotgoodrich/trimja-action@v1
       # Skip Windows (which doesn't yet use Ninja) and releases
       if: matrix.environment.name != 'Windows' && !startsWith(github.ref, 'refs/tags/')

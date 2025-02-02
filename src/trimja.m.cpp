@@ -134,7 +134,8 @@ bool instrumentMemory = false;
 
 }  // namespace
 
-[[noreturn]] int main(int argc, char* argv[]) try {
+// NOLINTNEXTLINE(modernize-avoid-c-arrays)
+[[noreturn]] int mainImp(int argc, char* argv[]) try {
   // Decorate as [[noreturn]] to make sure we always call `leave`, which
   // avoids the overhead of destructing objects on the stack.
   using namespace trimja;
@@ -364,4 +365,11 @@ bool instrumentMemory = false;
 } catch (const std::exception& e) {
   std::cout << e.what() << std::endl;
   leave(EXIT_FAILURE);
+}
+
+int main(int argc, char* argv[]) {
+  // We cannot decorate `main` with `[[noreturn]]` in gcc since it warns on the
+  // implicit `return 0;`. So instead we call out to another function that isn't
+  // special.
+  return mainImp(argc, argv);
 }

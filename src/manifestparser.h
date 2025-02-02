@@ -133,11 +133,10 @@ class PathRangeReader : public detail::BaseReader {
     using value_type = EvalString;
 
    private:
-    Lexer::Token m_expectedLastToken;
+    int m_expectedLastToken;
 
    public:
-    iterator(Lexer* lexer, value_type* storage);
-    iterator(Lexer* lexer, value_type* storage, Lexer::Token lastToken);
+    iterator(Lexer* lexer, value_type* storage, int lastToken = -1);
 
     const value_type& operator*() const;
 
@@ -148,7 +147,7 @@ class PathRangeReader : public detail::BaseReader {
   };
 
  private:
-  Lexer::Token m_expectedLastToken;
+  int m_expectedLastToken;
 
  public:
   PathRangeReader();

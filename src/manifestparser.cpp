@@ -134,13 +134,10 @@ LetRangeReader::sentinel LetRangeReader::end() const {
   return sentinel{};
 }
 
-PathRangeReader::iterator::iterator(Lexer* lexer, EvalString* storage)
-    : iterator(lexer, storage, static_cast<Lexer::Token>(-1)) {}
-
 PathRangeReader::iterator::iterator(Lexer* lexer,
                                     EvalString* storage,
-                                    Lexer::Token lastToken)
-    : detail::BaseReader(lexer, storage), m_expectedLastToken(lastToken) {
+                                    int lastToken)
+    : detail::BaseReader{lexer, storage}, m_expectedLastToken{lastToken} {
   if (m_lexer) {
     ++*this;
   }
@@ -158,8 +155,8 @@ PathRangeReader::iterator& PathRangeReader::iterator::operator++() {
     throw std::runtime_error(err);
   }
   if (m_storage->empty()) {
-    if (static_cast<int>(m_expectedLastToken) != -1) {
-      expectToken(m_lexer, m_expectedLastToken);
+    if (m_expectedLastToken != -1) {
+      expectToken(m_lexer, static_cast<Lexer::Token>(m_expectedLastToken));
     }
     m_lexer = nullptr;
   }
@@ -183,13 +180,13 @@ bool operator!=(const PathRangeReader::iterator& iter,
 PathRangeReader::PathRangeReader() : PathRangeReader{nullptr, nullptr} {}
 
 PathRangeReader::PathRangeReader(Lexer* lexer, EvalString* storage)
-    : PathRangeReader(lexer, storage, static_cast<Lexer::Token>(-1)) {}
+    : detail::BaseReader{lexer, storage}, m_expectedLastToken{-1} {}
 
 PathRangeReader::PathRangeReader(Lexer* lexer,
                                  EvalString* storage,
                                  Lexer::Token expectedLastToken)
-    : detail::BaseReader(lexer, storage),
-      m_expectedLastToken(expectedLastToken) {}
+    : detail::BaseReader{lexer, storage},
+      m_expectedLastToken{expectedLastToken} {}
 
 PathRangeReader::iterator PathRangeReader::begin() {
   return iterator{m_lexer, m_storage, m_expectedLastToken};
