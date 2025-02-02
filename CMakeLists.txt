@@ -76,7 +76,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     else()
         target_compile_options(trimja PRIVATE -fsanitize=address -fsanitize=undefined)
         # Keep frame pointers for better stack traces
-        target_link_options(trimja PRIVATE -fno-omit-frame-pointer -fsanitize=address)
+        target_link_options(trimja PRIVATE -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined)
     endif()
 endif()
 

@@ -408,23 +408,20 @@ class BuildContext {
     buildCommand.resolution =
         isBuiltInRule(ruleIndex) ? BuildCommand::Print : BuildCommand::Phony;
 
+    const std::size_t partsIndex = parts.size();
     if (rules[ruleIndex].instance == 1) {
-      buildCommand.partsIndices.push_back(
-          parts.emplace(parts.end(), r.start(), r.bytesParsed()) -
-          parts.begin());
+      parts.emplace_back(r.start(), r.bytesParsed());
+      buildCommand.partsIndices.push_back(partsIndex);
     } else {
       const char* endOfName = ruleName.data() + ruleName.size();
-      buildCommand.partsIndices.push_back(
-          parts.emplace(parts.end(), r.start(), endOfName - r.start()) -
-          parts.begin());
-      buildCommand.partsIndices.push_back(
-          parts.emplace(parts.end(),
-                        to_string_view(rules[ruleIndex].instance)) -
-          parts.begin());
-      buildCommand.partsIndices.push_back(
-          parts.emplace(parts.end(), endOfName,
-                        r.bytesParsed() - (endOfName - r.start())) -
-          parts.begin());
+      parts.emplace_back(r.start(), endOfName - r.start());
+      buildCommand.partsIndices.push_back(partsIndex);
+
+      parts.push_back(to_string_view(rules[ruleIndex].instance));
+      buildCommand.partsIndices.push_back(partsIndex + 1);
+
+      parts.emplace_back(endOfName, r.bytesParsed() - (endOfName - r.start()));
+      buildCommand.partsIndices.push_back(partsIndex + 2);
     }
     // Check we aren't actually allocating
     assert(buildCommand.partsIndices.size() <=
@@ -514,14 +511,12 @@ class BuildContext {
     if (!isNew) {
       // If shadowed we need to add the rule suffix to the list of parts to
       // print
-      rule.partsIndices.push_back(
-          parts.emplace(parts.end(), r.start(), bytesToEndOfName) -
-          parts.begin());
+      const std::size_t partsIndex = parts.size();
+      parts.emplace_back(r.start(), bytesToEndOfName);
+      rule.partsIndices.push_back(partsIndex);
 
-      rule.partsIndices.push_back(
-          parts.emplace(parts.end(),
-                        to_string_view(ruleIt->second.duplicates)) -
-          parts.begin());
+      parts.push_back(to_string_view(ruleIt->second.duplicates));
+      rule.partsIndices.push_back(partsIndex + 1);
     }
 
     for (const auto& [key, value] : r.readVariables()) {
@@ -536,18 +531,16 @@ class BuildContext {
       }
     }
 
+    const std::size_t partsIndex = parts.size();
     if (!isNew) {
       // Include the rest of the variables if we're shadowed
-      rule.partsIndices.push_back(
-          parts.emplace(parts.end(), endOfName,
-                        r.bytesParsed() - bytesToEndOfName) -
-          parts.begin());
+      parts.emplace_back(endOfName, r.bytesParsed() - bytesToEndOfName);
+      rule.partsIndices.push_back(partsIndex);
       assert(rule.partsIndices.size() == 3);
     } else {
       // If we're not shadowed then we can include the whole rule
-      rule.partsIndices.push_back(
-          parts.emplace(parts.end(), r.start(), r.bytesParsed()) -
-          parts.begin());
+      parts.emplace_back(r.start(), r.bytesParsed());
+      rule.partsIndices.push_back(partsIndex);
       assert(rule.partsIndices.size() == 1);
     }
     // Check we aren't actually allocating
