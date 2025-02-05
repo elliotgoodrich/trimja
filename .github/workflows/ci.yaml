@@ -31,8 +31,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: seanmiddleditch/gha-setup-ninja@master
-      with:
-        version: '1.11.1'
     - name: Configure CMake
       run: >
         cmake -B output
