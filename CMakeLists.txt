@@ -18,15 +18,21 @@ if(ENABLE_CLANG_TIDY)
     endif()
 endif()
 
+# Enable ASAN in debug mode for supported compilers
+# MSVC is not supported yet as we need to set up the PATH to `clang_rt.asan_dynamic*.dll`
+set(ENABLE_SANITIZERS $<AND:$<NOT:$<CXX_COMPILER_ID:MSVC>>,$<CONFIG:Debug>>)
+
+# Enable fuzzing for Clang in debug mode
+set(ENABLE_FUZZING $<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Debug>>)
 
 ###############################################################################
 # trimja                                                                      #
 ###############################################################################
 
-add_executable(
-    trimja
+add_library(
+    core
+    STATIC
     src/all.natvis
-    src/trimja.m.cpp
     src/allocationprofiler.cpp
     src/basicscope.cpp
     src/builddirutil.cpp
@@ -54,31 +60,39 @@ set_source_files_properties(
     PROPERTIES SKIP_LINTING ON
 )
 
-target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
-target_include_directories(trimja PRIVATE src)
-target_include_directories(trimja SYSTEM PRIVATE thirdparty)
-target_compile_options(trimja PRIVATE
-    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+target_include_directories(core PUBLIC src)
+target_include_directories(core SYSTEM PUBLIC thirdparty)
+target_compile_options(core PUBLIC
+    $<IF:$<CXX_COMPILER_ID:MSVC>,/W4,-Wall -Wextra -Wpedantic>
 )
-target_compile_definitions(trimja PRIVATE
+target_compile_definitions(core PUBLIC
     # debug iterators cause default ctor of std::string and std::vector to allocate
-    $<$<CXX_COMPILER_ID:MSVC>:_ITERATOR_DEBUG_LEVEL=0>
-    $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
+    $<$<CXX_COMPILER_ID:MSVC>:_ITERATOR_DEBUG_LEVEL=0 NOMINMAX>
 )
-set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 
-# Enable AddressSanitizer and UBSan (if available) for Debug builds
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(MSVC)
-        target_compile_options(trimja PRIVATE /fsanitize=address)
-        target_link_options(trimja PRIVATE /fsanitize=address)
-    else()
-        target_compile_options(trimja PRIVATE -fsanitize=address -fsanitize=undefined)
-        # Keep frame pointers for better stack traces
-        target_link_options(trimja PRIVATE -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined)
-    endif()
-endif()
+# Skip link time optimization when we're fuzzing as they don't play nicely
+set_property(TARGET core PROPERTY INTERPROCEDURAL_OPTIMIZATION $<NOT:${ENABLE_FUZZING}>)
+
+target_compile_options(
+    core PUBLIC
+    $<$<AND:${ENABLE_SANITIZERS},$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address>
+    $<$<AND:${ENABLE_SANITIZERS},$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-fsanitize=address,undefined>
+    $<${ENABLE_FUZZING}:-fsanitize=fuzzer-no-link>
+)
+target_link_options(
+    core PUBLIC
+    # MSVC Incremental linking does not work when address sanitizer is enabled
+    $<$<AND:${ENABLE_SANITIZERS},$<CXX_COMPILER_ID:MSVC>>:/INCREMENTAL:NO>
+    $<$<AND:${ENABLE_SANITIZERS},$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-fsanitize=address,undefined -fno-omit-frame-pointer>
+)
+
+add_executable(
+    trimja
+    src/trimja.m.cpp
+)
+target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
+set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION $<NOT:${ENABLE_FUZZING}>)
+target_link_libraries(trimja core)
 
 install(TARGETS trimja RUNTIME DESTINATION bin)
 
@@ -92,6 +106,26 @@ set(CPACK_PACKAGE_INSTALL_DIRECTORY trimja)
 set(CPACK_NSIS_MODIFY_PATH ON)
 set(CPACK_NSIS_IGNORE_LICENSE_PAGE ON)
 include(CPack)
+
+file(
+    GLOB TRIMJA_FUZZING_TARGETS
+    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/src/
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.fuzz.cpp
+)
+foreach(FUZZ_TARGET ${TRIMJA_FUZZING_TARGETS})
+    if(${FUZZ_TARGET} MATCHES "^(.+)\.fuzz\.cpp$")
+        string(CONCAT FUZZ_TARGET_NAME "fuzz" ${CMAKE_MATCH_1})
+        add_executable(
+            ${FUZZ_TARGET_NAME}
+            src/${FUZZ_TARGET}
+            $<$<NOT:${ENABLE_FUZZING}>:src/nofuzzing.m.cpp>
+        )
+        target_link_options(${FUZZ_TARGET_NAME} PRIVATE $<${ENABLE_FUZZING}:-fsanitize=fuzzer>)
+        target_link_libraries(${FUZZ_TARGET_NAME} core)
+    else()
+        message(FATAL_ERROR "Regex should match")
+    endif()
+endforeach()
 
 # Generate test files for the absolute/relative unit test
 get_filename_component(ABSOLUTE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/relative" ABSOLUTE)
