@@ -127,7 +127,7 @@ bool LogReader::read(LogEntry* output) {
   }
 
   if (m_fields & LogEntry::Fields::mtime) {
-    ninja_clock::rep ticks;
+    ninja_clock::rep ticks = {};
     std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), ticks);
     output->mtime = ninja_clock::to_file_clock(
         ninja_clock::time_point{ninja_clock::duration{ticks}});

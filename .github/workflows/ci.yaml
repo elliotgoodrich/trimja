@@ -41,7 +41,9 @@ jobs:
         ${{ matrix.environment.clang-tidy && '-DENABLE_CLANG_TIDY=ON' || ''}}
     - uses: elliotgoodrich/trimja-action@v1
       # Skip Windows (which doesn't yet use Ninja) and releases
-      if: matrix.environment.name != 'Windows' && !startsWith(github.ref, 'refs/tags/')
+      # TODO: Figure out why trimja is failing on CI
+      #if: matrix.environment.name != 'Windows' && !startsWith(github.ref, 'refs/tags/')
+      if: false
       with:
         path: output/build.ninja
         build-configuration: ${{ matrix.build_type }}
