@@ -22,8 +22,12 @@ endif()
 # MSVC is not supported yet as we need to set up the PATH to `clang_rt.asan_dynamic*.dll`
 set(ENABLE_SANITIZERS $<AND:$<NOT:$<CXX_COMPILER_ID:MSVC>>,$<CONFIG:Debug>>)
 
-# Enable fuzzing for Clang in debug mode
-set(ENABLE_FUZZING $<AND:$<CXX_COMPILER_ID:Clang>,$<CONFIG:Debug>>)
+# Decide when to enable fuzzing
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(ENABLE_FUZZING 1)
+else()
+    set(ENABLE_FUZZING 0)
+endif()
 
 ###############################################################################
 # trimja                                                                      #
@@ -70,8 +74,26 @@ target_compile_definitions(core PUBLIC
     $<$<CXX_COMPILER_ID:MSVC>:_ITERATOR_DEBUG_LEVEL=0 NOMINMAX>
 )
 
-# Skip link time optimization when we're fuzzing as they don't play nicely
-set_property(TARGET core PROPERTY INTERPROCEDURAL_OPTIMIZATION $<NOT:${ENABLE_FUZZING}>)
+# Decide when to enable link-time optimization.
+# This is enabled unless we are fuzzing on earlier versions of Clang. e.g. on Clang 12.0.0
+# we see:
+# /usr/bin/ld: /tmp/lto-llvm-2c8b48.o: warning: sh_link not set for section `__sancov_cntrs'
+# /usr/bin/ld: /tmp/lto-llvm-2c8b48.o: warning: sh_link not set for section `__sancov_pcs'
+# Note that this is fixed by using fat LTO instead of thin LTO, but CMake only has a
+# cross-platform option to enable thin LTO.  This issue is also is fixed in Clang 18.1.3,
+# but I'm unsure of the earliest version of Clang that isn't affected.
+if(ENABLE_FUZZING)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "18.1.3")
+        set(ENABLE_LTO OFF)
+        message("Info: Link-time optimization has been disabled for this build")
+    else()
+        set(ENABLE_LTO ON)
+    endif()
+else()
+    set(ENABLE_LTO ON)
+endif()
+
+set_property(TARGET core PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
 
 target_compile_options(
     core PUBLIC
@@ -91,7 +113,7 @@ add_executable(
     src/trimja.m.cpp
 )
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
-set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION $<NOT:${ENABLE_FUZZING}>)
+set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
 target_link_libraries(trimja core)
 
 install(TARGETS trimja RUNTIME DESTINATION bin)
@@ -120,6 +142,7 @@ foreach(FUZZ_TARGET ${TRIMJA_FUZZING_TARGETS})
             src/${FUZZ_TARGET}
             $<$<NOT:${ENABLE_FUZZING}>:src/nofuzzing.m.cpp>
         )
+        set_property(TARGET ${FUZZ_TARGET_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
         target_link_options(${FUZZ_TARGET_NAME} PRIVATE $<${ENABLE_FUZZING}:-fsanitize=fuzzer>)
         target_link_libraries(${FUZZ_TARGET_NAME} core)
     else()
