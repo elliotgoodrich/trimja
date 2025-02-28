@@ -23,7 +23,8 @@
 #ifndef TRIMJA_DEPSWRITER
 #define TRIMJA_DEPSWRITER
 
-#include <chrono>
+#include "ninja_clock.h"
+
 #include <cstdint>
 #include <iosfwd>
 #include <span>
@@ -37,7 +38,8 @@ namespace trimja {
  */
 struct DepsWriter {
   /**
-   * @brief Constructs a DepsWriter with the given output stream.
+   * @brief Constructs a DepsWriter with the given output stream.  Note that
+   * `out` must outlive the DepsWriter and should be open in binary mode.
    *
    * @param out The output stream to write dependencies to.
    */
@@ -47,9 +49,12 @@ struct DepsWriter {
    * @brief Records a path and returns its associated node ID.
    *
    * @param path The path to record.
+   * @param nodeID The associated node ID.  Note that if this is not provided
+   * then an incrementing node ID will be used.
    * @return The node ID associated with the recorded path.
    */
   std::int32_t recordPath(std::string_view path);
+  std::int32_t recordPath(std::string_view path, std::int32_t nodeId);
 
   /**
    * @brief Records dependencies for a given output node.
@@ -59,7 +64,7 @@ struct DepsWriter {
    * @param dependencies A span of node IDs representing the dependencies.
    */
   void recordDependencies(std::int32_t out,
-                          std::chrono::file_clock::time_point mtime,
+                          ninja_clock::time_point mtime,
                           std::span<const std::int32_t> dependencies);
 
  private:
