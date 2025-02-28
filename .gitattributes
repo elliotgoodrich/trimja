@@ -1,2 +1,4 @@
 # Do not convert line endings in this test directory
 tests/**/expected.* -text
+# Mark all fuzzing corpora as generated
+corpora/**/* linguist-generated=true

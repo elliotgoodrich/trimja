@@ -124,13 +124,30 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
 
     const std::string_view path = [&] {
       const std::uint32_t pathSize = recordSize - sizeof(std::uint32_t);
+      if (pathSize % 4 != 0) {
+        throw std::runtime_error{"Path size not a multiple of 4"};
+      }
       m_storage.resize(pathSize);
       m_deps->read(m_storage.data(), pathSize);
       const auto end = m_storage.end();
-      const std::size_t padding =
-          (end[-1] == '\0') + (end[-2] == '\0') + (end[-3] == '\0');
+
       std::string_view path = m_storage;
-      path.remove_suffix(padding);
+      switch ((end[-1] == '\0') | ((end[-2] == '\0') << 1) |
+              ((end[-3] == '\0') << 2)) {
+        case 0b000:
+          break;
+        case 0b001:
+          path.remove_suffix(1);
+          break;
+        case 0b011:
+          path.remove_suffix(2);
+          break;
+        case 0b111:
+          path.remove_suffix(3);
+          break;
+        default:
+          throw std::runtime_error{"Invalid padding"};
+      }
       return path;
     }();
 
@@ -143,6 +160,9 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
   } else {
     if (recordSize < sizeof(std::int32_t) + 2 * sizeof(std::uint32_t)) {
       throw std::runtime_error{"Dependency record too small"};
+    }
+    if (recordSize % sizeof(std::int32_t) != 0) {
+      throw std::runtime_error{"Dependencies record size not a multiple of 4"};
     }
     const auto outIndex = readFromStream<std::int32_t>(m_deps);
     const auto mtime = readFromStream<ninja_clock::time_point>(m_deps);

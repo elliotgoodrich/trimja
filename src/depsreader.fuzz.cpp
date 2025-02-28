@@ -21,20 +21,56 @@
 // SOFTWARE.
 
 #include "depsreader.h"
+#include "depswriter.h"
 
+#include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <string>
 
 #include <stdint.h>  // NOLINT(modernize-deprecated-headers)
 
+namespace {
+
+void printHex(const std::string_view str) {
+  for (const unsigned char c : str) {
+    std::cout << std::hex << std::setw(2) << std::setfill('0')
+              << static_cast<int>(c) << ' ';
+  }
+  std::cout << '\n';
+}
+
+}  // namespace
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   using namespace trimja;
   const std::string input{reinterpret_cast<const char*>(data), size};
   try {
-    std::istringstream stream{input, std::ios_base::in | std::ios_base::binary};
-    DepsReader reader{stream};
-    for (auto&& entry : reader) {
-      (void)entry;
+    // TODO: Use std::ispanstream/std::ospanstream in C++23 to avoid string
+    // copies
+    std::istringstream inStream{input,
+                                std::ios_base::in | std::ios_base::binary};
+    std::ostringstream outStream{std::ios_base::out | std::ios_base::binary};
+    trimja::DepsWriter writer{outStream};
+    for (const std::variant<trimja::PathRecordView, trimja::DepsRecordView>&
+             record : trimja::DepsReader{inStream}) {
+      std::visit(
+          [&](auto&& view) {
+            using T = std::decay_t<decltype(view)>;
+            if constexpr (std::is_same<T, trimja::PathRecordView>()) {
+              writer.recordPath(view.path, view.index);
+            } else {
+              writer.recordDependencies(view.outIndex, view.mtime, view.deps);
+            }
+          },
+          record);
+    }
+    if (input != outStream.str()) {
+      std::cout << "Input = \n";
+      printHex(input);
+      std::cout << "\n---\nOutput = \n";
+      printHex(outStream.str());
+      std::abort();
     }
   } catch (const std::exception&) {
   }

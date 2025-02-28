@@ -42,6 +42,7 @@ add_library(
     src/builddirutil.cpp
     src/cpuprofiler.cpp
     src/depsreader.cpp
+    src/depswriter.cpp
     src/edgescope.cpp
     src/evalstring.cpp
     src/graph.cpp
@@ -145,6 +146,25 @@ foreach(FUZZ_TARGET ${TRIMJA_FUZZING_TARGETS})
         set_property(TARGET ${FUZZ_TARGET_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
         target_link_options(${FUZZ_TARGET_NAME} PRIVATE $<${ENABLE_FUZZING}:-fsanitize=fuzzer>)
         target_link_libraries(${FUZZ_TARGET_NAME} core)
+
+        # Add tests for the corpora
+        if(ENABLE_FUZZING)
+            file(
+                GLOB TRIMJA_FUZZING_CORPORA
+                RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/corpora/${FUZZ_TARGET_NAME}
+                ${CMAKE_CURRENT_SOURCE_DIR}/corpora/${FUZZ_TARGET_NAME}/*
+            )
+
+            list(LENGTH TRIMJA_FUZZING_CORPORA CORPORA_COUNT)
+            if(CORPORA_COUNT GREATER 0)
+                add_test(
+                    NAME trimja.fuzz.${FUZZ_TARGET_NAME}
+                    COMMAND $<TARGET_FILE:${FUZZ_TARGET_NAME}> ${TRIMJA_FUZZING_CORPORA}
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/corpora/${FUZZ_TARGET_NAME}/
+                    COMMAND_EXPAND_LISTS
+                )
+            endif()
+        endif()
     else()
         message(FATAL_ERROR "Regex should match")
     endif()

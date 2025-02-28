@@ -21,10 +21,9 @@
 // SOFTWARE.
 
 #include "depswriter.h"
-#include "ninja_clock.h"
 
 #include <cassert>
-#include <iostream>
+#include <ostream>
 
 namespace trimja {
 
@@ -40,22 +39,30 @@ void writeBinary(std::ostream* out, const TYPE& t) {
 
 }  // namespace
 
-DepsWriter::DepsWriter(std::ostream& out) : m_out(&out), m_nextNode(0) {
+DepsWriter::DepsWriter(std::ostream& out) : m_out{&out}, m_nextNode{0} {
   const std::string_view signature = "# ninjadeps\n";
   m_out->write(signature.data(), signature.size());
   writeBinary<std::int32_t>(m_out, 4);
 }
 
 std::int32_t DepsWriter::recordPath(std::string_view path) {
-  const std::uint32_t checksum = ~static_cast<std::uint32_t>(m_nextNode);
+  const std::int32_t nodeId = recordPath(path, m_nextNode);
+  ++m_nextNode;
+  return nodeId;
+}
+
+std::int32_t DepsWriter::recordPath(std::string_view path,
+                                    std::int32_t nodeId) {
+  const std::uint32_t checksum = ~static_cast<std::uint32_t>(nodeId);
   if (path.size() > NINJA_MAX_RECORD_SIZE - sizeof(checksum)) {
     // Substract from `NINJA_MAX_RECORD_SIZE` instead of adding to `paddedSize`
     // since we could end up overflowing
-    throw std::runtime_error("Record size exceeded");
+    throw std::runtime_error{"Record size exceeded"};
   }
 
   const std::size_t paddedSize = ((path.size() + 3) / 4) * 4;
-  writeBinary<std::uint32_t>(m_out, paddedSize + sizeof(checksum));
+  writeBinary<std::uint32_t>(
+      m_out, static_cast<std::uint32_t>(paddedSize + sizeof(checksum)));
   m_out->write(path.data(), path.size());
   assert(paddedSize - path.size() <= sizeof("\0\0"));
   m_out->write("\0\0", paddedSize - path.size());
@@ -63,22 +70,24 @@ std::int32_t DepsWriter::recordPath(std::string_view path) {
   return m_nextNode++;
 }
 
-void DepsWriter::recordDependencies(std::int32_t out,
-                                    std::chrono::file_clock::time_point mtime,
-                                    std::span<const std::int32_t> nodes) {
-  if ((NINJA_MAX_RECORD_SIZE / (nodes.size() + 1)) <
-      sizeof(mtime) + sizeof(nodes[0])) {
-    throw std::runtime_error("Record size exceeded");
+void DepsWriter::recordDependencies(
+    std::int32_t out,
+    ninja_clock::time_point mtime,
+    std::span<const std::int32_t> dependencies) {
+  if ((NINJA_MAX_RECORD_SIZE / (dependencies.size() + 1)) <
+      sizeof(mtime) + sizeof(dependencies[0])) {
+    throw std::runtime_error{"Record size exceeded"};
   }
 
-  const std::uint32_t size =
-      sizeof(out) + sizeof(mtime) + (nodes.size() * sizeof(nodes[0]));
+  const auto size = static_cast<std::uint32_t>(
+      sizeof(out) + sizeof(mtime) +
+      (dependencies.size() * sizeof(dependencies[0])));
   // Set the high-bit to indicate a dependency record
-  writeBinary<std::uint32_t>(m_out, size | (1u << 31));
+  writeBinary<std::uint32_t>(m_out, size | (1U << 31));
   writeBinary<std::int32_t>(m_out, out);
-  writeBinary(m_out, std::chrono::clock_cast<ninja_clock>(mtime));
-  m_out->write(reinterpret_cast<const char*>(nodes.data()),
-               nodes.size() * sizeof(nodes[0]));
+  writeBinary(m_out, mtime);
+  m_out->write(reinterpret_cast<const char*>(dependencies.data()),
+               dependencies.size() * sizeof(dependencies[0]));
 }
 
 }  // namespace trimja
