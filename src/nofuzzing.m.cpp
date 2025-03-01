@@ -20,11 +20,46 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
 
-int main(int, char*[]) {
-  // This translation unit is compiled into our fuzz targets when fuzzing is not
-  // enabled in order to have a valid entry point for the executable.
-  std::cout << "Fuzzing not supported";
-  return 1;
+#include <stdint.h>  // NOLINT(modernize-deprecated-headers)
+
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
+
+// This entry point runs all of the corpus files in the given directory.  This
+// is used on platforms where libFuzzer is not available and it allows us to
+// continue testing the corpora.
+int main(int argc, const char* argv[]) {
+  if (argc != 3) {
+    std::cout << "Usage: " << argv[0] << " --directory [dir]\n";
+    return 1;
+  }
+
+  if (argv[1] != std::string_view{"--directory"}) {
+    std::cout << "Usage: " << argv[0] << " --directory [dir]\n";
+    return 1;
+  }
+
+  if (!std::filesystem::exists(argv[2]) ||
+      !std::filesystem::is_directory(argv[2])) {
+    std::cout << "Directory '" << argv[2] << "' does not exist\n";
+    return 0;
+  }
+
+  std::string buffer;
+  for (const std::filesystem::directory_entry& file :
+       std::filesystem::directory_iterator{argv[2]}) {
+    std::ifstream stream{file.path(), std::ios::binary};
+    buffer.assign(std::istreambuf_iterator<char>(stream),
+                  std::istreambuf_iterator<char>());
+
+    const int rc = LLVMFuzzerTestOneInput(
+        reinterpret_cast<const uint8_t*>(buffer.data()), buffer.size());
+    if (rc != 0) {
+      return 1;
+    }
+  }
 }
