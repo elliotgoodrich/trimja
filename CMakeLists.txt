@@ -164,6 +164,14 @@ foreach(FUZZ_TARGET ${TRIMJA_FUZZING_TARGETS})
                     COMMAND_EXPAND_LISTS
                 )
             endif()
+        else()
+            # If fuzzing isn't available, then we build an executable with our own `main` that
+            # can iterate through a directory and run the corpora within it
+            add_test(
+                NAME trimja.fuzz.${FUZZ_TARGET_NAME}
+                COMMAND $<TARGET_FILE:${FUZZ_TARGET_NAME}> --directory ${FUZZ_TARGET_NAME}
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/corpora/
+            )
         endif()
     else()
         message(FATAL_ERROR "Regex should match")
