@@ -48,6 +48,7 @@ add_library(
     src/graph.cpp
     src/fixed_string.cpp
     src/logreader.cpp
+    src/logwriter.cpp
     src/manifestparser.cpp
     src/murmur_hash.cpp
     src/ninja_clock.cpp

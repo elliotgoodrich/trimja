@@ -49,7 +49,7 @@ std::array<std::string_view, N> splitOnTab(std::string_view in) {
 
 static_assert(std::input_iterator<LogReader::iterator>);
 
-LogReader::iterator::iterator(LogReader* reader) : m_reader(reader), m_entry() {
+LogReader::iterator::iterator(LogReader* reader) : m_reader{reader}, m_entry{} {
   ++(*this);
 }
 
@@ -80,7 +80,8 @@ LogReader::LogReader(std::istream& logs, int fields)
     : m_logs{&logs},
       m_nextLine{},
       m_hashType{static_cast<HashType>(-1)},
-      m_fields{fields} {
+      m_fields{fields},
+      m_version{-1} {
   std::getline(*m_logs, m_nextLine, '\n');
   const std::string_view prefix = "# ninja log v";
   if (!m_nextLine.starts_with(prefix)) {
@@ -103,7 +104,12 @@ LogReader::LogReader(std::istream& logs, int fields)
   }
 
   assert(versionStr.size() == 1);
-  m_hashType = versionStr[0] == '7' ? HashType::rapidhash : HashType::murmur;
+  m_version = versionStr[0] - '0';
+  m_hashType = m_version == 7 ? HashType::rapidhash : HashType::murmur;
+}
+
+int LogReader::version() const {
+  return m_version;
 }
 
 bool LogReader::read(LogEntry* output) {
@@ -114,23 +120,30 @@ bool LogReader::read(LogEntry* output) {
 
   std::array<std::string_view, 5> parts = splitOnTab<5>(m_nextLine);
 
+  const std::errc okay{};
+
   if (m_fields & LogEntry::Fields::startTime) {
     std::int32_t ticks;
-    std::from_chars(parts[0].data(), parts[0].data() + parts[0].size(), ticks);
+    if (std::from_chars(parts[0].data(), parts[0].data() + parts[0].size(), ticks).ec != okay) {
+      throw std::runtime_error{"Failed to parse start time"};
+    }
     output->startTime = std::chrono::duration<std::int32_t, std::milli>{ticks};
   }
 
   if (m_fields & LogEntry::Fields::endTime) {
     std::int32_t ticks;
-    std::from_chars(parts[1].data(), parts[1].data() + parts[1].size(), ticks);
+    if (std::from_chars(parts[1].data(), parts[1].data() + parts[1].size(), ticks).ec != okay) {
+      throw std::runtime_error{"Failed to parse end time"};
+    }
     output->endTime = std::chrono::duration<std::int32_t, std::milli>{ticks};
   }
 
   if (m_fields & LogEntry::Fields::mtime) {
     ninja_clock::rep ticks = {};
-    std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), ticks);
-    output->mtime = ninja_clock::to_file_clock(
-        ninja_clock::time_point{ninja_clock::duration{ticks}});
+    if (std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), ticks).ec != okay) {
+      throw std::runtime_error{"Failed to parse mtime"};
+    }
+    output->mtime = ninja_clock::time_point{ninja_clock::duration{ticks}};
   }
 
   if (m_fields & LogEntry::Fields::out) {
@@ -138,8 +151,10 @@ bool LogReader::read(LogEntry* output) {
   }
 
   if (m_fields & LogEntry::Fields::hash) {
-    std::from_chars(parts[4].data(), parts[4].data() + parts[4].size(),
-                    output->hash, 16);
+    if (std::from_chars(parts[4].data(), parts[4].data() + parts[4].size(),
+                    output->hash, 16).ec != okay) {
+      throw std::runtime_error{"Failed to parse hash"};
+    }
     output->hashType = m_hashType;
   }
   return true;
