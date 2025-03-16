@@ -30,6 +30,14 @@ Note that when using Microsoft Visual Studio these commands need to be run from
 the
 [developer console](https://learn.microsoft.com/en-us/visualstudio/ide/reference/command-prompt-powershell).
 
+## Running fuzz tests
+
+  1. Build with Clang in Debug
+  2. Then run either run (each length has been chosen to give a reasonable number
+     of entries to commit)
+    * ./build/fuzzlogreader corpora/fuzzlogreader/ -max_len=128
+    * ./build/fuzzdepsreader corpora/fuzzlogreader/ -max_len=1024
+
 ## Creating a Release
 
   1. Create a pull request that
