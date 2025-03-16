@@ -21,20 +21,44 @@
 // SOFTWARE.
 
 #include "logreader.h"
+#include "logwriter.h"
 
+#include <iostream>
 #include <sstream>
 #include <string>
 
 #include <stdint.h>  // NOLINT(modernize-deprecated-headers)
 
+namespace {
+
+std::string roundTrip(const std::string& data) {
+  std::istringstream stream{data};
+  trimja::LogReader reader{stream};
+  std::ostringstream outStream{std::ios_base::out | std::ios_base::binary};
+  trimja::LogWriter writer{outStream, reader.version()};
+  for (const trimja::LogEntry& entry : reader) {
+    writer.recordEntry(entry);
+  }
+  return outStream.str();
+}
+
+}  // namespace
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  using namespace trimja;
-  const std::string input{reinterpret_cast<const char*>(data), size};
   try {
-    std::istringstream stream{input, std::ios_base::in};
-    LogReader reader{stream};
-    for (auto&& entry : reader) {
-      (void)entry;
+    // Round trip twice as the conversion is not bijective, e.g. different
+    // strings passed to `std::from_chars` can map to the same integer.
+    const std::string input{reinterpret_cast<const char*>(data), size};
+    const std::string intermediate = roundTrip(input);
+    const std::string output = roundTrip(intermediate);
+    if (intermediate != output) {
+      std::cout << "Input (size " << input.size() << ")\n"
+                << input << "\n---\nIntermediate (size " << intermediate.size()
+                << ")\n"
+                << intermediate << "\n---\nOutput (size " << output.size()
+                << ")\n"
+                << output;
+      std::abort();
     }
   } catch (const std::exception&) {
   }

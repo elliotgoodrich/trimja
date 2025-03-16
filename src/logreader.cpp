@@ -31,25 +31,43 @@
 namespace trimja {
 namespace {
 
-template <std::size_t N>
-std::array<std::string_view, N> splitOnTab(std::string_view in) {
-  std::array<std::string_view, N> parts = {};
-  auto it = in.begin();
-  const auto end = in.end();
-  for (std::string_view& part : parts) {
-    const auto tab = std::find(it, end, '\t');
-    part = std::string_view{&*it,
-                            static_cast<std::string_view::size_type>(tab - it)};
-    it = tab + std::min<std::size_t>(sizeof('\t'), end - tab);
+template <typename T>
+void parse(std::string_view name,
+           T& out,
+           const char*& begin,
+           const char* end,
+           int base = 10) {
+  const auto [ptr, ec] = std::from_chars(begin, end, out, base);
+  if (ec != std::errc{}) {
+    std::string msg = "Failed to parse ";
+    msg += name;
+    throw std::runtime_error{msg};
   }
-  return parts;
+  if (ptr == end || *ptr != '\t') {
+    std::string msg = "Expected ";
+    msg += name;
+    msg += " to be followed by a tab";
+    throw std::runtime_error{msg};
+  }
+  begin = ptr + 1;
+}
+
+void skipAhead(std::string_view name, const char*& begin, const char* end) {
+  begin = std::find(begin, end, '\t');
+  if (begin == end) {
+    std::string msg = "Unable to find ";
+    msg += name;
+    msg += " delimeter";
+    throw std::runtime_error{msg};
+  }
+  ++begin;
 }
 
 }  // namespace
 
 static_assert(std::input_iterator<LogReader::iterator>);
 
-LogReader::iterator::iterator(LogReader* reader) : m_reader(reader), m_entry() {
+LogReader::iterator::iterator(LogReader* reader) : m_reader{reader}, m_entry{} {
   ++(*this);
 }
 
@@ -80,7 +98,9 @@ LogReader::LogReader(std::istream& logs, int fields)
     : m_logs{&logs},
       m_nextLine{},
       m_hashType{static_cast<HashType>(-1)},
-      m_fields{fields} {
+      m_fields{fields},
+      m_version{-1},
+      m_lineNumber{1} {
   std::getline(*m_logs, m_nextLine, '\n');
   const std::string_view prefix = "# ninja log v";
   if (!m_nextLine.starts_with(prefix)) {
@@ -95,62 +115,91 @@ LogReader::LogReader(std::istream& logs, int fields)
   // * 7 only changes the hash function
   //   https://github.com/ninja-build/ninja/pull/2519
   if (versionStr != "5" && versionStr != "6" && versionStr != "7") {
-    std::string msg;
-    msg += "Unsupported log file version (";
+    std::string msg = "Unsupported log file version (";
     msg += versionStr;
     msg += ") found";
     throw std::runtime_error{msg};
   }
 
   assert(versionStr.size() == 1);
-  m_hashType = versionStr[0] == '7' ? HashType::rapidhash : HashType::murmur;
+  m_version = versionStr[0] - '0';
+  m_hashType = m_version == 7 ? HashType::rapidhash : HashType::murmur;
+}
+
+int LogReader::version() const {
+  return m_version;
 }
 
 bool LogReader::read(LogEntry* output) {
+  m_nextLine = "";
   std::getline(*m_logs, m_nextLine, '\n');
+  ++m_lineNumber;
   if (m_nextLine.empty()) {
     return false;
   }
 
-  std::array<std::string_view, 5> parts = splitOnTab<5>(m_nextLine);
+  // Append a tab to the end of the line so that each entry is tab delimited
+  // and this simplifies parsing.
+  m_nextLine += '\t';
+
+  const char* begin = m_nextLine.data();
+  const char* end = begin + m_nextLine.size();
 
   if (m_fields & LogEntry::Fields::startTime) {
     std::int32_t ticks;
-    std::from_chars(parts[0].data(), parts[0].data() + parts[0].size(), ticks);
+    parse("start time", ticks, begin, end);
     output->startTime = std::chrono::duration<std::int32_t, std::milli>{ticks};
+  } else {
+    skipAhead("start time", begin, end);
   }
 
   if (m_fields & LogEntry::Fields::endTime) {
     std::int32_t ticks;
-    std::from_chars(parts[1].data(), parts[1].data() + parts[1].size(), ticks);
+    parse("end time", ticks, begin, end);
     output->endTime = std::chrono::duration<std::int32_t, std::milli>{ticks};
+  } else {
+    skipAhead("end time", begin, end);
   }
 
   if (m_fields & LogEntry::Fields::mtime) {
-    ninja_clock::rep ticks = {};
-    std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), ticks);
-    output->mtime = ninja_clock::to_file_clock(
-        ninja_clock::time_point{ninja_clock::duration{ticks}});
+    ninja_clock::rep ticks;
+    parse("mtime", ticks, begin, end);
+    output->mtime = ninja_clock::time_point{ninja_clock::duration{ticks}};
+  } else {
+    skipAhead("mtime", begin, end);
   }
 
-  if (m_fields & LogEntry::Fields::out) {
-    output->out = parts[3];
+  {
+    const char* outputStart = begin;
+    skipAhead("output", begin, end);
+    if (m_fields & LogEntry::Fields::out) {
+      output->out = std::string_view{
+          outputStart,
+          static_cast<std::string_view::size_type>(begin - 1 - outputStart)};
+    }
   }
 
   if (m_fields & LogEntry::Fields::hash) {
-    std::from_chars(parts[4].data(), parts[4].data() + parts[4].size(),
-                    output->hash, 16);
-    output->hashType = m_hashType;
+    parse("hash", output->hash, begin, end, 16);
+  } else {
+    skipAhead("hash", begin, end);
   }
+
+  if (begin != end) {
+    std::string msg = "Unexpected characters at end of line ";
+    msg += std::to_string(m_lineNumber);
+    throw std::runtime_error{msg};
+  }
+
   return true;
 }
 
 LogReader::iterator LogReader::begin() {
-  return iterator(this);
+  return iterator{this};
 }
 
 LogReader::sentinel LogReader::end() {
-  return sentinel();
+  return sentinel{};
 }
 
 }  // namespace trimja

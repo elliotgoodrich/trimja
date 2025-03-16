@@ -23,54 +23,14 @@
 #ifndef TRIMJA_LOGREADER
 #define TRIMJA_LOGREADER
 
-#include <chrono>
+#include "logentry.h"
+
 #include <cstddef>
 #include <iosfwd>
 #include <iterator>
 #include <string>
-#include <string_view>
 
 namespace trimja {
-
-/**
- * @enum HashType
- * @brief Represents the type of hash function used to compute the build hash.
- */
-enum class HashType {
-  murmur,
-  rapidhash,
-};
-
-/**
- * @struct LogEntry
- * @brief Represents a single log entry.
- *
- * This structure holds information about a single log entry, including
- * start and end times, modification time, output path, and the build hash
- * value.
- */
-struct LogEntry {
-  /**
-   * @enum Fields
-   * @brief Represents the fields that can be read from a log entry.
-   */
-  struct Fields {
-    enum {
-      startTime = 1 << 1,
-      endTime = 1 << 2,
-      mtime = 1 << 3,
-      out = 1 << 4,
-      hash = 1 << 5,
-    };
-  };
-
-  std::chrono::duration<std::int32_t, std::milli> startTime;
-  std::chrono::duration<std::int32_t, std::milli> endTime;
-  std::chrono::file_clock::time_point mtime;
-  std::string_view out;
-  std::uint64_t hash;
-  HashType hashType;
-};
 
 /**
  * @class LogReader
@@ -84,6 +44,8 @@ class LogReader {
   std::string m_nextLine;
   HashType m_hashType;
   int m_fields;
+  int m_version;
+  int m_lineNumber;
 
  public:
   /**
@@ -160,6 +122,12 @@ class LogReader {
                                   LogEntry::Fields::mtime |
                                   LogEntry::Fields::out |
                                   LogEntry::Fields::hash);
+
+  /**
+   * @brief Returns the version of the log file.
+   * @return The version of the log file.
+   */
+  int version() const;
 
   /**
    * @brief Reads the next log entry from the input stream.
