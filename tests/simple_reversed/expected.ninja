@@ -1,9 +1,9 @@
 rule copy
   command = ninja --version $in -> $out
 build out6: copy in6
-build out5: phony
-build out4: phony
 build out3b: copy in3
 build out3a: copy in3
-build out2: phony
 build out1: copy in1
+build out5: phony
+build out4: phony
+build out2: phony

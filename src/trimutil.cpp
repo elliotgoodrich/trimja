@@ -210,10 +210,20 @@ class BuildContext {
   // duplicate rules and need a suffix.
   std::vector<fixed_string> numbers;
 
+  enum class PartType : std::int8_t {
+    BuildEdge,
+    Pool,
+    Rule,
+    Variable,
+    Default,
+  };
+
   // All parts of the input build file, possibly indexing into an element of
   // `stringStorage`.  Note that we may swap out build command sections with
   // phony commands.
   std::vector<std::string_view> parts;
+
+  std::vector<PartType> partsType;
 
   // All build commands and default statements mentioned
   std::vector<BuildCommand> commands;
@@ -330,6 +340,7 @@ class BuildContext {
   void operator()(PoolReader& r) {
     consume(r.readVariables());
     parts.emplace_back(r.start(), r.bytesParsed());
+    partsType.push_back(PartType::Pool);
   }
 
   void operator()(BuildReader& r) {
@@ -411,16 +422,20 @@ class BuildContext {
     const std::size_t partsIndex = parts.size();
     if (rules[ruleIndex].instance == 1) {
       parts.emplace_back(r.start(), r.bytesParsed());
+      partsType.push_back(PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex);
     } else {
       const char* endOfName = ruleName.data() + ruleName.size();
       parts.emplace_back(r.start(), endOfName - r.start());
+      partsType.push_back(PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex);
 
       parts.push_back(to_string_view(rules[ruleIndex].instance));
+      partsType.push_back(PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex + 1);
 
       parts.emplace_back(endOfName, r.bytesParsed() - (endOfName - r.start()));
+      partsType.push_back(PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex + 2);
     }
     // Check we aren't actually allocating
@@ -513,9 +528,11 @@ class BuildContext {
       // print
       const std::size_t partsIndex = parts.size();
       parts.emplace_back(r.start(), bytesToEndOfName);
+      partsType.push_back(PartType::Rule);
       rule.partsIndices.push_back(partsIndex);
 
       parts.push_back(to_string_view(ruleIt->second.duplicates));
+      partsType.push_back(PartType::Rule);
       rule.partsIndices.push_back(partsIndex + 1);
     }
 
@@ -535,11 +552,13 @@ class BuildContext {
     if (!isNew) {
       // Include the rest of the variables if we're shadowed
       parts.emplace_back(endOfName, r.bytesParsed() - bytesToEndOfName);
+      partsType.push_back(PartType::Rule);
       rule.partsIndices.push_back(partsIndex);
       assert(rule.partsIndices.size() == 3);
     } else {
       // If we're not shadowed then we can include the whole rule
       parts.emplace_back(r.start(), r.bytesParsed());
+      partsType.push_back(PartType::Rule);
       rule.partsIndices.push_back(partsIndex);
       assert(rule.partsIndices.size() == 1);
     }
@@ -556,6 +575,7 @@ class BuildContext {
 
     const std::size_t partsIndex = parts.size();
     parts.emplace_back(r.start(), r.bytesParsed());
+    partsType.push_back(PartType::Default);
 
     const std::size_t commandIndex = commands.size();
     BuildCommand& buildCommand = commands.emplace_back();
@@ -575,6 +595,7 @@ class BuildContext {
     evaluate(value, r.value(), fileScope);
     fileScope.set(r.name(), std::move(value));
     parts.emplace_back(r.start(), r.bytesParsed());
+    partsType.push_back(PartType::Variable);
   }
 
   void operator()(const IncludeReader& r) {
@@ -627,8 +648,10 @@ class BuildContext {
     parse(file, stringStorage.front());
     fileIds.pop_back();
 
+    // Everything pushed back from popping a scope is a variable assignment
     stringStorage.push_front(fileScope.pop());
     parts.push_back(stringStorage.front());
+    partsType.push_back(PartType::Variable);
 
     // For all the shadowed rules, set name to ruleIndex lookup back to the
     // shadowed index.  We have to grab the name and then find since
@@ -812,23 +835,23 @@ void markIfChildrenAffected(std::size_t index,
 }
 
 // If `index` has not been seen (using `seen`) then call
-// `ifAffectedMarkAllChildren` for all outputs to `index` and then set
-// `isAffected[index]` if any child is affected.
+// `ifRequiredRequireAllChildren` for all outputs to `index` and then set
+// `isRequired[index]` if any child is required.
 // NOLINTNEXTLINE(misc-no-recursion)
-void ifAffectedMarkAllChildren(std::size_t index,
-                               std::vector<bool>& seen,
-                               std::vector<bool>& isAffected,
-                               std::vector<bool>& needsAllInputs,
-                               const detail::BuildContext& ctx,
-                               bool explain) {
+void ifRequiredRequireAllChildren(std::size_t index,
+                                  std::vector<bool>& seen,
+                                  std::vector<bool>& isRequired,
+                                  std::vector<bool>& needsAllInputs,
+                                  const detail::BuildContext& ctx,
+                                  bool explain) {
   if (seen[index]) {
     return;
   }
   seen[index] = true;
 
   for (const std::size_t out : ctx.graph.out(index)) {
-    ifAffectedMarkAllChildren(out, seen, isAffected, needsAllInputs, ctx,
-                              explain);
+    ifRequiredRequireAllChildren(out, seen, isRequired, needsAllInputs, ctx,
+                                 explain);
   }
 
   // Nothing to do if we have no children
@@ -838,7 +861,7 @@ void ifAffectedMarkAllChildren(std::size_t index,
 
   if (!detail::BuildContext::isBuiltInRule(
           ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
-    if (isAffected[index]) {
+    if (isRequired[index]) {
       needsAllInputs[index] = true;
       return;
     }
@@ -851,13 +874,13 @@ void ifAffectedMarkAllChildren(std::size_t index,
       outIndices.begin(), outIndices.end(),
       [&](const std::size_t index) { return needsAllInputs[index]; });
   if (it != outIndices.end()) {
-    if (!isAffected[index]) {
+    if (!isRequired[index]) {
       if (explain) {
         std::cerr << "Including '" << ctx.graph.path(index)
                   << "' as it is a required input for the affected output '"
                   << ctx.graph.path(*it) << "'" << std::endl;
       }
-      isAffected[index] = true;
+      isRequired[index] = true;
     }
     needsAllInputs[index] = true;
   }
@@ -1018,28 +1041,62 @@ void TrimUtil::trim(std::ostream& output,
     markIfChildrenAffected(index, seen, isAffected, ctx, explain);
   }
 
-  // Mark all inputs to affected outputs as affected (they technically
-  // aren't affected but they are required to be built in order to
-  // be inputs to affected outputs)
+  // Keep the difference between build inputs that are affected (i.e. have
+  // an input that is directly affected) or inputs that are required (i.e.
+  // don't have an input that is directly affected but it itself is relied
+  // on by an affected command)
+  std::vector<bool> isRequired{isAffected};
+
+  // Mark all inputs to affected outputs as required
   seen.assign(seen.size(), false);
   std::vector<bool> needsAllInputs(graph.size(), false);
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    ifAffectedMarkAllChildren(index, seen, isAffected, needsAllInputs, ctx,
-                              explain);
+    ifRequiredRequireAllChildren(index, seen, isRequired, needsAllInputs, ctx,
+                                 explain);
   }
 
-  // Mark all affected `BuildCommands` as needing to print them out
+  assert(ctx.parts.size() == ctx.partsType.size());
+  std::vector<bool> immovable(ctx.parts.size());
+  std::vector<bool> floatToTop(ctx.parts.size());
+  for (std::size_t partIndex = 0; partIndex < ctx.partsType.size();
+       ++partIndex) {
+    switch (ctx.partsType[partIndex]) {
+      case detail::BuildContext::PartType::Variable:
+        immovable[partIndex] = true;
+        break;
+      case detail::BuildContext::PartType::Pool:
+        [[fallthrough]];
+      case detail::BuildContext::PartType::Rule:
+        floatToTop[partIndex] = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Float all affected edges to the top so they are prioritized first
+  // and Mark all required edges as needing to print them out
   for (std::size_t index = 0; index < graph.size(); ++index) {
-    if (isAffected[index]) {
+    if (isRequired[index]) {
       const std::size_t commandIndex = ctx.nodeToCommand[index];
       if (commandIndex != std::numeric_limits<std::size_t>::max()) {
-        ctx.commands[commandIndex].resolution = BuildCommand::Print;
+        BuildCommand& command = ctx.commands[commandIndex];
+        command.resolution = BuildCommand::Print;
+
+        if (isAffected[index]) {
+          for (const std::size_t partsIndex : command.partsIndices) {
+            floatToTop[partsIndex] = true;
+          }
+        }
       }
+    } else {
+      // All affected indices are required
+      assert(!isAffected[index]);
     }
   }
 
   // Go through all build commands, keep a note of rules that are needed and
-  // `phony` out the build edges that weren't affected.
+  // `phony` out the build edges that weren't required.
   std::forward_list<std::string> phonyStorage;
   std::vector<bool> ruleReferenced(ctx.rules.size());
   for (BuildCommand& command : ctx.commands) {
@@ -1072,18 +1129,45 @@ void TrimUtil::trim(std::ostream& output,
       std::for_each(std::next(command.partsIndices.begin()),
                     command.partsIndices.end(),
                     [&](std::size_t index) { ctx.parts[index] = ""; });
-      // There is no need to clear `partsIndices` as it's not used again
+      command.partsIndices.clear();
     }
   }
 
-  // Remove all rules that weren't referenced
+  // Remove all rules that weren't referenced and float the remaining to
+  // the top so they remain above any build commands we are rearranging
+  // imminently
   for (std::size_t ruleIndex = 0; ruleIndex < ctx.rules.size(); ++ruleIndex) {
+    RuleCommand& rule = ctx.rules[ruleIndex];
     if (!ruleReferenced[ruleIndex]) {
-      RuleCommand& rule = ctx.rules[ruleIndex];
       std::for_each(rule.partsIndices.begin(), rule.partsIndices.end(),
-                    [&](std::size_t index) { ctx.parts[index] = ""; });
+                    [&](const std::size_t index) { ctx.parts[index] = ""; });
+    } else {
+      std::for_each(rule.partsIndices.begin(), rule.partsIndices.end(),
+                    [&](const std::size_t index) { floatToTop[index] = true; });
     }
   }
+
+  // Float marked parts to the top of the file, making sure not to cross over
+  // any parts marked as immovable
+  auto start = ctx.parts.begin();
+  while (start != ctx.parts.end()) {
+    start = std::find_if(
+        start, ctx.parts.end(), [&](const std::string_view& command) {
+          const std::size_t partIndex = &command - ctx.parts.data();
+          return !immovable[partIndex];
+        });
+    const auto end = std::find_if(
+        start, ctx.parts.end(), [&](const std::string_view& command) {
+          const std::size_t partIndex = &command - ctx.parts.data();
+          return immovable[partIndex];
+        });
+    std::stable_partition(start, end, [&](const std::string_view& command) {
+      const std::size_t partIndex = &command - ctx.parts.data();
+      return floatToTop[partIndex];
+    });
+    start = end;
+  }
+
   trimTimer.stop();
 
   const Timer writeTimer = CPUProfiler::start("output time");

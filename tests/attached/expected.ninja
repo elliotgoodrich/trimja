@@ -2,9 +2,9 @@ rule copy
   command = ninja --version $in -> $out
 rule concat
   command = ninja --version $in -> $out
+build out: concat changed a c
+build out2: copy out
 build ignored: phony
 build a: copy b
-build out: concat changed a c
 build c: copy d
-build out2: copy out
 build ignored2: phony

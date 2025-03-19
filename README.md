@@ -13,6 +13,10 @@ This can be used to **speed up CI** to create only those build artifacts that
 are affected by the current pull request. For example, a pull request updating
 `README.md` shouldn't need to build and test your entire software!
 
+**trimja** will reorder commands within the Ninja build file so build commands
+using affected files are prioritized. This means that unsuccessful builds will
+fail faster, thereby giving quicker feedback to developers.
+
 For a ready-to-use Github Action see
 [trimja-action](https://github.com/elliotgoodrich/trimja-action).
 

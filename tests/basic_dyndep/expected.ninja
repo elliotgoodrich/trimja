@@ -3,5 +3,5 @@ rule copy
   depfile = $out.d
   command = ninja --version $in -> $out
   description = Copying $out
-build out.txt: phony
 build out2.txt: copy in.txt
+build out.txt: phony

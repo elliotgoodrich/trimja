@@ -1,0 +1,26 @@
+rule cc
+  command = ninja --version cc $in -> $out
+build a1.o: cc a1
+build a2.o: cc a2
+build a3.o: cc a3
+
+pool small
+  depth = 1
+rule link
+  command = ninja --version link $in -> $out
+  pool = small
+build liba: link a1.o a2.o a3.o
+
+build b1.o: cc b1
+build b2.o: cc b2
+build libb: link b1.o b2.o
+
+build c1.o: cc c1
+build c2.o: cc c2
+build libc: link c1.o c2.o
+
+var = can't cross
+build d1.o: cc d1
+var = and
+var = same here
+build libd: link d1.o
