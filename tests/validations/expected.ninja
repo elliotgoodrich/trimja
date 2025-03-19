@@ -1,10 +1,10 @@
 rule touch
   command = ninja --version $in -> $out
 build outa: touch in |@ ignored
-build outb: phony |@ in
 build tmpa: touch in
-build tmpb: phony
 build tmpc: touch in
-build tmpd: phony
 build outc: touch tmpa |@ tmpb
+build outb: phony |@ in
+build tmpb: phony
+build tmpd: phony
 build outd: phony |@ tmpc
