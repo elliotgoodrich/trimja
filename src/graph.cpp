@@ -28,6 +28,13 @@
 
 namespace trimja {
 
+const gch::small_vector<Graph::Node, 1> empty;
+
+// Indices for `Schema`
+const std::size_t PATH_INDEX = 0;
+const std::size_t OUTPUTS_INDEX = 1;
+const std::size_t INPUTS_INDEX = 2;
+
 std::size_t Graph::PathHash::operator()(const fixed_string& v) const {
   return (*this)(v.view());
 }
@@ -67,13 +74,11 @@ bool Graph::PathEqual::operator()(std::string_view left,
 Graph::Graph() = default;
 
 Graph::Node Graph::addPath(std::string&& path) {
-  const std::size_t nextIndex = m_inputToOutput.size();
+  const std::size_t nextIndex = m_nodes.size();
   CanonicalizePath(&path);
   const auto [it, inserted] = m_pathToNode.try_emplace(path, nextIndex, this);
   if (inserted) {
-    m_inputToOutput.emplace_back();
-    m_outputToInput.emplace_back();
-    m_path.emplace_back(it->first);
+    m_nodes.emplace_back(it->first, empty, empty);
   }
 #ifdef _WIN32
   else {
@@ -86,7 +91,7 @@ Graph::Node Graph::addPath(std::string&& path) {
 }
 
 Graph::Node Graph::addNormalizedPath(std::string_view path) {
-  const std::size_t nextIndex = m_inputToOutput.size();
+  const std::size_t nextIndex = m_nodes.size();
 #ifndef NDEBUG
   std::string copy{path};
   CanonicalizePath(&copy);
@@ -94,9 +99,7 @@ Graph::Node Graph::addNormalizedPath(std::string_view path) {
 #endif
   const auto [it, inserted] = m_pathToNode.try_emplace(path, nextIndex, this);
   if (inserted) {
-    m_inputToOutput.emplace_back();
-    m_outputToInput.emplace_back();
-    m_path.emplace_back(it->first);
+    m_nodes.emplace_back(it->first, empty, empty);
   }
   return it->second;
 }
@@ -129,23 +132,21 @@ std::optional<Graph::Node> Graph::findNormalizedPath(
 
 Graph::Node Graph::addDefault() {
   assert(!m_defaultNode.has_value());
-  const Node node{m_inputToOutput.size(), this};
-  m_inputToOutput.emplace_back();
-  m_outputToInput.emplace_back();
-  m_path.emplace_back("default");
+  const Node node{m_nodes.size(), this};
+  m_nodes.emplace_back("default", empty, empty);
   m_defaultNode = node;
   return node;
 }
 
 void Graph::addEdge(Graph::Node in, Graph::Node out) {
   assert(in != out);
-  m_inputToOutput[in].push_back(out);
-  m_outputToInput[out].push_back(in);
+  m_nodes[in].get<OUTPUTS_INDEX>().push_back(out);
+  m_nodes[out].get<INPUTS_INDEX>().push_back(in);
 }
 
 void Graph::addOneWayEdge(Graph::Node in, Graph::Node out) {
   assert(in != out);
-  m_inputToOutput[in].push_back(out);
+  m_nodes[in].get<OUTPUTS_INDEX>().push_back(out);
 }
 
 bool Graph::isDefault(Graph::Node node) const {
@@ -157,24 +158,23 @@ std::optional<Graph::Node> Graph::getDefault() const {
 }
 
 std::string_view Graph::path(Graph::Node node) const {
-  return m_path[node];
+  return m_nodes[node].get<PATH_INDEX>();
 }
 
-const gch::small_vector<Graph::Node>& Graph::out(Graph::Node node) const {
-  return m_inputToOutput[node];
+const gch::small_vector<Graph::Node, 1>& Graph::out(Graph::Node node) const {
+  return m_nodes[node].get<OUTPUTS_INDEX>();
 }
 
-const gch::small_vector<Graph::Node>& Graph::in(Graph::Node node) const {
-  return m_outputToInput[node];
+const gch::small_vector<Graph::Node, 1>& Graph::in(Graph::Node node) const {
+  return m_nodes[node].get<INPUTS_INDEX>();
 }
 
 std::size_t Graph::size() const {
-  return m_inputToOutput.size();
+  return m_nodes.size();
 }
 
 IndexIntoRange<Graph::Node> Graph::nodes() const {
-  return IndexIntoRange<Graph::Node>{Node{0, this},
-                                     Node{m_inputToOutput.size(), this}};
+  return IndexIntoRange<Graph::Node>{Node{0, this}, Node{m_nodes.size(), this}};
 }
 
 }  // namespace trimja

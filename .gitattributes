@@ -2,3 +2,5 @@
 tests/**/expected.* -text
 # Mark all fuzzing corpora as generated
 corpora/**/* linguist-generated=true
+# soagen.hpp is generated
+thirdparty/soagen/soagen.hpp linguist-generated=true
