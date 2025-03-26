@@ -51,12 +51,40 @@
     </Expand>
   </Type>
 
-  <Type Name="trimja::detail::IndexIntoDebug&lt;trimja::Graph,*,*&gt;">
-    <DisplayString>{{ path = {m_container->m_path[m_index]} }}</DisplayString>
+  <!--
+    `Graph::m_nodes` is a `soagen::table`, i.e. a single allocation carved into
+    one contiguous array per column, reached through `alloc_.columns[N]`.  The
+    column order is that of `Graph::Schema`: 0 = path, 1 = outputs, 2 = inputs.
+    The `1` in the `small_vector` types below is its inline capacity and must
+    stay in step with the one spelled out in `Graph::Schema`.
+  -->
+  <Type Name="trimja::Graph">
+    <Intrinsic Name="count" Expression="m_nodes.count_"/>
+    <Intrinsic Name="pathAt" Expression="reinterpret_cast&lt;std::string_view*&gt;(m_nodes.alloc_.columns[0])[i]">
+      <Parameter Name="i" Type="size_t"/>
+    </Intrinsic>
+    <Intrinsic Name="outAt" Expression="reinterpret_cast&lt;gch::small_vector&lt;trimja::detail::IndexIntoDebug&lt;trimja::Graph,trimja::detail::DefaultTag,unsigned __int64&gt;,1,std::allocator&lt;trimja::detail::IndexIntoDebug&lt;trimja::Graph,trimja::detail::DefaultTag,unsigned __int64&gt;&gt; &gt;*&gt;(m_nodes.alloc_.columns[1])[i]">
+      <Parameter Name="i" Type="size_t"/>
+    </Intrinsic>
+    <Intrinsic Name="inAt" Expression="reinterpret_cast&lt;gch::small_vector&lt;trimja::detail::IndexIntoDebug&lt;trimja::Graph,trimja::detail::DefaultTag,unsigned __int64&gt;,1,std::allocator&lt;trimja::detail::IndexIntoDebug&lt;trimja::Graph,trimja::detail::DefaultTag,unsigned __int64&gt;&gt; &gt;*&gt;(m_nodes.alloc_.columns[2])[i]">
+      <Parameter Name="i" Type="size_t"/>
+    </Intrinsic>
+    <DisplayString>{{ size = {count()} }}</DisplayString>
     <Expand>
-      <Item Name="path">m_container->m_path[m_index]</Item>
-      <Item Name="in">m_container->m_outputToInput[m_index]</Item>
-      <Item Name="out">m_container->m_inputToOutput[m_index]</Item>
+      <Item Name="[size]" ExcludeView="simple">count()</Item>
+      <IndexListItems>
+        <Size>count()</Size>
+        <ValueNode>pathAt($i)</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+
+  <Type Name="trimja::detail::IndexIntoDebug&lt;trimja::Graph,*,*&gt;">
+    <DisplayString>{{ path = {m_container-&gt;pathAt(m_index)} }}</DisplayString>
+    <Expand>
+      <Item Name="path">m_container-&gt;pathAt(m_index)</Item>
+      <Item Name="in">m_container-&gt;inAt(m_index)</Item>
+      <Item Name="out">m_container-&gt;outAt(m_index)</Item>
       <Item Name="index">m_index</Item>
     </Expand>
   </Type>

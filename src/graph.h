@@ -28,6 +28,7 @@
 
 #include <boost/boost_unordered.hpp>
 #include <gch/small_vector.hpp>
+#include <soagen/soagen.hpp>
 
 #include <optional>
 #include <string>
@@ -70,16 +71,21 @@ class Graph {
   boost::unordered_flat_map<fixed_string, Node, PathHash, PathEqual>
       m_pathToNode;
 
-  // An adjacency list of input -> output
-  std::vector<gch::small_vector<Node>> m_inputToOutput;
-
-  // An adjacency list of output -> Input
-  std::vector<gch::small_vector<Node>> m_outputToInput;
-
-  // Names of paths (this points to the keys in `m_pathToNode`, which is always
-  // valid since `fixed_string` has no small-string optimization and always
-  // allocates on the heap.
-  std::vector<std::string_view> m_path;
+  using Schema = soagen::table_traits<
+      // Names of paths (this points to the keys in `m_pathToNode`, which is
+      // always valid since `fixed_string` has no small-string optimization and
+      // always allocates on the heap.
+      std::string_view,
+      // The outputs of this node.  We keep inline space for a single element
+      // since it is common for a rule to have exactly one output, and anything
+      // beyond that can spill to the heap.
+      //
+      // If you change this inline capacity you must also update the
+      // `trimja::Graph` natvis file.
+      gch::small_vector<Node, 1>,
+      // The inputs of this node, inline-sized as above
+      gch::small_vector<Node, 1>>;
+  soagen::table<Schema, soagen::allocator> m_nodes;
 
   std::optional<Node> m_defaultNode;
 
@@ -175,7 +181,7 @@ class Graph {
    * @param node The node to get the outputs of.
    * @return The vector of output nodes.
    */
-  const gch::small_vector<Node>& out(Node node) const;
+  const gch::small_vector<Node, 1>& out(Node node) const;
 
   /**
    * @brief Gets the vector of input nodes for the specified node.  Note
@@ -183,7 +189,7 @@ class Graph {
    * @param node The node to get the inputs of.
    * @return The vector of input nodes.
    */
-  const gch::small_vector<Node>& in(Node node) const;
+  const gch::small_vector<Node, 1>& in(Node node) const;
 
   /**
    * @brief Gets the number of nodes in the graph.
