@@ -126,18 +126,20 @@ void evaluate(std::string& output,
               const SCOPE& scope) {
   const auto end = variable.end();
   for (auto it = variable.begin(); it != end; ++it) {
-    switch ((*it).second) {
+    auto [str, type] = *it;
+    switch (type) {
       case EvalString::TokenType::Text:
-        output += (*it).first;
+        output += str;
         if (++it == end) {
           return;
         }
         // As we consolidate consecutive text sections if we are not at the
         // end then we must have a variable next
+        str = (*it).first;
         assert((*it).second == EvalString::TokenType::Variable);
         [[fallthrough]];
       case EvalString::TokenType::Variable:
-        scope.appendValue(output, (*it).first);
+        scope.appendValue(output, str);
     }
   }
 }
