@@ -20,19 +20,83 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "builddirutil.h"
+#include "manifestparser.h"
+#include "manifestwriter.h"
 
 #include <sstream>
 #include <string>
 
 #include <stdint.h>  // NOLINT(modernize-deprecated-headers)
 
+namespace {
+
+using namespace trimja;
+
+class Context {
+  ManifestWriter m_writer;
+
+  template <typename WRITER, typename INPUT_RANGE>
+  void writeVariables(WRITER& writer, INPUT_RANGE&& variables) {
+    for (const auto& [name, value] : variables) {
+      writer.variable(name, value);
+    }
+  }
+
+ public:
+  explicit Context(std::ostream& out) : m_writer{out} {}
+
+  void parse(const std::string& ninjaFileContents) {
+    for (auto&& part : ManifestReader{"", ninjaFileContents}) {
+      std::visit(*this, part);
+    }
+  }
+
+  void operator()(PoolReader& r) {
+    auto writer = m_writer.pool(r.name());
+    writeVariables(writer, r.readVariables());
+  }
+
+  void operator()(BuildReader& r) {
+    auto writer = m_writer.build()
+                      .out(r.readOut())
+                      .implicitOut(r.readImplicitOut())
+                      .name(r.readName())
+                      .in(r.readIn())
+                      .orderOnlyDeps(r.readOrderOnlyDeps())
+                      .validations(r.readValidations());
+    writeVariables(writer, r.readVariables());
+  }
+
+  void operator()(RuleReader& r) {
+    auto writer = m_writer.rule(r.name());
+    writeVariables(writer, r.readVariables());
+  }
+
+  void operator()(DefaultReader& r) { m_writer.default_(r.readPaths()); }
+
+  void operator()(const VariableReader& r) {
+    m_writer.variable(r.name(), r.value());
+  }
+
+  void operator()(const IncludeReader& r) { m_writer.include(r.path()); }
+
+  void operator()(const SubninjaReader& r) { m_writer.subninja(r.path()); }
+};
+
+}  // namespace
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   using namespace trimja;
   const std::string input{reinterpret_cast<const char*>(data), size};
+  std::ostringstream out;
   try {
-    BuildDirUtil util;
-    util.builddir(std::filesystem::path{}, input);
+    Context ctx{out};
+    ctx.parse(input);
+    std::string first = out.str();
+    out.str("");
+    ctx.parse(input);
+    assert(first == out.str());
+
   } catch (const std::exception&) {
   }
   return 0;

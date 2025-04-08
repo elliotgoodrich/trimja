@@ -24,6 +24,7 @@
 #define TRIMJA_EVALSTRING
 
 #include <cassert>
+#include <iosfwd>
 #include <string>
 #include <string_view>
 
@@ -112,6 +113,8 @@ class EvalString {
    */
   void appendVariable(std::string_view name);
 };
+
+std::ostream& operator<<(std::ostream& out, const EvalString& value);
 
 /**
  * @brief Evaluates the EvalString and appends the result to the output.

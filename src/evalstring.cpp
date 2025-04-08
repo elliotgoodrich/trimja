@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <ostream>
 
 // The format of `EvalString` is a sequence of segments. Each segment is
 // prefixed with the length of the segment, stored as an `Offset` type.  The
@@ -147,6 +148,19 @@ void EvalString::appendVariable(std::string_view name) {
   m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
   m_data.append(name);
   m_lastTextSegmentLength = 0;
+}
+
+std::ostream& operator<<(std::ostream& out, const EvalString& value) {
+  for (const auto& [str, type] : value) {
+    switch (type) {
+      case EvalString::TokenType::Variable:
+        out << '$';
+        [[fallthrough]];
+      case EvalString::TokenType::Text:
+        out << str;
+    }
+  }
+  return out;
 }
 
 }  // namespace trimja

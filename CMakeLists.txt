@@ -50,6 +50,7 @@ add_library(
     src/logreader.cpp
     src/logwriter.cpp
     src/manifestparser.cpp
+    src/manifestwriter.cpp
     src/murmur_hash.cpp
     src/ninja_clock.cpp
     src/rule.cpp
