@@ -129,7 +129,8 @@ void EvalString::appendText(std::string_view text) {
     // If the last part was plain text we can extend it
     const Offset newLength = m_lastTextSegmentLength + text.size();
     std::copy_n(reinterpret_cast<const char*>(&newLength), sizeof(newLength),
-                m_data.end() - sizeof(Offset) - m_lastTextSegmentLength);
+                m_data.data() + m_data.size() - sizeof(Offset) -
+                    m_lastTextSegmentLength);
     m_data.append(text);
     m_lastTextSegmentLength = newLength;
   } else {

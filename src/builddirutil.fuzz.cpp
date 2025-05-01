@@ -33,7 +33,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   try {
     BuildDirUtil util;
     util.builddir(std::filesystem::path{}, input);
-  } catch (const std::exception&) {
+  } catch (const std::exception&) {  // NOLINT(bugprone-empty-catch)
   }
   return 0;
 }

@@ -47,6 +47,8 @@
 
 namespace trimja {
 
+// NOLINTBEGIN(performance-avoid-endl)
+
 namespace {
 
 // A vector of strings that are reused to avoid reallocations
@@ -77,7 +79,7 @@ class PathVector {
   void clear() {
     // Keep the objects around but just call `clear()` so that we
     // keep the memory around to be reused.
-    std::for_each(m_paths.begin(), m_paths.begin() + m_size,
+    std::for_each(m_paths.data(), m_paths.data() + m_size,
                   [](std::string& path) { path.clear(); });
     m_size = 0;
   }
@@ -106,7 +108,7 @@ class NestedScope {
     // Take all variables defined in the latest scope and if their value differs
     // from the value in the previous scope then generate some Ninja variable
     // statements to set this variable back to the parent's value.
-    BasicScope last = std::move(m_scopes.back());
+    const BasicScope last = std::move(m_scopes.back());
     m_scopes.pop_back();
 
     std::string ninja;
@@ -139,7 +141,7 @@ class NestedScope {
 };
 
 struct BuildCommand {
-  enum Resolution {
+  enum Resolution : std::int8_t {
     // Print the entire build command
     Print,
 
@@ -497,7 +499,7 @@ class BuildContext {
         throw std::runtime_error{msg};
       }
 
-      RuleCommand& ruleCommand = rules[ruleIt->second.ruleIndex];
+      const RuleCommand& ruleCommand = rules[ruleIt->second.ruleIndex];
       if (ruleCommand.fileId == fileIds.back()) {
         // Throw an exception if we have a duplicate rule in the same file
         std::string msg;
@@ -614,7 +616,7 @@ class BuildContext {
       throw std::runtime_error(msg);
     }
     std::stringstream ninjaCopy;
-    std::ifstream ninja(file);
+    const std::ifstream ninja(file);
     ninjaCopy << ninja.rdbuf();
     stringStorage.push_front(ninjaCopy.str());
     parse(file, stringStorage.front());
@@ -640,7 +642,7 @@ class BuildContext {
     shadowedRules.emplace_back();
 
     std::stringstream ninjaCopy;
-    std::ifstream ninja{file};
+    const std::ifstream ninja{file};
     ninjaCopy << ninja.rdbuf();
     stringStorage.push_front(ninjaCopy.str());
 
@@ -673,7 +675,7 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
                   detail::BuildContext& ctx) {
   // Later entries may override earlier entries so don't touch the graph until
   // we have parsed the whole file
-  std::vector<std::string> paths;
+  std::vector<std::string> paths;  // NOLINTLINE(misc-const-correctness)
   std::vector<std::vector<std::int32_t>> deps;
   std::ifstream depStream{ninjaDeps, std::ios_base::binary};
   try {
@@ -979,7 +981,7 @@ void TrimUtil::trim(std::ostream& output,
     }
 
     // If that does not indicate a path, try the absolute path
-    std::filesystem::path p(line);
+    const std::filesystem::path p{line};
     if (!p.is_absolute()) {
       std::error_code error;
       const std::filesystem::path& absolute =
@@ -1174,5 +1176,7 @@ void TrimUtil::trim(std::ostream& output,
   std::copy(ctx.parts.begin(), ctx.parts.end(),
             std::ostream_iterator<std::string_view>(output));
 }
+
+// NOLINTEND(performance-avoid-endl)
 
 }  // namespace trimja

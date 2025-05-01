@@ -21,11 +21,13 @@
 // SOFTWARE.
 
 #include "depsreader.h"
-#include "graph.h"
 
+#include <cstdint>
 #include <ios>
 #include <istream>
-#include <span>
+#include <iterator>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace trimja {
@@ -170,8 +172,13 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
         (recordSize - sizeof(std::int32_t) - 2 * sizeof(std::uint32_t)) /
         sizeof(std::int32_t);
     m_depsStorage.resize(numDependencies);
+
+    static_assert(
+        NINJA_MAX_RECORD_SIZE <= std::numeric_limits<std::streamsize>::max(),
+        "Narrowing cast could lose information");
     m_deps->read(reinterpret_cast<char*>(m_depsStorage.data()),
-                 m_depsStorage.size() * sizeof(std::int32_t));
+                 static_cast<std::streamsize>(m_depsStorage.size() *
+                                              sizeof(std::int32_t)));
     *output = DepsRecordView{outIndex, mtime, m_depsStorage};
   }
 

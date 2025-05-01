@@ -57,15 +57,15 @@ std::chrono::file_clock::time_point ninja_clock::to_file_clock(
 
 }  // namespace trimja
 
-#if 0
+#if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 202002L
 namespace std {
 namespace chrono {
 
 trimja::ninja_clock::time_point
 clock_time_conversion<trimja::ninja_clock, file_clock>::operator()(
     file_clock::time_point t) {
-  return trimja::ninja_clock::time_point(
-      trimja::ninja_clock::duration(t.time_since_epoch().count() - trimja::offset));
+  return trimja::ninja_clock::time_point(trimja::ninja_clock::duration(
+      t.time_since_epoch().count() - trimja::offset));
 };
 
 file_clock::time_point

@@ -58,7 +58,7 @@ std::uint64_t murmur_hash::hash(const void* key, std::size_t length) {
     h *= m;
   }
 
-  switch (remainder) {
+  switch (remainder) {  // NOLINT(bugprone-switch-missing-default-case)
     case 7:
       h ^= std::uint64_t{data[6]} << 48;
       [[fallthrough]];

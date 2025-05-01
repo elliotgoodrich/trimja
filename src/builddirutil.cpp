@@ -92,7 +92,7 @@ class BuildDirContext {
       throw std::runtime_error(msg);
     }
     std::stringstream ninjaCopy;
-    std::ifstream ninja(file);
+    const std::ifstream ninja(file);
     ninjaCopy << ninja.rdbuf();
     parse(file, ninjaCopy.str());
   }
