@@ -136,6 +136,8 @@ bool instrumentMemory = false;
 
 // NOLINTNEXTLINE(modernize-avoid-c-arrays)
 [[noreturn]] int mainImp(int argc, char* argv[]) try {
+  // NOLINTBEGIN(performance-avoid-endl)
+
   // Decorate as [[noreturn]] to make sure we always call `leave`, which
   // avoids the overhead of destructing objects on the stack.
   using namespace trimja;
@@ -276,7 +278,7 @@ bool instrumentMemory = false;
   const std::string ninjaFileContents = [&] {
     const Timer ninjaRead = CPUProfiler::start(".ninja read");
     std::stringstream ninjaCopy;
-    std::ifstream ninja(ninjaFile);
+    const std::ifstream ninja(ninjaFile);
     ninjaCopy << ninja.rdbuf();
     return ninjaCopy.str();
   }();
@@ -365,6 +367,7 @@ bool instrumentMemory = false;
 } catch (const std::exception& e) {
   std::cout << e.what() << std::endl;
   leave(EXIT_FAILURE);
+  // NOLINTEND(performance-avoid-endl)
 }
 
 int main(int argc, char* argv[]) {

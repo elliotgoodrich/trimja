@@ -18,10 +18,12 @@ jobs:
           # with all GitHub Action runners. For Linux (GCC) with choose the
           # oldest version that supports everything we have on the other
           # platforms to maximise compiler compatibility.
-          {name: Linux (clang), image: ubuntu-20.04, cpp: clang++-12, c: clang-12, generator: Ninja, clang-tidy: true, package: true},
+          {name: Linux (clang), image: ubuntu-22.04, cpp: clang++-13, c: clang-13, generator: Ninja, clang-tidy: true, package: true},
           {name: Linux (gcc), image: ubuntu-22.04, cpp: g++-12, c: gcc-12, generator: Ninja, package: false},
           {name: MacOS, image: macos-13, cpp: clang++, c: clang, generator: Ninja, package: true},
           {name: Windows, image: windows-latest, cpp: cl, c: cl, package: true},
+          # Compile on the latest clang to get the latest clang-tidy
+          {name: Linux (clang-latest), image: ubuntu-latest, cpp: clang++, c: clang, generator: Ninja, clang-tidy: true, package: false},
         ]
         build_type: [Debug, Release]
     name: ${{ matrix.environment.name }} (${{ matrix.build_type }})

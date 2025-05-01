@@ -60,7 +60,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 << output;
       std::abort();
     }
-  } catch (const std::exception&) {
+  } catch (const std::exception&) {  // NOLINT(bugprone-empty-catch)
   }
   return 0;
 }

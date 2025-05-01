@@ -32,16 +32,25 @@ namespace {
 // Ninja's maximum record size, we will try and respect it
 const std::size_t NINJA_MAX_RECORD_SIZE = 0b11'1111'1111'1111'1111;
 
+void write(std::ostream* out, const void* data, std::size_t size) {
+  static_assert(
+      NINJA_MAX_RECORD_SIZE <= std::numeric_limits<std::streamsize>::max(),
+      "Narrowing cast could lose information");
+  assert(size <= NINJA_MAX_RECORD_SIZE);
+  out->write(static_cast<const char*>(data),
+             static_cast<std::streamsize>(size));
+}
+
 template <typename TYPE>
 void writeBinary(std::ostream* out, const TYPE& t) {
-  out->write(reinterpret_cast<const char*>(&t), sizeof(t));
+  write(out, &t, sizeof(t));
 }
 
 }  // namespace
 
 DepsWriter::DepsWriter(std::ostream& out) : m_out{&out}, m_nextNode{0} {
   const std::string_view signature = "# ninjadeps\n";
-  m_out->write(signature.data(), signature.size());
+  write(m_out, signature.data(), signature.size());
   writeBinary<std::int32_t>(m_out, 4);
 }
 
@@ -61,11 +70,10 @@ std::int32_t DepsWriter::recordPath(std::string_view path,
   }
 
   const std::size_t paddedSize = ((path.size() + 3) / 4) * 4;
-  writeBinary<std::uint32_t>(
-      m_out, static_cast<std::uint32_t>(paddedSize + sizeof(checksum)));
-  m_out->write(path.data(), path.size());
+  writeBinary(m_out, static_cast<std::uint32_t>(paddedSize + sizeof(checksum)));
+  write(m_out, path.data(), path.size());
   assert(paddedSize - path.size() <= sizeof("\0\0"));
-  m_out->write("\0\0", paddedSize - path.size());
+  write(m_out, "\0\0", paddedSize - path.size());
   writeBinary<std::uint32_t>(m_out, checksum);
   return m_nextNode++;
 }
@@ -86,8 +94,8 @@ void DepsWriter::recordDependencies(
   writeBinary<std::uint32_t>(m_out, size | (1U << 31));
   writeBinary<std::int32_t>(m_out, out);
   writeBinary(m_out, mtime);
-  m_out->write(reinterpret_cast<const char*>(dependencies.data()),
-               dependencies.size() * sizeof(dependencies[0]));
+  write(m_out, dependencies.data(),
+        dependencies.size() * sizeof(dependencies[0]));
 }
 
 }  // namespace trimja

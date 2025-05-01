@@ -62,20 +62,21 @@ struct ninja_clock {
 
 }  // namespace trimja
 
-#if 0
+#if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 202002L
 // Supported only with later versions of C++20
 namespace std {
 namespace chrono {
 
 /**
  * @struct clock_time_conversion
- * @brief Specialization for converting between trimja::ninja_clock and file_clock.
+ * @brief Specialization for converting between trimja::ninja_clock and
+ * file_clock.
  */
 template <>
 struct clock_time_conversion<trimja::ninja_clock, file_clock> {
   /**
    * @brief Converts a file_clock::time_point to a ninja_clock::time_point.
-   * 
+   *
    * @param t The file_clock::time_point to convert.
    * @return The corresponding ninja_clock::time_point.
    */
@@ -84,13 +85,14 @@ struct clock_time_conversion<trimja::ninja_clock, file_clock> {
 
 /**
  * @struct clock_time_conversion
- * @brief Specialization for converting between file_clock and trimja::ninja_clock.
+ * @brief Specialization for converting between file_clock and
+ * trimja::ninja_clock.
  */
 template <>
 struct clock_time_conversion<file_clock, trimja::ninja_clock> {
   /**
    * @brief Converts a ninja_clock::time_point to a file_clock::time_point.
-   * 
+   *
    * @param t The ninja_clock::time_point to convert.
    * @return The corresponding file_clock::time_point.
    */
