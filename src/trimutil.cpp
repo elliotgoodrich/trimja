@@ -37,6 +37,7 @@
 #include <ninja/util.h>
 #include <rapidhash/rapidhash.h>
 #include <boost/boost_unordered.hpp>
+#include <soagen/soagen.hpp>
 
 #include <cassert>
 #include <forward_list>
@@ -191,6 +192,10 @@ struct RuleCommand {
   RuleCommand(std::string_view name) : name{name} {}
 };
 
+// Indicies into `PartSchema` declared below
+static const std::size_t PART_INDEX = 0;
+static const std::size_t PARTTYPE_INDEX = 1;
+
 }  // namespace
 
 namespace detail {
@@ -223,9 +228,8 @@ class BuildContext {
   // All parts of the input build file, possibly indexing into an element of
   // `stringStorage`.  Note that we may swap out build command sections with
   // phony commands.
-  std::vector<std::string_view> parts;
-
-  std::vector<PartType> partsType;
+  using PartSchema = soagen::table_traits<std::string_view, PartType>;
+  soagen::table<PartSchema, soagen::allocator> parts;
 
   // All build commands and default statements mentioned
   std::vector<BuildCommand> commands;
@@ -341,8 +345,8 @@ class BuildContext {
 
   void operator()(PoolReader& r) {
     consume(r.readVariables());
-    parts.emplace_back(r.start(), r.bytesParsed());
-    partsType.push_back(PartType::Pool);
+    parts.emplace_back(std::string_view{r.start(), r.bytesParsed()},
+                       PartType::Pool);
   }
 
   void operator()(BuildReader& r) {
@@ -423,21 +427,25 @@ class BuildContext {
 
     const std::size_t partsIndex = parts.size();
     if (rules[ruleIndex].instance == 1) {
-      parts.emplace_back(r.start(), r.bytesParsed());
-      partsType.push_back(PartType::BuildEdge);
+      parts.emplace_back(std::string_view{r.start(), r.bytesParsed()},
+                         PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex);
     } else {
       const char* endOfName = ruleName.data() + ruleName.size();
-      parts.emplace_back(r.start(), endOfName - r.start());
-      partsType.push_back(PartType::BuildEdge);
+      parts.emplace_back(
+          std::string_view{r.start(), static_cast<std::string_view::size_type>(
+                                          endOfName - r.start())},
+          PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex);
 
-      parts.push_back(to_string_view(rules[ruleIndex].instance));
-      partsType.push_back(PartType::BuildEdge);
+      parts.emplace_back(to_string_view(rules[ruleIndex].instance),
+                         PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex + 1);
 
-      parts.emplace_back(endOfName, r.bytesParsed() - (endOfName - r.start()));
-      partsType.push_back(PartType::BuildEdge);
+      parts.emplace_back(
+          std::string_view{endOfName,
+                           r.bytesParsed() - (endOfName - r.start())},
+          PartType::BuildEdge);
       buildCommand.partsIndices.push_back(partsIndex + 2);
     }
     // Check we aren't actually allocating
@@ -529,12 +537,12 @@ class BuildContext {
       // If shadowed we need to add the rule suffix to the list of parts to
       // print
       const std::size_t partsIndex = parts.size();
-      parts.emplace_back(r.start(), bytesToEndOfName);
-      partsType.push_back(PartType::Rule);
+      parts.emplace_back(std::string_view{r.start(), bytesToEndOfName},
+                         PartType::Rule);
       rule.partsIndices.push_back(partsIndex);
 
-      parts.push_back(to_string_view(ruleIt->second.duplicates));
-      partsType.push_back(PartType::Rule);
+      parts.emplace_back(to_string_view(ruleIt->second.duplicates),
+                         PartType::Rule);
       rule.partsIndices.push_back(partsIndex + 1);
     }
 
@@ -553,14 +561,15 @@ class BuildContext {
     const std::size_t partsIndex = parts.size();
     if (!isNew) {
       // Include the rest of the variables if we're shadowed
-      parts.emplace_back(endOfName, r.bytesParsed() - bytesToEndOfName);
-      partsType.push_back(PartType::Rule);
+      parts.emplace_back(
+          std::string_view{endOfName, r.bytesParsed() - bytesToEndOfName},
+          PartType::Rule);
       rule.partsIndices.push_back(partsIndex);
       assert(rule.partsIndices.size() == 3);
     } else {
       // If we're not shadowed then we can include the whole rule
-      parts.emplace_back(r.start(), r.bytesParsed());
-      partsType.push_back(PartType::Rule);
+      parts.emplace_back(std::string_view{r.start(), r.bytesParsed()},
+                         PartType::Rule);
       rule.partsIndices.push_back(partsIndex);
       assert(rule.partsIndices.size() == 1);
     }
@@ -576,8 +585,8 @@ class BuildContext {
     }
 
     const std::size_t partsIndex = parts.size();
-    parts.emplace_back(r.start(), r.bytesParsed());
-    partsType.push_back(PartType::Default);
+    parts.emplace_back(std::string_view{r.start(), r.bytesParsed()},
+                       PartType::Default);
 
     const std::size_t commandIndex = commands.size();
     BuildCommand& buildCommand = commands.emplace_back();
@@ -596,8 +605,8 @@ class BuildContext {
     std::string value;
     evaluate(value, r.value(), fileScope);
     fileScope.set(r.name(), std::move(value));
-    parts.emplace_back(r.start(), r.bytesParsed());
-    partsType.push_back(PartType::Variable);
+    parts.emplace_back(std::string_view{r.start(), r.bytesParsed()},
+                       PartType::Variable);
   }
 
   void operator()(const IncludeReader& r) {
@@ -652,8 +661,7 @@ class BuildContext {
 
     // Everything pushed back from popping a scope is a variable assignment
     stringStorage.push_front(fileScope.pop());
-    parts.push_back(stringStorage.front());
-    partsType.push_back(PartType::Variable);
+    parts.emplace_back(stringStorage.front(), PartType::Variable);
 
     // For all the shadowed rules, set name to ruleIndex lookup back to the
     // shadowed index.  We have to grab the name and then find since
@@ -1057,12 +1065,10 @@ void TrimUtil::trim(std::ostream& output,
                                  explain);
   }
 
-  assert(ctx.parts.size() == ctx.partsType.size());
   std::vector<bool> immovable(ctx.parts.size());
   std::vector<bool> floatToTop(ctx.parts.size());
-  for (std::size_t partIndex = 0; partIndex < ctx.partsType.size();
-       ++partIndex) {
-    switch (ctx.partsType[partIndex]) {
+  for (std::size_t partIndex = 0; partIndex < ctx.parts.size(); ++partIndex) {
+    switch (ctx.parts[partIndex].get<PARTTYPE_INDEX>()) {
       case detail::BuildContext::PartType::Variable:
         immovable[partIndex] = true;
         break;
@@ -1127,10 +1133,11 @@ void TrimUtil::trim(std::ostream& output,
 
       // Clear all parts and replace them with 1 part that is the phony string
       assert(!command.partsIndices.empty());
-      ctx.parts[command.partsIndices.front()] = std::string_view{phony};
-      std::for_each(std::next(command.partsIndices.begin()),
-                    command.partsIndices.end(),
-                    [&](std::size_t index) { ctx.parts[index] = ""; });
+      ctx.parts[command.partsIndices.front()].get<PART_INDEX>() =
+          std::string_view{phony};
+      std::for_each(
+          std::next(command.partsIndices.begin()), command.partsIndices.end(),
+          [&](std::size_t index) { ctx.parts[index].get<PART_INDEX>() = ""; });
       command.partsIndices.clear();
     }
   }
@@ -1142,7 +1149,9 @@ void TrimUtil::trim(std::ostream& output,
     RuleCommand& rule = ctx.rules[ruleIndex];
     if (!ruleReferenced[ruleIndex]) {
       std::for_each(rule.partsIndices.begin(), rule.partsIndices.end(),
-                    [&](const std::size_t index) { ctx.parts[index] = ""; });
+                    [&](const std::size_t index) {
+                      ctx.parts[index].get<PART_INDEX>() = "";
+                    });
     } else {
       std::for_each(rule.partsIndices.begin(), rule.partsIndices.end(),
                     [&](const std::size_t index) { floatToTop[index] = true; });
@@ -1151,30 +1160,29 @@ void TrimUtil::trim(std::ostream& output,
 
   // Float marked parts to the top of the file, making sure not to cross over
   // any parts marked as immovable
-  auto start = ctx.parts.begin();
-  while (start != ctx.parts.end()) {
-    start = std::find_if(
-        start, ctx.parts.end(), [&](const std::string_view& command) {
-          const std::size_t partIndex = &command - ctx.parts.data();
-          return !immovable[partIndex];
-        });
-    const auto end = std::find_if(
-        start, ctx.parts.end(), [&](const std::string_view& command) {
-          const std::size_t partIndex = &command - ctx.parts.data();
-          return immovable[partIndex];
-        });
-    std::stable_partition(start, end, [&](const std::string_view& command) {
-      const std::size_t partIndex = &command - ctx.parts.data();
-      return floatToTop[partIndex];
+  const auto start = &ctx.parts.front().get<PART_INDEX>();
+  const auto end = start + ctx.parts.size();
+  const auto getIndex = [start](const std::string_view& path) {
+    return &path - start;
+  };
+
+  for (auto it = start; it != end;) {
+    it = std::find_if(it, end, [&](const std::string_view& path) {
+      return !immovable[getIndex(path)];
     });
-    start = end;
+    const auto next = std::find_if(it, end, [&](const std::string_view& path) {
+      return immovable[getIndex(path)];
+    });
+    std::stable_partition(it, next, [&](const std::string_view& path) {
+      return floatToTop[getIndex(path)];
+    });
+    it = next;
   }
 
   trimTimer.stop();
 
   const Timer writeTimer = CPUProfiler::start("output time");
-  std::copy(ctx.parts.begin(), ctx.parts.end(),
-            std::ostream_iterator<std::string_view>(output));
+  std::copy(start, end, std::ostream_iterator<std::string_view>(output));
 }
 
 // NOLINTEND(performance-avoid-endl)

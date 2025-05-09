@@ -27,6 +27,7 @@
 
 #include <boost/boost_unordered.hpp>
 #include <gch/small_vector.hpp>
+#include <soagen/soagen.hpp>
 
 #include <numeric>
 #include <optional>
@@ -67,16 +68,17 @@ class Graph {
   boost::unordered_flat_map<fixed_string, std::size_t, PathHash, PathEqual>
       m_pathToIndex;
 
-  // An adjacency list of input -> output
-  std::vector<gch::small_vector<std::size_t>> m_inputToOutput;
-
-  // An adjacency list of output -> Input
-  std::vector<gch::small_vector<std::size_t>> m_outputToInput;
-
-  // Names of paths (this points to the keys in `m_pathToIndex`, which is always
-  // valid since `fixed_string` has no small-string optimization and always
-  // allocates on the heap.
-  std::vector<std::string_view> m_path;
+  using Schema = soagen::table_traits<
+      // Names of paths (this points to the keys in
+      // `m_pathToIndex`, which is always valid since
+      // `fixed_string` has no small-string optimization and
+      // always allocates on the heap.
+      std::string_view,
+      // The outputs of this node
+      gch::small_vector<std::size_t>,
+      // The inputsof this node
+      gch::small_vector<std::size_t>>;
+  soagen::table<Schema, soagen::allocator> m_nodes;
 
   std::size_t m_defaultIndex = std::numeric_limits<std::size_t>::max();
 
