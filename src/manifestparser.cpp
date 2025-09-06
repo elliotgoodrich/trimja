@@ -46,7 +46,7 @@ void expectToken(Lexer* lexer, Lexer::Token expected) {
 
 namespace detail {
 
-BaseReader::BaseReader(Lexer* lexer, EvalString* storage)
+BaseReader::BaseReader(Lexer* lexer, EvalStringBuilder* storage)
     : m_lexer(lexer), m_storage(storage) {}
 
 const char* BaseReader::position() const {
@@ -54,7 +54,7 @@ const char* BaseReader::position() const {
 }
 
 BaseReaderWithStart::BaseReaderWithStart(Lexer* lexer,
-                                         EvalString* storage,
+                                         EvalStringBuilder* storage,
                                          const char* start)
     : BaseReader{lexer, storage}, m_start{start} {}
 
@@ -69,7 +69,7 @@ std::size_t BaseReaderWithStart::bytesParsed() const {
 }  // namespace detail
 
 VariableReader::VariableReader(Lexer* lexer,
-                               EvalString* storage,
+                               EvalStringBuilder* storage,
                                const char* start)
     : detail::BaseReaderWithStart{lexer, storage, start}, m_name{} {
   if (!m_lexer->ReadIdent(&m_name)) {
@@ -89,10 +89,11 @@ std::string_view VariableReader::name() const {
 }
 
 const EvalString& VariableReader::value() const {
-  return *m_storage;
+  return m_storage->str();
+  ;
 }
 
-LetRangeReader::iterator::iterator(Lexer* lexer, EvalString* storage)
+LetRangeReader::iterator::iterator(Lexer* lexer, EvalStringBuilder* storage)
     : detail::BaseReader{lexer, storage} {
   ++*this;
 }
@@ -123,7 +124,7 @@ bool operator!=(const LetRangeReader::iterator& iter,
   return !(iter == s);
 }
 
-LetRangeReader::LetRangeReader(Lexer* lexer, EvalString* storage)
+LetRangeReader::LetRangeReader(Lexer* lexer, EvalStringBuilder* storage)
     : detail::BaseReaderWithStart{lexer, storage, lexer->position()} {}
 
 LetRangeReader::iterator LetRangeReader::begin() {
@@ -135,7 +136,7 @@ LetRangeReader::sentinel LetRangeReader::end() const {
 }
 
 PathRangeReader::iterator::iterator(Lexer* lexer,
-                                    EvalString* storage,
+                                    EvalStringBuilder* storage,
                                     int lastToken)
     : detail::BaseReader{lexer, storage}, m_expectedLastToken{lastToken} {
   if (m_lexer) {
@@ -145,7 +146,7 @@ PathRangeReader::iterator::iterator(Lexer* lexer,
 
 const PathRangeReader::iterator::value_type&
 PathRangeReader::iterator::operator*() const {
-  return *m_storage;
+  return m_storage->str();
 }
 
 PathRangeReader::iterator& PathRangeReader::iterator::operator++() {
@@ -154,7 +155,7 @@ PathRangeReader::iterator& PathRangeReader::iterator::operator++() {
   if (!m_lexer->ReadPath(m_storage, &err)) {
     throw std::runtime_error(err);
   }
-  if (m_storage->empty()) {
+  if (m_storage->str().empty()) {
     if (m_expectedLastToken != -1) {
       expectToken(m_lexer, static_cast<Lexer::Token>(m_expectedLastToken));
     }
@@ -179,11 +180,11 @@ bool operator!=(const PathRangeReader::iterator& iter,
 
 PathRangeReader::PathRangeReader() : PathRangeReader{nullptr, nullptr} {}
 
-PathRangeReader::PathRangeReader(Lexer* lexer, EvalString* storage)
+PathRangeReader::PathRangeReader(Lexer* lexer, EvalStringBuilder* storage)
     : detail::BaseReader{lexer, storage}, m_expectedLastToken{-1} {}
 
 PathRangeReader::PathRangeReader(Lexer* lexer,
-                                 EvalString* storage,
+                                 EvalStringBuilder* storage,
                                  Lexer::Token expectedLastToken)
     : detail::BaseReader{lexer, storage},
       m_expectedLastToken{expectedLastToken} {}
@@ -199,7 +200,9 @@ PathRangeReader::sentinel PathRangeReader::end() const {
 PoolReader::PoolReader()
     : detail::BaseReaderWithStart{nullptr, nullptr, nullptr}, m_name{} {}
 
-PoolReader::PoolReader(Lexer* lexer, EvalString* storage, const char* start)
+PoolReader::PoolReader(Lexer* lexer,
+                       EvalStringBuilder* storage,
+                       const char* start)
     : detail::BaseReaderWithStart{lexer, storage, start}, m_name{} {
   if (!m_lexer->ReadIdent(&m_name)) {
     throw std::runtime_error("Missing name for pool");
@@ -258,7 +261,9 @@ LetRangeReader BuildReader::readVariables() {
   return LetRangeReader{m_lexer, m_storage};
 }
 
-RuleReader::RuleReader(Lexer* lexer, EvalString* storage, const char* start)
+RuleReader::RuleReader(Lexer* lexer,
+                       EvalStringBuilder* storage,
+                       const char* start)
     : detail::BaseReaderWithStart{lexer, storage, start}, m_name{} {
   if (!m_lexer->ReadIdent(&m_name)) {
     throw std::runtime_error("Missing name for rule");
@@ -280,7 +285,7 @@ PathRangeReader DefaultReader::readPaths() {
 }
 
 IncludeReader::IncludeReader(Lexer* lexer,
-                             EvalString* storage,
+                             EvalStringBuilder* storage,
                              const char* start)
     : detail::BaseReaderWithStart{lexer, storage, start} {
   std::string err;
@@ -292,7 +297,7 @@ IncludeReader::IncludeReader(Lexer* lexer,
 }
 
 const EvalString& IncludeReader::path() const {
-  return *m_storage;
+  return m_storage->str();
 }
 
 const std::filesystem::path& IncludeReader::parent() const {
@@ -300,7 +305,7 @@ const std::filesystem::path& IncludeReader::parent() const {
 }
 
 SubninjaReader::SubninjaReader(Lexer* lexer,
-                               EvalString* storage,
+                               EvalStringBuilder* storage,
                                const char* start)
     : detail::BaseReaderWithStart{lexer, storage, start} {
   std::string err;
@@ -312,14 +317,14 @@ SubninjaReader::SubninjaReader(Lexer* lexer,
 }
 
 const EvalString& SubninjaReader::path() const {
-  return *m_storage;
+  return m_storage->str();
 }
 
 const std::filesystem::path& SubninjaReader::parent() const {
   return m_lexer->getFilename();
 }
 
-ManifestReader::iterator::iterator(Lexer* lexer, EvalString* storage)
+ManifestReader::iterator::iterator(Lexer* lexer, EvalStringBuilder* storage)
     : detail::BaseReader{lexer, storage}, m_value{PoolReader{}} {
   // We need to set `m_value` to anything so just choose `PoolReader`
   ++*this;
