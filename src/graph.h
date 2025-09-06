@@ -29,6 +29,8 @@
 #include <gch/small_vector.hpp>
 
 #include <optional>
+#include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -162,11 +164,17 @@ class Graph {
   std::string_view path(std::size_t pathIndex) const;
 
   /**
+   * @brief Gets a range of all path indices in the graph.
+   * @return A range of all path indices.
+   */
+  std::ranges::iota_view<std::size_t, std::size_t> nodes() const;
+
+  /**
    * @brief Gets the vector of output nodes for the specified path index.
    * @param pathIndex The index of the path.
    * @return The vector of output nodes.
    */
-  const gch::small_vector<std::size_t>& out(std::size_t pathIndex) const;
+  std::span<const std::size_t> out(std::size_t pathIndex) const;
 
   /**
    * @brief Gets the vector of input nodes for the specified path index.  Note
@@ -174,7 +182,7 @@ class Graph {
    * @param pathIndex The index of the path.
    * @return The vector of input nodes.
    */
-  const gch::small_vector<std::size_t>& in(std::size_t pathIndex) const;
+  std::span<const std::size_t> in(std::size_t pathIndex) const;
 
   /**
    * @brief Gets the index of the specified path.

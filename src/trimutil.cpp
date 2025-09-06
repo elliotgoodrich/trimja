@@ -44,6 +44,7 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <ranges>
 #include <sstream>
 
 namespace trimja {
@@ -52,14 +53,25 @@ namespace trimja {
 
 namespace {
 
-// A vector of strings that are reused to avoid reallocations
+/**
+ * @class PathVector
+ * @brief a reusable `std::vector<std::string>` to avoid frequent allocations
+ * and deallocations
+ */
 class PathVector {
   std::vector<std::string> m_paths;
   std::size_t m_size;
 
  public:
+  /**
+   * @brief Constructs an empty `PathVector`
+   */
   PathVector() : m_paths{}, m_size{0} {}
 
+  /**
+   * @brief Returns a reference to the string at `index`.
+   * TODO
+   */
   std::string& operator[](std::size_t index) {
     assert(index < m_size);
     return m_paths[index];
@@ -67,7 +79,9 @@ class PathVector {
 
   std::string& emplace_back() {
     if (m_size < m_paths.size()) {
-      return m_paths[m_size++];
+      std::string& result = m_paths[m_size++];
+      result.clear();
+      return result;
     } else {
       // Give each path a reasonable size to avoid reallocations
       std::string& back = m_paths.emplace_back();
@@ -78,10 +92,11 @@ class PathVector {
   }
 
   void clear() {
-    // Keep the objects around but just call `clear()` so that we
-    // keep the memory around to be reused.
-    std::for_each(m_paths.data(), m_paths.data() + m_size,
-                  [](std::string& path) { path.clear(); });
+    // Avoid `clear()`ing all the strings here as it will have a bunch
+    // of cache-misses.  Instead we do it before returning strings
+    // from `emplace_back()` and it doesn't matter if we have a cache
+    // miss here because we most likely would have written to the string
+    // regardless and missed the cache anyway.
     m_size = 0;
   }
 
@@ -673,9 +688,13 @@ class BuildContext {
 
 namespace {
 
-void parseDepFile(const std::filesystem::path& ninjaDeps,
-                  Graph& graph,
-                  detail::BuildContext& ctx) {
+/**
+ * @brief Populates a graph with nodes and edges from `.ninja_deps`
+ *
+ * @param ninjaDeps The path to the `.ninja_deps` file
+ * @param graph The graph to add nodes and edges
+ */
+void parseDepFile(const std::filesystem::path& ninjaDeps, Graph& graph) {
   // Later entries may override earlier entries so don't touch the graph until
   // we have parsed the whole file
   std::vector<std::string> paths;  // NOLINTLINE(misc-const-correctness)
@@ -711,7 +730,7 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
   std::vector<std::size_t> lookup(paths.size());
   std::transform(paths.cbegin(), paths.cend(), lookup.begin(),
                  [&](const std::string_view path) {
-                   return ctx.getPathIndexForNormalized(path);
+                   return graph.addNormalizedPath(path);
                  });
 
   for (std::size_t outIndex = 0; outIndex < deps.size(); ++outIndex) {
@@ -765,7 +784,7 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   }
 
   // Mark all build commands that are new or have been changed as required
-  for (std::size_t index = 0; index < seen.size(); ++index) {
+  for (const std::size_t index : graph.nodes()) {
     const bool isBuildCommand = !graph.in(index).empty();
     if (isAffected[index] || !isBuildCommand) {
       continue;
@@ -811,7 +830,7 @@ void markIfChildrenAffected(std::size_t index,
 
   // Always process all our children so that `isAffected` is updated for them
   const Graph& graph = ctx.graph;
-  const auto& inIndices = graph.in(index);
+  const std::span<const std::size_t> inIndices = graph.in(index);
   for (const std::size_t in : inIndices) {
     markIfChildrenAffected(in, seen, isAffected, ctx, explain);
   }
@@ -874,7 +893,7 @@ void ifRequiredRequireAllChildren(std::size_t index,
 
   // If any build commands requiring us are marked as needing all inputs then
   // mark ourselves as affected and that we also need all our inputs.
-  const auto& outIndices = ctx.graph.out(index);
+  const std::span<const std::size_t> outIndices = ctx.graph.out(index);
   const auto it = std::find_if(
       outIndices.begin(), outIndices.end(),
       [&](const std::size_t index) { return needsAllInputs[index]; });
@@ -890,9 +909,208 @@ void ifRequiredRequireAllChildren(std::size_t index,
     needsAllInputs[index] = true;
   }
 }
+
+void updateLongestPathForInputs(std::vector<bool>& seen,
+                                const Graph& g,
+                                const std::size_t index,
+                                std::span<std::size_t> longestPath,
+                                std::size_t newValue) {
+  if (seen[index]) {
+    return;
+  }
+  seen[index] = true;
+  if (longestPath[index] >= newValue) {
+    return;
+  }
+  longestPath[index] = newValue;
+  for (const std::size_t childIn : g.in(index)) {
+    updateLongestPathForInputs(seen, g, childIn, longestPath, newValue + 1);
+  }
+}
+
+void reset(std::vector<bool>& seen, const Graph& g, const std::size_t index) {
+  if (!seen[index]) {
+    return;
+  }
+  seen[index] = false;
+  for (const std::size_t childIn : g.in(index)) {
+    reset(seen, g, childIn);
+  }
+}
+
+void generateDummyEdges(const std::span<const std::size_t> sourcesFirst,
+                        const std::vector<bool>& isAffected,
+                        detail::BuildContext& ctx) {
+  const Graph& g = ctx.graph;
+
+  // Create a lookup of node index to topological order, i.e. if index `i`
+  // comes `n`th in the topological order, then `asset(indexToOrder[i] == n);
+  std::vector<std::size_t> indexToOrder(sourcesFirst.size());
+  for (const std::size_t index : g.nodes()) {
+    indexToOrder[sourcesFirst[index]] = index;
+  }
+
+  // Generate our passthrough rule for dummy edges
+  {
+    assert(!ctx.ruleLookup.contains("__trimjaTouch"));
+    RuleCommand& rule = ctx.rules.emplace_back("__trimjaTouch");
+
+    EvalStringBuilder command;
+#if defined(_WIN32)
+    command.appendText("cmd /c type nul > ");
+    command.appendVariable("out_backslashes");
+#else
+    command.appendText("touch > ");
+    command.appendVariable("out");
+#endif
+    [[maybe_unused]] const bool okay =
+        rule.variables.add("command", std::move(command).str());
+    assert(okay);
+    ctx.stringStorage.emplace_front(
+        "rule __trimjaTouch:\n"
+#if defined(_WIN32)
+        "  command = cmd /c type nul > $out_backslashes"
+#else
+        "  command = touch $out"
+#endif
+        "\n");
+    const std::size_t partsIndex = ctx.parts.size();
+    ctx.parts.push_back(ctx.stringStorage.front());
+    ctx.partsType.push_back(detail::BuildContext::PartType::Rule);
+    rule.partsIndices.push_back(partsIndex);
+    assert(rule.partsIndices.size() == 1);
+  }
+
+  // Calculate the longest path of each node to a root. i.e if the longest
+  // path to index `i` is `a (root) -> b -> c -> i` then
+  // `assert(longestPath[i] == 3)`
+  std::vector<std::size_t> longestPath(sourcesFirst.size());
+  for (const std::size_t index : std::ranges::reverse_view(sourcesFirst)) {
+    const std::span<const std::size_t> outs = g.out(index);
+    longestPath[index] =
+        std::accumulate(outs.begin(), outs.end(), std::size_t{0},
+                        [&](const std::size_t acc, std::size_t out) {
+                          return std::max(acc, longestPath[out] + 1);
+                        });
+  }
+
+  // Go through from leaves to roots and inject additional edges if a node
+  // has non-affected descendent nodes that have a greater path length that
+  // affected descendent nodes - which would mean they are prioritized first.
+  std::size_t addedNodes = 0;
+
+  // Maybe there's a better way to do this...
+  std::vector<std::size_t> orderedIns;
+
+  std::vector<bool> seen(sourcesFirst.size(), false);
+
+  std::vector<std::size_t> longestPathToDesc(longestPath.size());
+  for (const std::size_t index : sourcesFirst) {
+    std::span<const std::size_t> ins = g.in(index);
+
+    // We only need to inject edges if we have both affected descendents
+    // and non-affected.
+    if (std::ranges::any_of(
+            ins, [&](const std::size_t in) { return isAffected[in]; })) {
+      // If we have affected descendents, check we are affected ourselves
+      assert(isAffected[index]);
+      const std::size_t longestNonAffectedPath = std::accumulate(
+          ins.begin(), ins.end(), std::size_t{0},
+          [&](const std::size_t acc, const std::size_t in) {
+            return !isAffected[in] ? std::max(acc, longestPathToDesc[in]) : acc;
+          });
+      // We only need to do work if we have non-affected paths with positive
+      // length, since if the longest path length is 0, then all affected paths
+      // are going to be at least as long.  Since we reorder those above the
+      // non-affected ones, ninja will run them first if their path is the same
+      // length.
+      if (longestNonAffectedPath > 0) {
+        // We need to do this in topological order, e.g. if we are looking at
+        // A and it has 3 children, B, C, and D,
+        //      +----------+
+        //      |    A     |
+        //      |   /|\    |
+        //      |  B | \   |
+        //      |   \|  D  |
+        //      |    C     |
+        //      +----------+
+        // Where B and C are affected and D isn't (and has a longer path).
+        // If we look at C first, then we inject edges between A -> C and then
+        // also need to inject edges between A -> B, when we could have
+        // just done A -> C.
+        orderedIns.clear();
+        std::ranges::copy_if(
+            ins, std::back_inserter(orderedIns), [&](const std::size_t in) {
+              return isAffected[in] && longestPath[in] < longestNonAffectedPath;
+            });
+        std::ranges::sort(orderedIns,
+                          [&](const std::size_t l, const std::size_t r) {
+                            return indexToOrder[l] < indexToOrder[r];
+                          });
+        for (const std::size_t in : orderedIns) {
+          // If a node has affected and non-affected children and there are
+          // non-affected descendents with a longer path than require
+          // descendents, then we need to inject additional edges equal to the
+          // difference.  Then the critical path for both affected and
+          // non-affected nodes will be the same.  Then code elsewhere will
+          // reorder affected nodes before non-affected nodes to break the
+          // tie.
+          const std::size_t extraNodeCount =
+              longestNonAffectedPath - longestPathToDesc[in];
+          std::size_t currentInput = in;
+          for (std::size_t i = 0; i < extraNodeCount; ++i) {
+            std::string path = "$builddir/__trimja__/";
+            path += std::to_string(addedNodes++);
+            const std::size_t newIndex = ctx.graph.addNormalizedPath(path);
+            ctx.graph.addEdge(currentInput, newIndex);
+            currentInput = newIndex;
+          }
+          ctx.graph.addEdge(currentInput, index);
+
+          // As we've now injected more edges, update the `longestPathToDesc`
+          // for `in` and all its children.
+          updateLongestPathForInputs(seen, g, in, longestPath,
+                                     longestNonAffectedPath);
+          reset(seen, g, in);
+        }
+      }
+    }
+
+    // Refresh `ins` as we may have added elements to `g` and
+    // invalidated the reference.
+    ins = g.in(index);
+
+    // While we do this, we need to write the value of `longestPathToDesc` as it
+    // is most likely incorrect for all non-leaf nodes.
+    longestPathToDesc[index] =
+        std::accumulate(ins.begin(), ins.end(), longestPath[index],
+                        [&](const std::size_t acc, const std::size_t in) {
+                          return std::max(acc, longestPathToDesc[in]);
+                        });
+  }
+}
+
+template <typename OUTPUT_ITERATOR>
+OUTPUT_ITERATOR topologicalOrder(std::size_t index,
+                                 std::vector<bool>& seen,
+                                 OUTPUT_ITERATOR out,
+                                 const Graph& g) {
+  if (seen[index]) {
+    return out;
+  }
+
+  seen[index] = true;
+  for (const std::size_t in : g.in(index)) {
+    out = topologicalOrder(in, seen, out, g);
+  }
+
+  *out++ = index;
+  return out;
+}
+
 }  // namespace
 
-TrimUtil::TrimUtil() : m_imp{nullptr} {}
+TrimUtil::TrimUtil() = default;
 
 TrimUtil::~TrimUtil() = default;
 
@@ -932,7 +1150,12 @@ void TrimUtil::trim(std::ostream& output,
   if (const std::filesystem::path ninjaDeps = builddir / ".ninja_deps";
       std::filesystem::exists(ninjaDeps)) {
     const Timer t = CPUProfiler::start(".ninja_deps parse");
-    parseDepFile(ninjaDeps, graph, ctx);
+    parseDepFile(ninjaDeps, graph);
+
+    // Resize `nodeToCommand` for all new nodes added to the graph by
+    // `parseDepFile`.
+    ctx.nodeToCommand.resize(graph.size(),
+                             std::numeric_limits<std::size_t>::max());
   }
 
   std::vector<bool> isAffected(graph.size(), false);
@@ -1042,7 +1265,7 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all outputs that have an affected input as affected
   Timer trimTimer = CPUProfiler::start("trim time");
-  for (std::size_t index = 0; index < graph.size(); ++index) {
+  for (const std::size_t index : graph.nodes()) {
     markIfChildrenAffected(index, seen, isAffected, ctx, explain);
   }
 
@@ -1055,7 +1278,7 @@ void TrimUtil::trim(std::ostream& output,
   // Mark all inputs to affected outputs as required
   seen.assign(seen.size(), false);
   std::vector<bool> needsAllInputs(graph.size(), false);
-  for (std::size_t index = 0; index < graph.size(); ++index) {
+  for (const std::size_t index : graph.nodes()) {
     ifRequiredRequireAllChildren(index, seen, isRequired, needsAllInputs, ctx,
                                  explain);
   }
@@ -1081,7 +1304,7 @@ void TrimUtil::trim(std::ostream& output,
 
   // Float all affected edges to the top so they are prioritized first
   // and Mark all required edges as needing to print them out
-  for (std::size_t index = 0; index < graph.size(); ++index) {
+  for (const std::size_t index : graph.nodes()) {
     if (isRequired[index]) {
       const tiny::optional commandIndex = ctx.nodeToCommand[index];
       if (commandIndex.has_value()) {
@@ -1099,6 +1322,17 @@ void TrimUtil::trim(std::ostream& output,
       assert(!isAffected[index]);
     }
   }
+
+  // Generate a topological order where if `i` comes before `j`, then
+  // `i` is not an ancestor of `j`. Generally leafs -> roots.
+  std::vector<std::size_t> order(graph.size());
+  auto out = order.begin();
+  seen.assign(seen.size(), false);
+  for (const std::size_t index : graph.nodes()) {
+    out = topologicalOrder(index, seen, out, graph);
+  }
+
+  generateDummyEdges(order, isAffected, ctx);
 
   // Go through all build commands, keep a note of rules that are needed and
   // `phony` out the build edges that weren't required.
@@ -1177,7 +1411,7 @@ void TrimUtil::trim(std::ostream& output,
 
   const Timer writeTimer = CPUProfiler::start("output time");
   std::copy(ctx.parts.begin(), ctx.parts.end(),
-            std::ostream_iterator<std::string_view>(output));
+            std::ostream_iterator<std::string_view>{output});
 }
 
 // NOLINTEND(performance-avoid-endl)

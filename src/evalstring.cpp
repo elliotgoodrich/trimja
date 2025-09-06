@@ -151,8 +151,12 @@ void EvalStringBuilder::appendVariable(std::string_view name) {
   m_lastTextSegmentLength = 0;
 }
 
-const EvalString& EvalStringBuilder::str() const {
+const EvalString& EvalStringBuilder::str() const& {
   return m_str;
+}
+
+EvalString EvalStringBuilder::str() && {
+  return std::move(m_str);
 }
 
 }  // namespace trimja

@@ -1,0 +1,9 @@
+rule copy
+  command = ninja --version $in -> $out
+build a.txt: copy b.txt e.txt f.txt
+build b.txt: copy c.txt
+build c.txt: copy d.txt
+build e.txt: copy d.txt
+build f.txt: copy g.txt
+build g.txt: copy h.txt
+build h.txt: copy i.txt

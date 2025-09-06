@@ -160,11 +160,15 @@ std::string_view Graph::path(std::size_t pathIndex) const {
   return m_path[pathIndex];
 }
 
-const gch::small_vector<std::size_t>& Graph::out(std::size_t pathIndex) const {
+std::ranges::iota_view<std::size_t, std::size_t> Graph::nodes() const {
+  return std::ranges::iota_view{std::size_t{0}, m_path.size()};
+}
+
+std::span<const std::size_t> Graph::out(std::size_t pathIndex) const {
   return m_inputToOutput[pathIndex];
 }
 
-const gch::small_vector<std::size_t>& Graph::in(std::size_t pathIndex) const {
+std::span<const std::size_t> Graph::in(std::size_t pathIndex) const {
   return m_outputToInput[pathIndex];
 }
 
