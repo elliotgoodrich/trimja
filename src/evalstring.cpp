@@ -28,9 +28,10 @@
 // The format of `EvalString` is a sequence of segments. Each segment is
 // prefixed with the length of the segment, stored as an `Offset` type.  The
 // leading bit of this is set to 1 if the segment is a variable, otherwise it is
-// 0 if the segment is text.  Additionally there is an extra member variable
+// 0 if the segment is text.  Additionally, when building with
+// `EvalStringBuilder` there is an extra member variable
 // `m_lastTextSegmentLength` that has the length of the last text section or 0
-// if the last section was not text.  This allows us to jump back to the last
+// if the last section was not text. This allows us to jump back to the last
 // segment to extend it.
 //
 // This has the benefit that `EvalString` if very cache-friendly when iterating
@@ -38,7 +39,7 @@
 // possible as well.
 //
 // The final benefit is that when we call `clear()` we don't free any memory
-// meaning that an `EvalString` that is constantly reused will be very
+// meaning that an `EvalStringBuilder` that is constantly reused will be very
 // unlikely to allocate.  Compared to ninja's `EvalString`, which is based on
 // `std::vector<std::string>`, which will release memory held in the
 // `std::string` objects when clearing the `std::vector`.
@@ -101,15 +102,7 @@ bool operator!=(EvalString::const_iterator lhs,
   return !(lhs == rhs);
 }
 
-EvalString::EvalString() : m_data{}, m_lastTextSegmentLength{0} {
-  assert(empty());
-}
-
-void EvalString::clear() {
-  m_data.clear();
-  m_lastTextSegmentLength = 0;
-  assert(empty());
-}
+EvalString::EvalString() = default;
 
 bool EvalString::empty() const {
   return m_data.empty();
@@ -123,31 +116,43 @@ EvalString::const_iterator EvalString::end() const {
   return const_iterator{m_data.data() + m_data.size()};
 }
 
-void EvalString::appendText(std::string_view text) {
+EvalStringBuilder::EvalStringBuilder() = default;
+
+void EvalStringBuilder::clear() {
+  m_str.m_data.clear();
+  m_lastTextSegmentLength = 0;
+  assert(m_str.empty());
+}
+
+void EvalStringBuilder::appendText(std::string_view text) {
   assert(!text.empty());
   if (m_lastTextSegmentLength > 0) {
     // If the last part was plain text we can extend it
-    const Offset newLength = m_lastTextSegmentLength + text.size();
+    const EvalString::Offset newLength = m_lastTextSegmentLength + text.size();
     std::copy_n(reinterpret_cast<const char*>(&newLength), sizeof(newLength),
-                m_data.data() + m_data.size() - sizeof(Offset) -
-                    m_lastTextSegmentLength);
-    m_data.append(text);
+                m_str.m_data.data() + m_str.m_data.size() -
+                    sizeof(EvalString::Offset) - m_lastTextSegmentLength);
+    m_str.m_data.append(text);
     m_lastTextSegmentLength = newLength;
   } else {
     // Otherwise write new segment
-    const Offset length = text.size();
-    m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
-    m_data.append(text);
+    const EvalString::Offset length = text.size();
+    m_str.m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
+    m_str.m_data.append(text);
     m_lastTextSegmentLength = length;
   }
 }
 
-void EvalString::appendVariable(std::string_view name) {
+void EvalStringBuilder::appendVariable(std::string_view name) {
   assert(!name.empty());
-  const Offset length = setLeadingBit(name.size());
-  m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
-  m_data.append(name);
+  const EvalString::Offset length = setLeadingBit(name.size());
+  m_str.m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
+  m_str.m_data.append(name);
   m_lastTextSegmentLength = 0;
+}
+
+const EvalString& EvalStringBuilder::str() const {
+  return m_str;
 }
 
 }  // namespace trimja

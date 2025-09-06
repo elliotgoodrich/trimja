@@ -684,7 +684,7 @@ yy95:
   return true;
 }
 
-bool Lexer::ReadEvalString(trimja::EvalString *eval, bool path, std::string* err) {
+bool Lexer::ReadEvalString(trimja::EvalStringBuilder *eval, bool path, std::string* err) {
   const char* p = ofs_;
   const char* q;
   const char* start;

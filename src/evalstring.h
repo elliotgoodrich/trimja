@@ -29,6 +29,8 @@
 
 namespace trimja {
 
+class EvalStringBuilder;
+
 /**
  * @class EvalString
  * @brief A class to represent and evaluate strings containing both text and
@@ -40,9 +42,10 @@ class EvalString {
   // later on if a smaller type help with memory or performance.
   using Offset = std::size_t;
 
+  friend class EvalStringBuilder;
+
  private:
   std::string m_data;
-  Offset m_lastTextSegmentLength;
 
  public:
   /**
@@ -80,11 +83,6 @@ class EvalString {
   EvalString();
 
   /**
-   * @brief Clears the EvalString.
-   */
-  void clear();
-
-  /**
    * @brief Checks if the EvalString is empty.
    */
   bool empty() const;
@@ -98,6 +96,27 @@ class EvalString {
    * @brief Gets the end iterator.
    */
   const_iterator end() const;
+};
+
+/**
+ * @class EvalStringBuilder
+ * @brief A class to represent and evaluate strings containing both text and
+ * variables.
+ */
+class EvalStringBuilder {
+  EvalString m_str;
+  EvalString::Offset m_lastTextSegmentLength = 0;
+
+ public:
+  /**
+   * @brief Default constructor.
+   */
+  EvalStringBuilder();
+
+  /**
+   * @brief Clears the held EvalString.
+   */
+  void clear();
 
   /**
    * @brief Appends text to the EvalString, consolidating consecutive text
@@ -111,6 +130,11 @@ class EvalString {
    * @param name The name of the variable to append.  This must not be empty.
    */
   void appendVariable(std::string_view name);
+
+  /**
+   * @brief Return a reference to the held EvalString.
+   */
+  const EvalString& str() const;
 };
 
 /**

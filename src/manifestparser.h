@@ -45,10 +45,10 @@ namespace detail {
 struct BaseReader {
  protected:
   Lexer* m_lexer;
-  EvalString* m_storage;
+  EvalStringBuilder* m_storage;
 
  public:
-  BaseReader(Lexer* lexer, EvalString* storage);
+  BaseReader(Lexer* lexer, EvalStringBuilder* storage);
   const char* position() const;
 };
 
@@ -61,7 +61,9 @@ struct BaseReaderWithStart : public BaseReader {
   const char* m_start;
 
  public:
-  BaseReaderWithStart(Lexer* lexer, EvalString* storage, const char* start);
+  BaseReaderWithStart(Lexer* lexer,
+                      EvalStringBuilder* storage,
+                      const char* start);
   const char* start() const;
   std::size_t bytesParsed() const;
 };
@@ -76,7 +78,7 @@ class VariableReader : public detail::BaseReaderWithStart {
   std::string_view m_name;
 
  public:
-  VariableReader(Lexer* lexer, EvalString* storage, const char* start);
+  VariableReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   std::string_view name() const;
   const EvalString& value() const;
 
@@ -86,7 +88,7 @@ class VariableReader : public detail::BaseReaderWithStart {
       return m_name;
     }
     if constexpr (I == 1) {
-      return *m_storage;
+      return m_storage->str();
     }
   }
 };
@@ -104,7 +106,7 @@ class LetRangeReader : public detail::BaseReaderWithStart {
     using difference_type = std::ptrdiff_t;
     using value_type = VariableReader;
 
-    iterator(Lexer* lexer, EvalString* storage);
+    iterator(Lexer* lexer, EvalStringBuilder* storage);
 
     value_type operator*();
     iterator& operator++();
@@ -114,7 +116,7 @@ class LetRangeReader : public detail::BaseReaderWithStart {
   };
 
  public:
-  LetRangeReader(Lexer* lexer, EvalString* storage);
+  LetRangeReader(Lexer* lexer, EvalStringBuilder* storage);
 
   iterator begin();
   sentinel end() const;
@@ -136,7 +138,7 @@ class PathRangeReader : public detail::BaseReader {
     int m_expectedLastToken;
 
    public:
-    iterator(Lexer* lexer, value_type* storage, int lastToken = -1);
+    iterator(Lexer* lexer, EvalStringBuilder* storage, int lastToken = -1);
 
     const value_type& operator*() const;
 
@@ -151,9 +153,9 @@ class PathRangeReader : public detail::BaseReader {
 
  public:
   PathRangeReader();
-  PathRangeReader(Lexer* lexer, EvalString* storage);
+  PathRangeReader(Lexer* lexer, EvalStringBuilder* storage);
   PathRangeReader(Lexer* lexer,
-                  EvalString* storage,
+                  EvalStringBuilder* storage,
                   Lexer::Token expectedLastToken);
   iterator begin();
   sentinel end() const;
@@ -168,7 +170,7 @@ class PoolReader : public detail::BaseReaderWithStart {
 
  public:
   PoolReader();  ///<  For private use
-  PoolReader(Lexer* lexer, EvalString* storage, const char* start);
+  PoolReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   std::string_view name() const;
   LetRangeReader readVariables();
 };
@@ -198,7 +200,7 @@ class RuleReader : public detail::BaseReaderWithStart {
   std::string_view m_name;
 
  public:
-  RuleReader(Lexer* lexer, EvalString* storage, const char* start);
+  RuleReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   std::string_view name() const;
   LetRangeReader readVariables();
 };
@@ -219,7 +221,7 @@ class DefaultReader : public detail::BaseReaderWithStart {
  */
 class IncludeReader : public detail::BaseReaderWithStart {
  public:
-  IncludeReader(Lexer* lexer, EvalString* storage, const char* start);
+  IncludeReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   const EvalString& path() const;
 
   // Return the path passed in to the `ManifestReader` constructor.
@@ -232,7 +234,7 @@ class IncludeReader : public detail::BaseReaderWithStart {
  */
 class SubninjaReader : public detail::BaseReaderWithStart {
  public:
-  SubninjaReader(Lexer* lexer, EvalString* storage, const char* start);
+  SubninjaReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   const EvalString& path() const;
 
   // Return the path passed in to the `ManifestReader` constructor.
@@ -245,7 +247,7 @@ class SubninjaReader : public detail::BaseReaderWithStart {
  */
 class ManifestReader {
   Lexer m_lexer;
-  EvalString m_storage;
+  EvalStringBuilder m_storage;
 
  public:
   class sentinel {};
@@ -264,7 +266,7 @@ class ManifestReader {
     value_type m_value;
 
    public:
-    iterator(Lexer* lexer, EvalString* storage);
+    iterator(Lexer* lexer, EvalStringBuilder* storage);
 
     value_type operator*() const;
 
