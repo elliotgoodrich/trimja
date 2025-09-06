@@ -41,17 +41,68 @@
 #include <rapidhash/rapidhash.h>
 #include <boost/boost_unordered.hpp>
 
+#include <array>
 #include <cassert>
 #include <fstream>
 #include <iostream>
 #include <list>
 #include <memory_resource>
 #include <numeric>
+#include <ranges>
 #include <sstream>
+#include <tuple>
 
 namespace trimja {
 
 // NOLINTBEGIN(performance-avoid-endl)
+
+namespace {
+
+template <typename R>
+class ReaderChopper {
+  const R& m_reader;
+  const char* m_position;
+
+ public:
+  ReaderChopper(const R& reader)
+      : m_reader{reader}, m_position{reader.start()} {}
+
+  std::string_view chop() {
+    // std::string_view str {m_position, reader.}
+    // const char* previous = std::exchange(m_last, reader.position());
+    return std::string_view{};
+  }
+};
+
+void updateLongestPathForInputs(std::vector<bool>& seen,
+                                const Graph& g,
+                                const Graph::Node node,
+                                std::span<std::size_t> longestPath,
+                                std::size_t newValue) {
+  if (seen[node]) {
+    return;
+  }
+  seen[node] = true;
+  if (longestPath[node] >= newValue) {
+    return;
+  }
+  longestPath[node] = newValue;
+  for (const Graph::Node childIn : g.in(node)) {
+    updateLongestPathForInputs(seen, g, childIn, longestPath, newValue + 1);
+  }
+}
+
+void reset(std::vector<bool>& seen, const Graph& g, const Graph::Node node) {
+  if (!seen[node]) {
+    return;
+  }
+  seen[node] = false;
+  for (const Graph::Node childIn : g.in(node)) {
+    reset(seen, g, childIn);
+  }
+}
+
+}  // namespace
 
 namespace detail {
 
@@ -153,14 +204,7 @@ class OutputText {
 
   OutputText() : m_buffer{}, parts{&m_buffer} {}
 
-  /**
-   * @brief Add the text with the specified type to the end.
-   * @param text The text to insert
-   * @param type The type of the text inserted
-   * @pre text must point to a string that outlives this object
-   * @return An Index representing the newly inserted element
-   */
-  iterator emplace_back(std::string_view text, PartType type) {
+  iterator emplace(iterator pos, std::string_view text, PartType type) {
     const auto [movable, floatToTop] = [&] {
       switch (type) {
         case OutputText::PartType::Variable:
@@ -173,7 +217,18 @@ class OutputText {
           return std::make_pair(Movable::Yes, FloatToTop::No);
       }
     }();
-    return parts.emplace(parts.end(), text, movable, floatToTop);
+    return parts.emplace(pos, text, movable, floatToTop);
+  }
+
+  /**
+   * @brief Add the text with the specified type to the end.
+   * @param text The text to insert
+   * @param type The type of the text inserted
+   * @pre text must point to a string that outlives this object
+   * @return An Index representing the newly inserted element
+   */
+  iterator emplace_back(std::string_view text, PartType type) {
+    return emplace(parts.end(), text, type);
   }
 
   /**
@@ -185,7 +240,27 @@ class OutputText {
    * @return An Index representing the newly inserted element
    */
   iterator emplace_back(const char* data, std::size_t size, PartType type) {
-    return emplace_back(std::string_view{data, size}, type);
+    return emplace(parts.end(), std::string_view{data, size}, type);
+  }
+
+  template <typename... Args>
+  std::array<iterator, sizeof...(Args)> emplace_back_many(
+      PartType type,
+      const Args&... texts) {
+    const auto [movable, floatToTop] = [&] {
+      switch (type) {
+        case OutputText::PartType::Variable:
+          return std::make_pair(Movable::No, FloatToTop::No);
+        case OutputText::PartType::Pool:
+          [[fallthrough]];
+        case OutputText::PartType::Rule:
+          return std::make_pair(Movable::Yes, FloatToTop::Yes);
+        default:
+          return std::make_pair(Movable::Yes, FloatToTop::No);
+      }
+    }();
+
+    return {parts.emplace(parts.end(), texts, movable, floatToTop)...};
   }
 
   /**
@@ -239,6 +314,11 @@ class RuleTextParts {
    * @param rest The index of the rest of the rule after the name, including all
    * variables.
    */
+  explicit RuleTextParts(const std::span<const OutputText::iterator>& parts)
+      : m_start{parts[0]}, m_name{parts[1]}, m_rest{parts[2]} {
+    assert(parts.size() == 3);
+  }
+
   // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
   RuleTextParts(OutputText::iterator start,
                 OutputText::iterator name,
@@ -269,6 +349,108 @@ class RuleTextParts {
 
   /**
    * @brief Get an iterator to the end of the rule parts.
+   */
+  OutputText::iterator end() const { return std::next(m_rest); }
+};
+
+/**
+ * @class BuildCommandTextParts
+ * @brief A class to manage the parts of a ninja build command inside OutputText
+ * @private
+ *
+ * @code
+ *   build out1 out2 | out3: ruleName in1 in2 | in3 |@ validation4\n
+ *   ^                       ^       ^       ^     ^              ^
+ *   start                  name     in implicitIn validations   rest
+ * @endcode
+ * If there are any variables for this build command then [validations, rest)
+ * will contain them all and the terminating new line.
+ *
+ * A default command is far simpler,
+ * @code
+ *   default out1 out2\n
+ *   ^                ^
+ *   start            everything else
+ * @endcode
+ *
+ * Note that there may be several elements of `OutputText` between the
+ * iterators in `BuildCommandTextParts`.
+ */
+class BuildCommandTextParts {
+  OutputText::iterator m_start;
+  OutputText::iterator m_name;
+  OutputText::iterator m_in;
+  OutputText::iterator m_implicitIn;
+  OutputText::iterator m_validations;
+  OutputText::iterator m_rest;
+
+ public:
+  BuildCommandTextParts(std::array<OutputText::iterator, 6> parts)
+      : m_start{parts[0]},
+        m_name{parts[1]},
+        m_in{parts[2]},
+        m_implicitIn{parts[3]},
+        m_validations{parts[4]},
+        m_rest{parts[5]} {}
+  /**
+   * @brief Construct a RuleTextParts object.
+   * TODO
+   */
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+  BuildCommandTextParts(OutputText::iterator start,
+                        OutputText::iterator name,
+                        OutputText::iterator in,
+                        OutputText::iterator implicitIn,
+                        OutputText::iterator validations,
+                        OutputText::iterator rest)
+      : m_start{start},
+        m_name{name},
+        m_in{in},
+        m_implicitIn{implicitIn},
+        m_validations{validations},
+        m_rest{rest} {}
+
+  /**
+   * @brief Append another implicit in path to the build command inside output.
+   * @param output Where to put the output.
+   * @param path The new implicit in path to append.
+   * @pre The string pointed to by path must outlive `output`.
+   */
+  void appendImplicitIn(OutputText& output, std::string_view path) {
+    // If we don't have any implicit in, then we need to add the separator
+    const char* separator = (m_implicitIn == m_validations) ? " | " : " ";
+    output.emplace(m_validations, separator, OutputText::PartType::BuildEdge);
+    output.emplace(m_validations, path, OutputText::PartType::BuildEdge);
+  }
+
+  /**
+   * @brief Convert the build command into one using the `phony` rule.
+   */
+  void makePhony() {
+    // TODO: Do we support implicitOuts in phony?
+    std::get<std::string_view>(*m_name) = "phony";
+    // TODO: remove the variables
+  }
+
+  void appendToRuleName(OutputText& output, std::string_view suffix) {
+    output.emplace(m_in, suffix, OutputText::PartType::BuildEdge);
+  }
+
+  /**
+   * @brief Get the name of the rule.
+   * @return The name of the rule.
+   */
+  std::string_view getRuleName() const {
+    return std::get<std::string_view>(*m_name);
+  }
+
+  /**
+   * @brief Get an iterator to the beginning of the build command parts.
+   */
+  OutputText::iterator begin() const { return m_start; }
+
+  /**
+   * @brief Get an iterator to the end of the build command parts.
    */
   OutputText::iterator end() const { return std::next(m_rest); }
 };
@@ -377,7 +559,8 @@ class BuildContext {
     Resolution resolution;
 
     // The location of our entire build command inside `BuildContext::parts`
-    gch::small_vector<OutputText::iterator, 3> partIterators;
+    BuildCommandTextParts parts;
+    // gch::small_vector<OutputText::iterator, 3> partIterators;
 
     // The build command (+ rspfile_content) that gets hashed by ninja
     std::string hashTarget;
@@ -385,18 +568,20 @@ class BuildContext {
     // Map each output index to the string containing the
     // "build out1 out$ 2 | implicitOut3" (note no newline and no trailing `|`
     // or `:`)
-    std::string_view outStr;
+    // std::string_view outStr;
 
     // Map each output index to the string containing the validation edges
     // e.g. "|@ validation1 validation2" (note no newline and no leading
     // space)
-    std::string_view validationStr;
+    // std::string_view validationStr;
 
     // The index of the rule into `BuildContext::rules`
     RuleIndex ruleIndex;
 
-    BuildCommand(Resolution resolution, RuleIndex ruleIndex)
-        : resolution{resolution}, ruleIndex{ruleIndex} {}
+    BuildCommand(Resolution resolution,
+                 RuleIndex ruleIndex,
+                 BuildCommandTextParts parts)
+        : resolution{resolution}, ruleIndex{ruleIndex}, parts{parts} {}
   };
 
   // The indexes of the built-in rules within `rules`
@@ -505,13 +690,13 @@ class BuildContext {
     fileIds.push_back(nextFileId++);
 
     rules.emplace_back(
-        ruleLookup.try_emplace("phony", RuleIndex{rules.size(), this})
+        ruleLookup.try_emplace("phony", RuleIndex{phonyIndex, this})
             .first->first);
-    assert(rules[BuildContext::phonyIndex].name == "phony");
+    assert(rules[phonyIndex].name == "phony");
     rules.emplace_back(
-        ruleLookup.try_emplace("default", RuleIndex{rules.size(), this})
+        ruleLookup.try_emplace("default", RuleIndex{defaultIndex, this})
             .first->first);
-    assert(rules[BuildContext::defaultIndex].name == "default");
+    assert(rules[defaultIndex].name == "default");
   }
 
   // Delete move/copy operations since we need pointer stability to `this` for
@@ -564,6 +749,8 @@ class BuildContext {
   }
 
   void operator()(BuildReader& r) {
+    const char* start = r.start();
+
     StringStack& outs = tmp.outs;
     outs.clear();
 
@@ -571,23 +758,23 @@ class BuildContext {
       evaluate(outs.emplace_back(), path, fileScope);
     }
     if (outs.empty()) {
-      throw std::runtime_error("Missing output paths in build command");
+      throw std::runtime_error{"Missing output paths in build command"};
     }
     const std::size_t outSize = outs.size();
     for (const EvalString& path : r.readImplicitOut()) {
       evaluate(outs.emplace_back(), path, fileScope);
     }
 
-    // Mark the outputs for later
-    const std::string_view outStr(r.start(), r.bytesParsed());
-
-    std::string_view ruleName = r.readName();
+    const std::string_view ruleName = r.readName();
 
     const RuleIndex ruleIndex = [&] {
       const auto ruleIt = ruleLookup.find(ruleName);
       if (ruleIt == ruleLookup.end()) {
-        throw std::runtime_error("Unable to find " + std::string(ruleName) +
-                                 " rule");
+        std::string msg;
+        msg += "Unable to find ";
+        msg += ruleName;
+        msg += " rule";
+        throw std::runtime_error{msg};
       }
       return ruleIt->second.ruleIndex;
     }();
@@ -600,6 +787,7 @@ class BuildContext {
     }
     const std::size_t inSize = ins.size();
 
+    const char* implicitIn = r.position();
     for (const EvalString& path : r.readImplicitIn()) {
       evaluate(ins.emplace_back(), path, fileScope);
     }
@@ -614,11 +802,9 @@ class BuildContext {
     // command it will include the validation.  If that validation has a
     // required input then we include that, otherwise the validation is
     // `phony`ed out.
-    const char* validationStart = r.position();
+    const char* validation = r.position();
     r.readValidations().skip();
-    const std::string_view validationStr{
-        validationStart,
-        static_cast<std::size_t>(r.position() - validationStart)};
+    const char* rest = r.position();
 
     EdgeScope scope{fileScope, rules[ruleIndex].variables,
                     std::span{ins.data(), inSize},
@@ -628,36 +814,26 @@ class BuildContext {
       scope.set(name, evaluate(value, scope));
     }
 
+    const std::array<OutputText::iterator, 6> parts = output.emplace_back_many(
+        OutputText::PartType::BuildEdge,
+        std::string_view{start, ruleName.data()}, ruleName,
+        std::string_view{ruleName.data() + ruleName.size(), implicitIn},
+        std::string_view{implicitIn, validation},
+        std::string_view{validation, rest},
+        std::string_view{rest, r.position()});
+
     // Add the build command
     const BuildCommandIndex commandIndex{commands.size(), this};
     BuildCommand& buildCommand = commands.emplace_back(
         // Always print `phony` rules since it saves us time generating an
         // identical `phony` rule later on.
         isBuiltInRule(ruleIndex) ? BuildCommand::Print : BuildCommand::Phony,
-        ruleIndex);
+        ruleIndex, parts);
 
-    if (rules[ruleIndex].instance == 1) {
-      buildCommand.partIterators.push_back(output.emplace_back(
-          r.start(), r.bytesParsed(), OutputText::PartType::BuildEdge));
-    } else {
-      const char* endOfName = ruleName.data() + ruleName.size();
-      buildCommand.partIterators.push_back(output.emplace_back(
-          r.start(), endOfName - r.start(), OutputText::PartType::BuildEdge));
-
-      buildCommand.partIterators.push_back(
-          output.emplace_back(to_string_view(rules[ruleIndex].instance),
-                              OutputText::PartType::BuildEdge));
-
-      buildCommand.partIterators.push_back(output.emplace_back(
-          endOfName, r.bytesParsed() - (endOfName - r.start()),
-          OutputText::PartType::BuildEdge));
+    if (rules[ruleIndex].instance != 1) {
+      buildCommand.parts.appendToRuleName(
+          output, to_string_view(rules[ruleIndex].instance));
     }
-    // Check we aren't actually allocating
-    assert(buildCommand.partIterators.size() <=
-           buildCommand.partIterators.inline_capacity_v);
-
-    buildCommand.validationStr = validationStr;
-    buildCommand.outStr = outStr;
 
     // Add outputs to the graph and link to the build command
     std::vector<Node>& outNodes = tmp.outNodes;
@@ -758,9 +934,11 @@ class BuildContext {
                                             OutputText::PartType::Default);
 
     const BuildCommandIndex commandIndex{commands.size(), this};
-    BuildCommand& buildCommand = commands.emplace_back(
-        BuildCommand::Print, RuleIndex{BuildContext::defaultIndex, this});
-    buildCommand.partIterators.push_back(partIt);
+    // TODO: Is this silly?
+    const BuildCommandTextParts parts{partIt, partIt, partIt,
+                                      partIt, partIt, partIt};
+    commands.emplace_back(BuildCommand::Print,
+                          RuleIndex{BuildContext::defaultIndex, this}, parts);
 
     const Node outNode = getDefault();
     nodeToCommand[outNode] = commandIndex;
@@ -960,6 +1138,23 @@ class BuildContext {
     }
   }
 
+  template <typename OUTPUT_ITERATOR>
+  OUTPUT_ITERATOR topologicalOrder(Node node,
+                                   std::vector<bool>& seen,
+                                   OUTPUT_ITERATOR out) const {
+    if (seen[node]) {
+      return out;
+    }
+
+    seen[node] = true;
+    for (const Graph::Node in : graph.in(node)) {
+      out = topologicalOrder(augment(in), seen, out);
+    }
+
+    *out++ = node;
+    return out;
+  }
+
   // If `node` has not been seen (using `seen`) then call
   // `markIfChildrenAffected` for all inputs to `node` and then set
   // `isAffected[node]` if any child is affected. Return whether this
@@ -1063,6 +1258,188 @@ class BuildContext {
     }
   }
 
+  void generateDummyEdges(const std::span<const Node> sourcesFirst) {
+    // Create a lookup of node index to topological order, i.e. if index `i`
+    // comes `n`th in the topological order, then `asset(indexToOrder[i] ==
+    // n);
+    std::vector<std::size_t> indexToOrder(sourcesFirst.size());
+    for (const Node node : nodes()) {
+      indexToOrder[sourcesFirst[node]] = node;
+    }
+
+    // Generate our passthrough rule for dummy edges
+    const RuleIndex trimjaTouchRuleIndex = [&] {
+      const auto [ruleIt, inserted] = ruleLookup.try_emplace(
+          "__trimjaTouch", RuleIndex{rules.size(), this});
+      if (!inserted) {
+        // If the user already has defined this rule then assume they want to
+        // use their own one instead of ours
+        return ruleIt->second.ruleIndex;
+      }
+
+      detail::Rule& rule = rules.emplace_back("__trimjaTouch");
+      assert(&rule == &rules[ruleIt->second.ruleIndex]);
+
+      EvalStringBuilder command;
+#if defined(_WIN32)
+      command.appendText("cmd /c type nul > ");
+      command.appendVariable("out_backslashes");
+#else
+      command.appendText("touch > ");
+      command.appendVariable("out");
+#endif
+      [[maybe_unused]] const bool okay =
+          rule.variables.add("command", std::move(command).str());
+      assert(okay);
+
+      const std::array<OutputText::iterator, 3> ruleParts =
+          output.emplace_back_many(
+              detail::OutputText::PartType::Rule, "rule ", "__trimjaTouch",
+#if defined(_WIN32)
+              ":\n  command = cmd /c type nul > $out_backslashes\n"
+#else
+              ":\n  command = touch $out\n"
+#endif
+          );
+
+      rule.parts.emplace(ruleParts);
+      rule.fileId = fileIds.back();
+      return ruleIt->second.ruleIndex;
+    }();
+
+    // Calculate the longest path of each node to a root. i.e if the longest
+    // path to index `i` is `a (root) -> b -> c -> i` then
+    // `assert(longestPath[i] == 3)`
+    std::vector<std::size_t> longestPath(sourcesFirst.size());
+    for (const Node node : std::ranges::reverse_view{sourcesFirst}) {
+      const std::span<const Graph::Node> outs = graph.out(node);
+      longestPath[node] =
+          std::accumulate(outs.begin(), outs.end(), std::size_t{0},
+                          [&](const std::size_t acc, Graph::Node out) {
+                            return std::max(acc, longestPath[out] + 1);
+                          });
+    }
+
+    // Go through from leaves to roots and inject additional edges if a node
+    // has non-affected descendent nodes that have a greater path length that
+    // affected descendent nodes - which would mean they are prioritized
+    // first.
+    std::size_t addedNodes = 0;
+
+    // Maybe there's a better way to do this...
+    std::vector<Node> orderedIns;
+
+    std::vector<bool> seen(sourcesFirst.size(), false);
+
+    std::vector<std::size_t> longestPathToDesc(longestPath.size());
+    for (const Node node : sourcesFirst) {
+      std::span<const Graph::Node> ins = graph.in(node);
+
+      // We only need to inject edges if we have both affected descendents
+      // and non-affected.
+      if (std::ranges::any_of(
+              ins, [&](const Graph::Node in) { return isAffected[in]; })) {
+        // If we have affected descendents, check we are affected ourselves
+        assert(isAffected[node]);
+        const std::size_t longestNonAffectedPath = std::accumulate(
+            ins.begin(), ins.end(), std::size_t{0},
+            [&](const std::size_t acc, const Graph::Node in) {
+              return !isAffected[in] ? std::max(acc, longestPathToDesc[in])
+                                     : acc;
+            });
+        // We only need to do work if we have non-affected paths with positive
+        // length, since if the longest path length is 0, then all affected
+        // paths are going to be at least as long.  Since we reorder those
+        // above the non-affected ones, ninja will run them first if their
+        // path is the same length.
+        if (longestNonAffectedPath > 0) {
+          // We need to do this in topological order, e.g. if we are looking
+          // at A and it has 3 children, B, C, and D,
+          //      +----------+
+          //      |    A     |
+          //      |   /|\    |
+          //      |  B | \   |
+          //      |   \|  D  |
+          //      |    C     |
+          //      +----------+
+          // Where B and C are affected and D isn't (and has a longer path).
+          // If we look at C first, then we inject edges between A -> C and
+          // then also need to inject edges between A -> B, when we could have
+          // just done A -> C.
+          orderedIns.clear();
+          for (const Graph::Node in : ins) {
+            if (isAffected[in] && longestPath[in] < longestNonAffectedPath) {
+              orderedIns.push_back(augment(in));
+            }
+          }
+          std::ranges::sort(orderedIns, [&](const Node l, const Node r) {
+            return indexToOrder[l] < indexToOrder[r];
+          });
+          for (const Node in : orderedIns) {
+            // If a node has affected and non-affected children and there are
+            // non-affected descendents with a longer path than require
+            // descendents, then we need to inject additional edges equal to
+            // the difference.  Then the critical path for both affected and
+            // non-affected nodes will be the same.  Then code elsewhere will
+            // reorder affected nodes before non-affected nodes to break the
+            // tie.
+            const std::size_t extraNodeCount =
+                longestNonAffectedPath - longestPathToDesc[in];
+            Node currentInput = in;
+            for (std::size_t i = 0; i < extraNodeCount; ++i) {
+              std::string path =
+                  "$builddir/__trimja__/" + std::to_string(addedNodes++);
+              const Node newIndex = getPathNodeForNormalized(path);
+              BuildCommandIndex buildIndex{commands.size(), this};
+              // TODO: Change to Phony
+              const auto [buildIt, ignore0, ignore1, ruleNameIt, implicitInIt,
+                          ignore2, restIt] =
+                  output.emplace_back_many(
+                      detail::OutputText::PartType::BuildEdge, "build ",
+                      graph.path(newIndex), ": ", "__trimjaTouch", " | ",
+                      graph.path(currentInput), "\n");
+
+              const auto inIt = implicitInIt;    /// No ins
+              const auto validationIt = restIt;  /// No validations
+              const BuildCommandTextParts textParts{buildIt,      ruleNameIt,
+                                                    inIt,         implicitInIt,
+                                                    validationIt, restIt};
+              commands.emplace_back(BuildCommand::Print, trimjaTouchRuleIndex,
+                                    textParts);
+              // TODO, out_backslashes on windows
+              nodeToCommand[newIndex] = buildIndex;
+              graph.addEdge(currentInput, newIndex);
+              currentInput = newIndex;
+            }
+
+            // Add dependency on the new bit
+            graph.addEdge(currentInput, node);
+            BuildCommand& command = commands[*nodeToCommand[node]];
+            command.parts.appendImplicitIn(output, graph.path(currentInput));
+
+            // As we've now injected more edges, update the
+            // `longestPathToDesc` for `in` and all its children.
+            updateLongestPathForInputs(seen, graph, in, longestPath,
+                                       longestNonAffectedPath);
+            reset(seen, graph, in);
+          }
+        }
+      }
+
+      // Refresh `ins` as we may have added elements to `g` and
+      // invalidated the reference.
+      ins = graph.in(node);
+
+      // While we do this, we need to write the value of `longestPathToDesc`
+      // as it is most likely incorrect for all non-leaf nodes.
+      longestPathToDesc[node] =
+          std::accumulate(ins.begin(), ins.end(), longestPath[node],
+                          [&](const std::size_t acc, const Graph::Node in) {
+                            return std::max(acc, longestPathToDesc[in]);
+                          });
+    }
+  }
+
   IndexIntoRange<Node> nodes() const {
     return IndexIntoRange<Node>{graph.nodes(), this};
   }
@@ -1078,7 +1455,9 @@ class Imp {
 
 }  // namespace detail
 
-TrimUtil::TrimUtil() : m_imp{nullptr} {}
+namespace {}  // namespace
+
+TrimUtil::TrimUtil() = default;
 
 TrimUtil::~TrimUtil() = default;
 
@@ -1244,8 +1623,20 @@ void TrimUtil::trim(std::ostream& output,
     ctx.ifRequiredRequireAllChildren(node, seen, needsAllInputs, explain);
   }
 
+  // Generate a topological order where if `i` comes before `j`, then
+  // `i` is not an ancestor of `j`. Generally leafs -> roots.
+  std::vector<detail::BuildContext::Node> order(graph.size());
+  auto out = order.begin();
+  seen.assign(seen.size(), false);
+  for (const detail::BuildContext::Node node : ctx.nodes()) {
+    out = ctx.topologicalOrder(node, seen, out);
+  }
+
+  ctx.generateDummyEdges(order);
+  ctx.isRequired.resize(graph.size(), true);
+
   // Float all affected edges to the top so they are prioritized first
-  // and Mark all required edges as needing to print them out
+  // and mark all required edges as needing to print them out
   for (const BuildContext::Node& node : ctx.nodes()) {
     if (ctx.isRequired[node]) {
       const std::optional commandIndex = ctx.nodeToCommand[node];
@@ -1254,8 +1645,9 @@ void TrimUtil::trim(std::ostream& output,
         command.resolution = BuildContext::BuildCommand::Print;
 
         if (ctx.isAffected[node]) {
-          for (const OutputText::iterator it : command.partIterators) {
-            std::get<OutputText::FloatToTop>(*it) = OutputText::FloatToTop::Yes;
+          for (auto& part : command.parts) {
+            std::get<OutputText::FloatToTop>(part) =
+                OutputText::FloatToTop::Yes;
           }
         }
       }
@@ -1273,6 +1665,8 @@ void TrimUtil::trim(std::ostream& output,
       ruleReferenced[command.ruleIndex] = true;
     } else {
       assert(command.resolution == BuildContext::BuildCommand::Phony);
+      command.parts.makePhony();
+#if 0
       const std::initializer_list<std::string_view> parts = {
           command.outStr,
           command.validationStr.empty() ? ": phony" : ": phony ",
@@ -1300,6 +1694,7 @@ void TrimUtil::trim(std::ostream& output,
           std::next(command.partIterators.begin()), command.partIterators.end(),
           [&](const OutputText::iterator it) { ctx.output.parts.erase(it); });
       command.partIterators.clear();
+#endif
     }
   }
 

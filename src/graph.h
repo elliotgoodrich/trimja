@@ -30,6 +30,8 @@
 #include <gch/small_vector.hpp>
 
 #include <optional>
+#include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -171,11 +173,11 @@ class Graph {
   std::string_view path(Node node) const;
 
   /**
-   * @brief Gets the vector of output nodes for the specified node.
-   * @param node The node to get the outputs of.
+   * @brief Gets the vector of output nodes for the specified path index.
+   * @param pathIndex The index of the path.
    * @return The vector of output nodes.
    */
-  const gch::small_vector<Node>& out(Node node) const;
+  std::span<const Node> out(std::size_t pathIndex) const;
 
   /**
    * @brief Gets the vector of input nodes for the specified node.  Note
@@ -183,7 +185,7 @@ class Graph {
    * @param node The node to get the inputs of.
    * @return The vector of input nodes.
    */
-  const gch::small_vector<Node>& in(Node node) const;
+  std::span<const Node> in(std::size_t pathIndex) const;
 
   /**
    * @brief Gets the number of nodes in the graph.

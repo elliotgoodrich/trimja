@@ -134,20 +134,32 @@ class EvalStringBuilder {
   /**
    * @brief Return a reference to the held EvalString.
    */
-  const EvalString& str() const;
+  const EvalString& str() const&;
+
+  /**
+   * @brief Return the held EvalString by moving.
+   */
+  EvalString str() &&;
 };
 
 /**
  * @brief Evaluates the EvalString and appends the result to the output.
- * @tparam SCOPE The type of the scope.
+ * @tparam S The type of the scope.
  * @param output The output string to append the result to.
  * @param variable The EvalString to evaluate.
  * @param scope The scope to use for variable evaluation.
  */
-template <typename SCOPE>
-void evaluate(std::string& output,
-              const EvalString& variable,
-              const SCOPE& scope) {
+#if defined(__cpp_concepts) && __cpp_concepts >= 201907
+template <typename T>
+concept Scopeable = requires(const T& a, std::string& out) {
+  { a.appendValue(out, std::string_view()) } -> std::same_as<bool>;
+};
+
+template <Scopeable S>
+#else
+template <typename S>
+#endif
+void evaluate(std::string& output, const EvalString& variable, const S& scope) {
   const auto end = variable.end();
   for (auto it = variable.begin(); it != end; ++it) {
     auto [str, type] = *it;

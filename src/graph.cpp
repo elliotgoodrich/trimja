@@ -160,12 +160,12 @@ std::string_view Graph::path(Graph::Node node) const {
   return m_path[node];
 }
 
-const gch::small_vector<Graph::Node>& Graph::out(Graph::Node node) const {
-  return m_inputToOutput[node];
+std::span<const Graph::Node> Graph::out(std::size_t pathIndex) const {
+  return m_inputToOutput[pathIndex];
 }
 
-const gch::small_vector<Graph::Node>& Graph::in(Graph::Node node) const {
-  return m_outputToInput[node];
+std::span<const Graph::Node> Graph::in(std::size_t pathIndex) const {
+  return m_outputToInput[pathIndex];
 }
 
 std::size_t Graph::size() const {
