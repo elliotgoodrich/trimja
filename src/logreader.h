@@ -42,10 +42,10 @@ namespace trimja {
 class LogReader {
   std::istream* m_logs;
   std::string m_nextLine;
-  HashType m_hashType;
   int m_fields;
   int m_version;
   int m_lineNumber;
+  HashType m_hashType;
 
  public:
   /**

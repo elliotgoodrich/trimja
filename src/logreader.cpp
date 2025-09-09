@@ -63,6 +63,36 @@ void skipAhead(std::string_view name, const char*& begin, const char* end) {
   ++begin;
 }
 
+const std::string_view prefix = "# ninja log v";
+
+std::string readInitialLine(std::istream& out) {
+  std::string line;
+  std::getline(out, line, '\n');
+  if (!line.starts_with(prefix)) {
+    throw std::runtime_error{"Unable to find log file signature"};
+  }
+
+  return line;
+}
+
+int parseVersion(std::string_view firstLine) {
+  // We support the following versions of the log file format:
+  // * 5 has high-resolution timestamps
+  // * 6 is identical https://github.com/ninja-build/ninja/pull/2240
+  // * 7 only changes the hash function
+  //   https://github.com/ninja-build/ninja/pull/2519
+  const std::string_view versionStr = firstLine.substr(prefix.size());
+  if (versionStr != "5" && versionStr != "6" && versionStr != "7") {
+    std::string msg = "Unsupported log file version (";
+    msg += versionStr;
+    msg += ") found - only 5, 6, and 7 supported";
+    throw std::runtime_error{msg};
+  }
+
+  assert(versionStr.size() == 1);
+  return versionStr[0] - '0';
+}
+
 }  // namespace
 
 static_assert(std::input_iterator<LogReader::iterator>);
@@ -96,35 +126,11 @@ bool operator!=(const LogReader::iterator& iter, LogReader::sentinel) {
 
 LogReader::LogReader(std::istream& logs, int fields)
     : m_logs{&logs},
-      m_nextLine{},
-      m_hashType{static_cast<HashType>(-1)},
+      m_nextLine{readInitialLine(*m_logs)},
       m_fields{fields},
-      m_version{-1},
-      m_lineNumber{1} {
-  std::getline(*m_logs, m_nextLine, '\n');
-  const std::string_view prefix = "# ninja log v";
-  if (!m_nextLine.starts_with(prefix)) {
-    throw std::runtime_error{"Unable to find log file signature"};
-  }
-
-  const std::string_view versionStr =
-      std::string_view{m_nextLine}.substr(prefix.size());
-  // We support the following versions of the log file format:
-  // * 5 has high-resolution timestamps
-  // * 6 is identical https://github.com/ninja-build/ninja/pull/2240
-  // * 7 only changes the hash function
-  //   https://github.com/ninja-build/ninja/pull/2519
-  if (versionStr != "5" && versionStr != "6" && versionStr != "7") {
-    std::string msg = "Unsupported log file version (";
-    msg += versionStr;
-    msg += ") found";
-    throw std::runtime_error{msg};
-  }
-
-  assert(versionStr.size() == 1);
-  m_version = versionStr[0] - '0';
-  m_hashType = m_version == 7 ? HashType::rapidhash : HashType::murmur;
-}
+      m_version{parseVersion(m_nextLine)},
+      m_lineNumber{1},
+      m_hashType{m_version == 7 ? HashType::rapidhash : HashType::murmur} {}
 
 int LogReader::version() const {
   return m_version;
@@ -181,6 +187,7 @@ bool LogReader::read(LogEntry* output) {
 
   if (m_fields & LogEntry::Fields::hash) {
     parse("hash", output->hash, begin, end, 16);
+    output->hashType = m_hashType;
   } else {
     skipAhead("hash", begin, end);
   }

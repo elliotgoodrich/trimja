@@ -128,7 +128,7 @@ std::optional<std::size_t> Graph::findNormalizedPath(
 }
 
 std::size_t Graph::addDefault() {
-  assert(m_defaultIndex == std::numeric_limits<std::size_t>::max());
+  assert(!m_defaultIndex.has_value());
   const std::size_t nextIndex = m_inputToOutput.size();
   m_inputToOutput.emplace_back();
   m_outputToInput.emplace_back();
@@ -152,7 +152,7 @@ bool Graph::isDefault(std::size_t pathIndex) const {
   return pathIndex == m_defaultIndex;
 }
 
-std::size_t Graph::defaultIndex() const {
+std::optional<std::size_t> Graph::defaultIndex() const {
   return m_defaultIndex;
 }
 

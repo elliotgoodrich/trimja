@@ -36,6 +36,7 @@
 
 #include <ninja/util.h>
 #include <rapidhash/rapidhash.h>
+#include <tiny/optional.h>
 #include <boost/boost_unordered.hpp>
 
 #include <cassert>
@@ -149,7 +150,7 @@ struct BuildCommand {
     Phony,
   };
 
-  Resolution resolution = Phony;
+  Resolution resolution;
 
   // The location of our entire build command inside `BuildContext::parts`
   gch::small_vector<std::size_t, 3> partsIndices;
@@ -168,7 +169,10 @@ struct BuildCommand {
   std::string_view validationStr;
 
   // The index of the rule into `BuildContext::rules`
-  std::size_t ruleIndex = std::numeric_limits<std::size_t>::max();
+  std::size_t ruleIndex;
+
+  BuildCommand(Resolution resolution, std::size_t ruleIndex)
+      : resolution{resolution}, ruleIndex{ruleIndex} {}
 };
 
 struct RuleCommand {
@@ -185,8 +189,8 @@ struct RuleCommand {
   // The location of our entire rule inside `BuildContext::parts`
   gch::small_vector<std::size_t, 3> partsIndices;
 
-  // An id of the file that defined this rule
-  std::size_t fileId = std::numeric_limits<std::size_t>::max();
+  // An id of the file that defined this rule or `nullopt` for built-in rules
+  std::optional<std::size_t> fileId;
 
   RuleCommand(std::string_view name) : name{name} {}
 };
@@ -198,8 +202,8 @@ namespace detail {
 class BuildContext {
  public:
   // The indexes of the built-in rules within `rules`
-  static const std::size_t phonyIndex = 0;
-  static const std::size_t defaultIndex = 1;
+  inline static const std::size_t phonyIndex = 0;
+  inline static const std::size_t defaultIndex = 1;
 
   // An optional storage for any generated strings or strings whose lifetime
   // needs extending. e.g. This is useful when processing `include` and
@@ -230,9 +234,11 @@ class BuildContext {
   // All build commands and default statements mentioned
   std::vector<BuildCommand> commands;
 
-  // Map each output index to the index within `command`.  Use -1 for a
-  // value that isn't an output to a build command (i.e. a source file)
-  std::vector<std::size_t> nodeToCommand;
+  // Map each output index to the index within `command`.  Use `nullopt` for
+  // values that aren't an output to a build command (i.e. a source file)
+  std::vector<
+      tiny::optional<std::size_t, std::numeric_limits<std::size_t>::max()>>
+      nodeToCommand;
 
   // Our list of rules
   std::vector<RuleCommand> rules;
@@ -311,7 +317,7 @@ class BuildContext {
   std::size_t getPathIndex(std::string& path) {
     const std::size_t index = graph.addPath(path);
     if (index >= nodeToCommand.size()) {
-      nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
+      nodeToCommand.resize(index + 1);
     }
     return index;
   }
@@ -319,7 +325,7 @@ class BuildContext {
   std::size_t getPathIndexForNormalized(std::string_view path) {
     const std::size_t index = graph.addNormalizedPath(path);
     if (index >= nodeToCommand.size()) {
-      nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
+      nodeToCommand.resize(index + 1);
     }
     return index;
   }
@@ -327,7 +333,7 @@ class BuildContext {
   std::size_t getDefault() {
     const std::size_t index = graph.addDefault();
     if (index >= nodeToCommand.size()) {
-      nodeToCommand.resize(index + 1, std::numeric_limits<std::size_t>::max());
+      nodeToCommand.resize(index + 1);
     }
     return index;
   }
@@ -414,12 +420,11 @@ class BuildContext {
 
     // Add the build command
     const std::size_t commandIndex = commands.size();
-    BuildCommand& buildCommand = commands.emplace_back();
-
-    // Always print `phony` rules since it saves us time generating an
-    // identical `phony` rule later on.
-    buildCommand.resolution =
-        isBuiltInRule(ruleIndex) ? BuildCommand::Print : BuildCommand::Phony;
+    BuildCommand& buildCommand = commands.emplace_back(
+        // Always print `phony` rules since it saves us time generating an
+        // identical `phony` rule later on.
+        isBuiltInRule(ruleIndex) ? BuildCommand::Print : BuildCommand::Phony,
+        ruleIndex);
 
     const std::size_t partsIndex = parts.size();
     if (rules[ruleIndex].instance == 1) {
@@ -446,7 +451,6 @@ class BuildContext {
 
     buildCommand.validationStr = validationStr;
     buildCommand.outStr = outStr;
-    buildCommand.ruleIndex = ruleIndex;
 
     // Add outputs to the graph and link to the build command
     std::vector<std::size_t>& outIndices = tmp.outIndices;
@@ -580,10 +584,9 @@ class BuildContext {
     partsType.push_back(PartType::Default);
 
     const std::size_t commandIndex = commands.size();
-    BuildCommand& buildCommand = commands.emplace_back();
-    buildCommand.resolution = BuildCommand::Print;
+    BuildCommand& buildCommand =
+        commands.emplace_back(BuildCommand::Print, BuildContext::defaultIndex);
     buildCommand.partsIndices.push_back(partsIndex);
-    buildCommand.ruleIndex = BuildContext::defaultIndex;
 
     const std::size_t outIndex = getDefault();
     nodeToCommand[outIndex] = commandIndex;
@@ -768,9 +771,9 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
       continue;
     }
 
-    // buil-in rules don't appear in the build log so skip them
+    // built-in rules don't appear in the build log so skip them
     if (detail::BuildContext::isBuiltInRule(
-            ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
+            ctx.commands[*ctx.nodeToCommand[index]].ruleIndex)) {
       continue;
     }
 
@@ -826,7 +829,7 @@ void markIfChildrenAffected(std::size_t index,
     if (explain) {
       // Only mention user-defined rules since built-in rules are always kept
       if (!detail::BuildContext::isBuiltInRule(
-              ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
+              ctx.commands[*ctx.nodeToCommand[index]].ruleIndex)) {
         std::cerr << "Including '" << graph.path(index)
                   << "' as it has the affected input '" << graph.path(*it)
                   << "'" << std::endl;
@@ -862,7 +865,7 @@ void ifRequiredRequireAllChildren(std::size_t index,
   }
 
   if (!detail::BuildContext::isBuiltInRule(
-          ctx.commands[ctx.nodeToCommand[index]].ruleIndex)) {
+          ctx.commands[*ctx.nodeToCommand[index]].ruleIndex)) {
     if (isRequired[index]) {
       needsAllInputs[index] = true;
       return;
@@ -952,7 +955,7 @@ void TrimUtil::trim(std::ostream& output,
     parseLogFile(
         ninjaLog, ctx, isAffected,
         [&](const std::size_t index) -> std::string_view {
-          return ctx.commands[ctx.nodeToCommand[index]].hashTarget;
+          return ctx.commands[*ctx.nodeToCommand[index]].hashTarget;
         },
         explain);
   }
@@ -1080,9 +1083,9 @@ void TrimUtil::trim(std::ostream& output,
   // and Mark all required edges as needing to print them out
   for (std::size_t index = 0; index < graph.size(); ++index) {
     if (isRequired[index]) {
-      const std::size_t commandIndex = ctx.nodeToCommand[index];
-      if (commandIndex != std::numeric_limits<std::size_t>::max()) {
-        BuildCommand& command = ctx.commands[commandIndex];
+      const tiny::optional commandIndex = ctx.nodeToCommand[index];
+      if (commandIndex.has_value()) {
+        BuildCommand& command = ctx.commands[*commandIndex];
         command.resolution = BuildCommand::Print;
 
         if (isAffected[index]) {
