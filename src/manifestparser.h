@@ -29,6 +29,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -135,10 +136,12 @@ class PathRangeReader : public detail::BaseReader {
     using value_type = EvalString;
 
    private:
-    int m_expectedLastToken;
+    std::optional<int> m_expectedLastToken;
 
    public:
-    iterator(Lexer* lexer, EvalStringBuilder* storage, int lastToken = -1);
+    iterator(Lexer* lexer,
+             EvalStringBuilder* storage,
+             const std::optional<int>& lastToken);
 
     const value_type& operator*() const;
 
@@ -149,7 +152,7 @@ class PathRangeReader : public detail::BaseReader {
   };
 
  private:
-  int m_expectedLastToken;
+  std::optional<int> m_expectedLastToken;
 
  public:
   PathRangeReader();

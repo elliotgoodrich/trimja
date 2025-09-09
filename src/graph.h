@@ -28,7 +28,6 @@
 #include <boost/boost_unordered.hpp>
 #include <gch/small_vector.hpp>
 
-#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -78,7 +77,7 @@ class Graph {
   // allocates on the heap.
   std::vector<std::string_view> m_path;
 
-  std::size_t m_defaultIndex = std::numeric_limits<std::size_t>::max();
+  std::optional<std::size_t> m_defaultIndex;
 
  public:
   /**
@@ -153,7 +152,7 @@ class Graph {
    * @brief Gets the index of the default node.
    * @return The index of the default node.
    */
-  std::size_t defaultIndex() const;
+  std::optional<std::size_t> defaultIndex() const;
 
   /**
    * @brief Gets the path corresponding to the specified path index.
