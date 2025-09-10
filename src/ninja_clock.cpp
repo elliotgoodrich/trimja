@@ -43,21 +43,8 @@ const std::uint64_t offset = 0;
 
 }  // namespace
 
-trimja::ninja_clock::time_point ninja_clock::from_file_clock(
-    std::chrono::file_clock::time_point t) {
-  return trimja::ninja_clock::time_point(
-      trimja::ninja_clock::duration(t.time_since_epoch().count() - offset));
-}
-
-std::chrono::file_clock::time_point ninja_clock::to_file_clock(
-    trimja::ninja_clock::time_point t) {
-  return std::chrono::file_clock::time_point(
-      std::chrono::file_clock::duration(t.time_since_epoch().count() + offset));
-}
-
 }  // namespace trimja
 
-#if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 202002L
 namespace std {
 namespace chrono {
 
@@ -77,4 +64,3 @@ clock_time_conversion<file_clock, trimja::ninja_clock>::operator()(
 
 }  // namespace chrono
 }  // namespace std
-#endif
