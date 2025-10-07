@@ -63,6 +63,25 @@ bool hasLeadingBit(EvalString::Offset in) {
   return in >> (std::numeric_limits<EvalString::Offset>::digits - 1U);
 }
 
+void appendSegment(std::string& str,
+                   const EvalString::Offset length,
+                   const std::string_view& text) {
+#if __cpp_lib_string_resize_and_overwrite >= 202110L
+  str.resize_and_overwrite(
+      str.size() + sizeof(length) + text.size(),
+      [oldSize = str.size(), length, text](char* start, std::size_t) noexcept {
+        char* out = start + oldSize;
+        out = std::copy_n(reinterpret_cast<const char*>(&length),
+                          sizeof(length), out);
+        out = std::copy(text.begin(), text.end(), out);
+        return out - start;
+      });
+#else
+  str.append(reinterpret_cast<const char*>(&length), sizeof(length));
+  str.append(text);
+#endif
+}
+
 }  // namespace
 
 static_assert(std::forward_iterator<EvalString::const_iterator>);
@@ -137,17 +156,14 @@ void EvalStringBuilder::appendText(std::string_view text) {
   } else {
     // Otherwise write new segment
     const EvalString::Offset length = text.size();
-    m_str.m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
-    m_str.m_data.append(text);
+    appendSegment(m_str.m_data, length, text);
     m_lastTextSegmentLength = length;
   }
 }
 
 void EvalStringBuilder::appendVariable(std::string_view name) {
   assert(!name.empty());
-  const EvalString::Offset length = setLeadingBit(name.size());
-  m_str.m_data.append(reinterpret_cast<const char*>(&length), sizeof(length));
-  m_str.m_data.append(name);
+  appendSegment(m_str.m_data, setLeadingBit(name.size()), name);
   m_lastTextSegmentLength = 0;
 }
 
