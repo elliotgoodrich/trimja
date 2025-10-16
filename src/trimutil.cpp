@@ -951,6 +951,7 @@ void generateDummyEdges(const std::span<const std::size_t> sourcesFirst,
   }
 
   // Generate our passthrough rule for dummy edges
+  const std::size_t ruleIndex = ctx.rules.size();
   {
     assert(!ctx.ruleLookup.contains("__trimjaTouch"));
     RuleCommand& rule = ctx.rules.emplace_back("__trimjaTouch");
@@ -966,19 +967,19 @@ void generateDummyEdges(const std::span<const std::size_t> sourcesFirst,
     [[maybe_unused]] const bool okay =
         rule.variables.add("command", std::move(command).str());
     assert(okay);
-    ctx.stringStorage.emplace_front(
+    const std::size_t partsIndex = ctx.parts.size();
+    ctx.parts.push_back(ctx.stringStorage.emplace_front(
         "rule __trimjaTouch:\n"
 #if defined(_WIN32)
         "  command = cmd /c type nul > $out_backslashes"
 #else
         "  command = touch $out"
 #endif
-        "\n");
-    const std::size_t partsIndex = ctx.parts.size();
-    ctx.parts.push_back(ctx.stringStorage.front());
+        "\n"));
     ctx.partsType.push_back(detail::BuildContext::PartType::Rule);
     rule.partsIndices.push_back(partsIndex);
     assert(rule.partsIndices.size() == 1);
+    rule.fileId = ctx.fileIds.back();
   }
 
   // Calculate the longest path of each node to a root. i.e if the longest
@@ -1059,13 +1060,19 @@ void generateDummyEdges(const std::span<const std::size_t> sourcesFirst,
               longestNonAffectedPath - longestPathToDesc[in];
           std::size_t currentInput = in;
           for (std::size_t i = 0; i < extraNodeCount; ++i) {
-            std::string path = "$builddir/__trimja__/";
-            path += std::to_string(addedNodes++);
+            std::string path =
+                "$builddir/__trimja__/" + std::to_string(addedNodes++);
             const std::size_t newIndex = ctx.graph.addNormalizedPath(path);
             ctx.graph.addEdge(currentInput, newIndex);
             currentInput = newIndex;
           }
           ctx.graph.addEdge(currentInput, index);
+
+          BuildCommand& command =
+              ctx.commands.emplace_back(BuildCommand::Phony, ruleIndex);
+          command.partsIndices.push_back(ctx.parts.size());
+              ctx.parts.emplace_back(ctx.stringStorage.emplace_front("build ..."));
+          ctx.partsType.push_back(detail::BuildContext::PartType::BuildEdge);
 
           // As we've now injected more edges, update the `longestPathToDesc`
           // for `in` and all its children.
@@ -1134,11 +1141,8 @@ void TrimUtil::trim(std::ostream& output,
 
   Graph& graph = ctx.graph;
 
-  const std::filesystem::path ninjaFileDir = [&] {
-    std::filesystem::path dir(ninjaFile);
-    dir.remove_filename();
-    return dir;
-  }();
+  const std::filesystem::path ninjaFileDir =
+      std::filesystem::path{ninjaFile}.remove_filename();
 
   const std::filesystem::path builddir = [&] {
     std::string path;
@@ -1283,6 +1287,18 @@ void TrimUtil::trim(std::ostream& output,
                                  explain);
   }
 
+  // Generate a topological order where if `i` comes before `j`, then
+  // `i` is not an ancestor of `j`. Generally leafs -> roots.
+  std::vector<std::size_t> order(graph.size());
+  auto out = order.begin();
+  seen.assign(seen.size(), false);
+  for (const std::size_t index : graph.nodes()) {
+    out = topologicalOrder(index, seen, out, graph);
+  }
+
+  generateDummyEdges(order, isAffected, ctx);
+  isRequired.resize(graph.size(), true);
+
   assert(ctx.parts.size() == ctx.partsType.size());
   std::vector<bool> immovable(ctx.parts.size());
   std::vector<bool> floatToTop(ctx.parts.size());
@@ -1303,7 +1319,7 @@ void TrimUtil::trim(std::ostream& output,
   }
 
   // Float all affected edges to the top so they are prioritized first
-  // and Mark all required edges as needing to print them out
+  // and mark all required edges as needing to print them out
   for (const std::size_t index : graph.nodes()) {
     if (isRequired[index]) {
       const tiny::optional commandIndex = ctx.nodeToCommand[index];
@@ -1322,17 +1338,6 @@ void TrimUtil::trim(std::ostream& output,
       assert(!isAffected[index]);
     }
   }
-
-  // Generate a topological order where if `i` comes before `j`, then
-  // `i` is not an ancestor of `j`. Generally leafs -> roots.
-  std::vector<std::size_t> order(graph.size());
-  auto out = order.begin();
-  seen.assign(seen.size(), false);
-  for (const std::size_t index : graph.nodes()) {
-    out = topologicalOrder(index, seen, out, graph);
-  }
-
-  generateDummyEdges(order, isAffected, ctx);
 
   // Go through all build commands, keep a note of rules that are needed and
   // `phony` out the build edges that weren't required.

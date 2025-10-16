@@ -2,7 +2,7 @@ rule __trimjaTouch
   command = cmd /c type nul > $out_backslashes
 rule copy
   command = ninja --version $in -> $out
-build a.txt: copy b.txt d.txt e.txt | $builddir/__trimja__/1 $builddir/__trimja__/2
+build a.txt: copy b.txt d.txt f.txt | $builddir/__trimja__/1 $builddir/__trimja__/2
 build b.txt: copy c.txt
 build c.txt: copy d.txt
 build e.txt: copy d.txt
