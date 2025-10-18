@@ -59,4 +59,9 @@ bool BasicScope::appendValue(std::string& output, std::string_view name) const {
   }
 }
 
+void swap(BasicScope& lhs, BasicScope& rhs) noexcept {
+  using std::swap;
+  swap(lhs.m_variables, rhs.m_variables);
+}
+
 }  // namespace trimja
