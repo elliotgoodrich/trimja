@@ -54,6 +54,7 @@ add_library(
     src/nestedscope.cpp
     src/ninja_clock.cpp
     src/rule.cpp
+    src/stringstack.cpp
     src/trimutil.cpp
     thirdparty/ninja/lexer.cc
     thirdparty/ninja/util.cc

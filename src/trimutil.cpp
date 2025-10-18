@@ -34,6 +34,7 @@
 #include "murmur_hash.h"
 #include "nestedscope.h"
 #include "rule.h"
+#include "stringstack.h"
 
 #include <ninja/util.h>
 #include <rapidhash/rapidhash.h>
@@ -68,48 +69,6 @@ std::string popScopeAndRevertVariables(NestedScope& scope) {
   }
   return result;
 }
-
-// A vector of strings that are reused to avoid reallocations
-class PathVector {
-  std::vector<std::string> m_paths;
-  std::size_t m_size;
-
- public:
-  PathVector() : m_paths{}, m_size{0} {}
-
-  std::string& operator[](std::size_t index) {
-    assert(index < m_size);
-    return m_paths[index];
-  }
-
-  std::string& emplace_back() {
-    if (m_size < m_paths.size()) {
-      return m_paths[m_size++];
-    } else {
-      // Give each path a reasonable size to avoid reallocations
-      std::string& back = m_paths.emplace_back();
-      back.reserve(1024);
-      ++m_size;
-      return back;
-    }
-  }
-
-  void clear() {
-    // Keep the objects around but just call `clear()` so that we
-    // keep the memory around to be reused.
-    std::for_each(m_paths.data(), m_paths.data() + m_size,
-                  [](std::string& path) { path.clear(); });
-    m_size = 0;
-  }
-
-  std::string* begin() { return m_paths.data(); }
-  std::string* end() { return m_paths.data() + m_size; }
-
-  const std::string* data() const { return m_paths.data(); }
-
-  std::size_t size() const { return m_size; }
-  bool empty() const { return m_size == 0; }
-};
 
 struct BuildCommand {
   enum Resolution : std::int8_t {
@@ -246,9 +205,9 @@ class BuildContext {
 
   // Variables to be reused to avoid reallocations
   struct {
-    PathVector outs;
-    PathVector ins;
-    PathVector orderOnlyDeps;
+    StringStack outs;
+    StringStack ins;
+    StringStack orderOnlyDeps;
     std::vector<std::size_t> outIndices;
   } tmp;
 
@@ -322,7 +281,7 @@ class BuildContext {
   }
 
   void operator()(BuildReader& r) {
-    PathVector& outs = tmp.outs;
+    StringStack& outs = tmp.outs;
     outs.clear();
 
     for (const EvalString& path : r.readOut()) {
@@ -351,7 +310,7 @@ class BuildContext {
     }();
 
     // Collect inputs
-    PathVector& ins = tmp.ins;
+    StringStack& ins = tmp.ins;
     ins.clear();
     for (const EvalString& path : r.readIn()) {
       evaluate(ins.emplace_back(), path, fileScope);
@@ -362,7 +321,7 @@ class BuildContext {
       evaluate(ins.emplace_back(), path, fileScope);
     }
 
-    PathVector& orderOnlyDeps = tmp.orderOnlyDeps;
+    StringStack& orderOnlyDeps = tmp.orderOnlyDeps;
     orderOnlyDeps.clear();
     for (const EvalString& path : r.readOrderOnlyDeps()) {
       evaluate(orderOnlyDeps.emplace_back(), path, fileScope);
@@ -543,7 +502,7 @@ class BuildContext {
   }
 
   void operator()(DefaultReader& r) {
-    PathVector& ins = tmp.ins;
+    StringStack& ins = tmp.ins;
     ins.clear();
     for (const EvalString& path : r.readPaths()) {
       evaluate(ins.emplace_back(), path, fileScope);
