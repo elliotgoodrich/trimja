@@ -75,6 +75,16 @@ class BasicScope {
   BasicScope& operator=(const BasicScope& rhs);
 
   /**
+   * @brief For each variable in this scope, if the value is the same as in the
+   * parent scope, remove it from this scope. Otherwise, set its value to that
+   * in the parent scope.
+   * @param parent The parent scope to revert against.
+   * @return A reference to this newly modified BasicScope.
+   */
+  template <typename SCOPE>
+  BasicScope& revert(const SCOPE& parent);
+
+  /**
    * @brief Sets a variable in the scope.
    * @param key The name of the variable.
    * @param value The value of the variable.
@@ -100,7 +110,31 @@ class BasicScope {
    * @return An iterator to the end of the variables.
    */
   auto end() const { return m_variables.cend(); }
+
+  /**
+   * @brief Swap the values of the parameters.
+   * @param lhs The first value to swap with the second
+   * @param rhs The second value to swap with the first
+   */
+  friend void swap(BasicScope& lhs, BasicScope& rhs) noexcept;
 };
+
+template <typename SCOPE>
+BasicScope& BasicScope::revert(const SCOPE& parent) {
+  std::string parentValue;
+  for (auto it = m_variables.begin(), last = m_variables.end(); it != last;) {
+    auto& [name, value] = *it;
+    parentValue.clear();
+    parent.appendValue(parentValue, name);
+    if (value != parentValue) {
+      value = parentValue;
+      ++it;
+    } else {
+      it = m_variables.erase(it);
+    }
+  }
+  return *this;
+}
 
 }  // namespace trimja
 

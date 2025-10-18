@@ -51,6 +51,7 @@ add_library(
     src/logwriter.cpp
     src/manifestparser.cpp
     src/murmur_hash.cpp
+    src/nestedscope.cpp
     src/ninja_clock.cpp
     src/rule.cpp
     src/trimutil.cpp

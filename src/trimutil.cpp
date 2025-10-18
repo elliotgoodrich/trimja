@@ -32,6 +32,7 @@
 #include "logreader.h"
 #include "manifestparser.h"
 #include "murmur_hash.h"
+#include "nestedscope.h"
 #include "rule.h"
 
 #include <ninja/util.h>
@@ -51,6 +52,22 @@ namespace trimja {
 // NOLINTBEGIN(performance-avoid-endl)
 
 namespace {
+
+std::string popScopeAndRevertVariables(NestedScope& scope) {
+  std::string result;
+  BasicScope top = scope.pop();
+  for (const auto& [name, value] : top.revert(scope)) {
+    result += name;
+    if (value.empty()) {
+      result += " =\n";
+    } else {
+      result += " = ";
+      result += value;
+      result += '\n';
+    }
+  }
+  return result;
+}
 
 // A vector of strings that are reused to avoid reallocations
 class PathVector {
@@ -92,53 +109,6 @@ class PathVector {
 
   std::size_t size() const { return m_size; }
   bool empty() const { return m_size == 0; }
-};
-
-class NestedScope {
-  std::vector<BasicScope> m_scopes;
-
- public:
-  NestedScope() : m_scopes{1} {}
-
-  void push() {
-    BasicScope last = m_scopes.back();
-    m_scopes.push_back(std::move(last));
-  }
-
-  [[nodiscard]] std::string pop() {
-    // Take all variables defined in the latest scope and if their value differs
-    // from the value in the previous scope then generate some Ninja variable
-    // statements to set this variable back to the parent's value.
-    const BasicScope last = std::move(m_scopes.back());
-    m_scopes.pop_back();
-
-    std::string ninja;
-    std::string previousValue;
-    for (const auto& [name, value] : last) {
-      previousValue.clear();
-      m_scopes.back().appendValue(previousValue, name);
-      if (value != previousValue) {
-        ninja += name;
-        if (previousValue.empty()) {
-          ninja += " =";
-        } else {
-          ninja += " = ";
-          ninja += previousValue;
-        }
-        ninja += '\n';
-      }
-    }
-
-    return ninja;
-  }
-
-  void set(std::string_view key, std::string&& value) {
-    m_scopes.back().set(key, std::move(value));
-  }
-
-  bool appendValue(std::string& output, std::string_view name) const {
-    return m_scopes.back().appendValue(output, name);
-  }
 };
 
 struct BuildCommand {
@@ -654,7 +624,7 @@ class BuildContext {
     fileIds.pop_back();
 
     // Everything pushed back from popping a scope is a variable assignment
-    stringStorage.push_front(fileScope.pop());
+    stringStorage.push_front(popScopeAndRevertVariables(fileScope));
     parts.push_back(stringStorage.front());
     partsType.push_back(PartType::Variable);
 
