@@ -208,7 +208,7 @@ class BuildContext {
     StringStack outs;
     StringStack ins;
     StringStack orderOnlyDeps;
-    std::vector<std::size_t> outIndices;
+    std::vector<Graph::Node> outNodes;
   } tmp;
 
   // Return whether `ruleIndex` is a built-in rule (i.e. `default` or `phony`)
@@ -243,28 +243,28 @@ class BuildContext {
     assert(rules[BuildContext::defaultIndex].name == "default");
   }
 
-  std::size_t getPathIndex(std::string& path) {
-    const std::size_t index = graph.addPath(path);
-    if (index >= nodeToCommand.size()) {
-      nodeToCommand.resize(index + 1);
+  Graph::Node getPathNode(std::string& path) {
+    const Graph::Node node = graph.addPath(path);
+    if (node.index() >= nodeToCommand.size()) {
+      nodeToCommand.resize(node.index() + 1);
     }
-    return index;
+    return node;
   }
 
-  std::size_t getPathIndexForNormalized(std::string_view path) {
-    const std::size_t index = graph.addNormalizedPath(path);
-    if (index >= nodeToCommand.size()) {
-      nodeToCommand.resize(index + 1);
+  Graph::Node getPathNodeForNormalized(std::string_view path) {
+    const Graph::Node node = graph.addNormalizedPath(path);
+    if (node.index() >= nodeToCommand.size()) {
+      nodeToCommand.resize(node.index() + 1);
     }
-    return index;
+    return node;
   }
 
-  std::size_t getDefault() {
-    const std::size_t index = graph.addDefault();
-    if (index >= nodeToCommand.size()) {
-      nodeToCommand.resize(index + 1);
+  Graph::Node getDefault() {
+    const Graph::Node node = graph.addDefault();
+    if (node.index() >= nodeToCommand.size()) {
+      nodeToCommand.resize(node.index() + 1);
     }
-    return index;
+    return node;
   }
 
   void parse(const std::filesystem::path& ninjaFile,
@@ -382,19 +382,19 @@ class BuildContext {
     buildCommand.outStr = outStr;
 
     // Add outputs to the graph and link to the build command
-    std::vector<std::size_t>& outIndices = tmp.outIndices;
-    outIndices.clear();
+    std::vector<Graph::Node>& outNodes = tmp.outNodes;
+    outNodes.clear();
     for (std::string& out : outs) {
-      const std::size_t outIndex = getPathIndex(out);
-      outIndices.push_back(outIndex);
-      nodeToCommand[outIndex] = commandIndex;
+      const Graph::Node outNode = getPathNode(out);
+      outNodes.push_back(outNode);
+      nodeToCommand[outNode.index()] = commandIndex;
     }
 
     // Add inputs to the graph and add the edges to the graph
     for (std::string& in : ins) {
-      const std::size_t inIndex = getPathIndex(in);
-      for (const std::size_t outIndex : outIndices) {
-        graph.addEdge(inIndex, outIndex);
+      const Graph::Node inNode = getPathNode(in);
+      for (const Graph::Node outNode : outNodes) {
+        graph.addEdge(inNode, outNode);
       }
     }
 
@@ -402,9 +402,9 @@ class BuildContext {
     // one for order-only dependencies. This is because we only include a
     // build edge if an input (implicit or not) is affected.
     for (std::string& orderOnlyDep : orderOnlyDeps) {
-      const std::size_t inIndex = getPathIndex(orderOnlyDep);
-      for (const std::size_t outIndex : outIndices) {
-        graph.addOneWayEdge(inIndex, outIndex);
+      const Graph::Node inNode = getPathNode(orderOnlyDep);
+      for (const Graph::Node outNode : outNodes) {
+        graph.addOneWayEdge(inNode, outNode);
       }
     }
 
@@ -517,10 +517,10 @@ class BuildContext {
         commands.emplace_back(BuildCommand::Print, BuildContext::defaultIndex);
     buildCommand.partsIndices.push_back(partsIndex);
 
-    const std::size_t outIndex = getDefault();
-    nodeToCommand[outIndex] = commandIndex;
+    const Graph::Node outNode = getDefault();
+    nodeToCommand[outNode.index()] = commandIndex;
     for (std::string& in : ins) {
-      graph.addEdge(getPathIndex(in), outIndex);
+      graph.addEdge(getPathNode(in), outNode);
     }
   }
 
@@ -637,10 +637,10 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
     throw std::runtime_error{msg};
   }
 
-  std::vector<std::size_t> lookup(paths.size());
+  std::vector<Graph::Node> lookup(paths.size());
   std::transform(paths.cbegin(), paths.cend(), lookup.begin(),
                  [&](const std::string_view path) {
-                   return ctx.getPathIndexForNormalized(path);
+                   return ctx.getPathNodeForNormalized(path);
                  });
 
   for (std::size_t outIndex = 0; outIndex < deps.size(); ++outIndex) {
@@ -667,18 +667,17 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   for (const LogEntry& entry :
        LogReader{deps, LogEntry::Fields::out | LogEntry::Fields::hash}) {
     // Entries in `.ninja_log` are already normalized when written
-    const std::optional<std::size_t> index =
-        graph.findNormalizedPath(entry.out);
-    if (!index) {
+    const std::optional<Graph::Node> node = graph.findNormalizedPath(entry.out);
+    if (!node) {
       // If we don't have the path then it was since removed from the ninja
       // build file
       continue;
     }
 
-    seen[*index] = true;
-    std::optional<std::uint64_t>& cachedHash = cachedHashes[*index];
+    seen[node->index()] = true;
+    std::optional<std::uint64_t>& cachedHash = cachedHashes[node->index()];
     if (!cachedHash) {
-      const std::string_view command = getBuildCommand(*index);
+      const std::string_view command = getBuildCommand(node->index());
       switch (entry.hashType) {
         case HashType::murmur:
           cachedHash.emplace(murmur_hash::hash(command.data(), command.size()));
@@ -690,12 +689,13 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
           assert(false);  // TODO: `std::unreachable` in C++23
       }
     }
-    hashMismatch[*index] = (entry.hash != *cachedHash);
+    hashMismatch[node->index()] = (entry.hash != *cachedHash);
   }
 
   // Mark all build commands that are new or have been changed as required
-  for (std::size_t index = 0; index < seen.size(); ++index) {
-    const bool isBuildCommand = !graph.in(index).empty();
+  for (const Graph::Node node : graph.nodes()) {
+    const bool isBuildCommand = !graph.in(node).empty();
+    const std::size_t index = node.index();
     if (isAffected[index] || !isBuildCommand) {
       continue;
     }
@@ -709,14 +709,14 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
     if (!seen[index]) {
       isAffected[index] = true;
       if (explain) {
-        std::cerr << "Including '" << graph.path(index)
+        std::cerr << "Including '" << graph.path(node)
                   << "' as it was not found in '" << ninjaLog << "'"
                   << std::endl;
       }
     } else if (hashMismatch[index]) {
       isAffected[index] = true;
       if (explain) {
-        std::cerr << "Including '" << graph.path(index)
+        std::cerr << "Including '" << graph.path(node)
                   << "' as the build command hash differs in '" << ninjaLog
                   << "'" << std::endl;
       }
@@ -724,15 +724,16 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
   }
 }
 
-// If `index` has not been seen (using `seen`) then call
-// `markIfChildrenAffected` for all inputs to `index` and then set
-// `isAffected[index]` if any child is affected. Return whether this
+// If `node` has not been seen (using `seen`) then call
+// `markIfChildrenAffected` for all inputs to `node` and then set
+// `isAffected[node.index()]` if any child is affected. Return whether this
 // NOLINTNEXTLINE(misc-no-recursion)
-void markIfChildrenAffected(std::size_t index,
+void markIfChildrenAffected(Graph::Node node,
                             std::vector<bool>& seen,
                             std::vector<bool>& isAffected,
                             const detail::BuildContext& ctx,
                             bool explain) {
+  const std::size_t index = node.index();
   if (seen[index]) {
     return;
   }
@@ -740,8 +741,8 @@ void markIfChildrenAffected(std::size_t index,
 
   // Always process all our children so that `isAffected` is updated for them
   const Graph& graph = ctx.graph;
-  const auto& inIndices = graph.in(index);
-  for (const std::size_t in : inIndices) {
+  const auto& inIndices = graph.in(node);
+  for (const Graph::Node in : inIndices) {
     markIfChildrenAffected(in, seen, isAffected, ctx, explain);
   }
 
@@ -751,15 +752,15 @@ void markIfChildrenAffected(std::size_t index,
 
   // Otherwise, find out if at least one of our children is affected and if
   // so, mark ourselves as affected
-  const auto it =
-      std::find_if(inIndices.begin(), inIndices.end(),
-                   [&](const std::size_t index) { return isAffected[index]; });
+  const auto it = std::find_if(
+      inIndices.begin(), inIndices.end(),
+      [&](const Graph::Node in) { return isAffected[in.index()]; });
   if (it != inIndices.end()) {
     if (explain) {
       // Only mention user-defined rules since built-in rules are always kept
       if (!detail::BuildContext::isBuiltInRule(
               ctx.commands[*ctx.nodeToCommand[index]].ruleIndex)) {
-        std::cerr << "Including '" << graph.path(index)
+        std::cerr << "Including '" << graph.path(node)
                   << "' as it has the affected input '" << graph.path(*it)
                   << "'" << std::endl;
       }
@@ -768,28 +769,29 @@ void markIfChildrenAffected(std::size_t index,
   }
 }
 
-// If `index` has not been seen (using `seen`) then call
-// `ifRequiredRequireAllChildren` for all outputs to `index` and then set
-// `isRequired[index]` if any child is required.
+// If `node` has not been seen (using `seen`) then call
+// `ifRequiredRequireAllChildren` for all outputs to `node` and then set
+// `isRequired[node.index()]` if any child is required.
 // NOLINTNEXTLINE(misc-no-recursion)
-void ifRequiredRequireAllChildren(std::size_t index,
+void ifRequiredRequireAllChildren(Graph::Node node,
                                   std::vector<bool>& seen,
                                   std::vector<bool>& isRequired,
                                   std::vector<bool>& needsAllInputs,
                                   const detail::BuildContext& ctx,
                                   bool explain) {
+  const std::size_t index = node.index();
   if (seen[index]) {
     return;
   }
   seen[index] = true;
 
-  for (const std::size_t out : ctx.graph.out(index)) {
+  for (const Graph::Node out : ctx.graph.out(node)) {
     ifRequiredRequireAllChildren(out, seen, isRequired, needsAllInputs, ctx,
                                  explain);
   }
 
   // Nothing to do if we have no children
-  if (ctx.graph.in(index).empty()) {
+  if (ctx.graph.in(node).empty()) {
     return;
   }
 
@@ -803,14 +805,14 @@ void ifRequiredRequireAllChildren(std::size_t index,
 
   // If any build commands requiring us are marked as needing all inputs then
   // mark ourselves as affected and that we also need all our inputs.
-  const auto& outIndices = ctx.graph.out(index);
+  const auto& outIndices = ctx.graph.out(node);
   const auto it = std::find_if(
       outIndices.begin(), outIndices.end(),
-      [&](const std::size_t index) { return needsAllInputs[index]; });
+      [&](const Graph::Node out) { return needsAllInputs[out.index()]; });
   if (it != outIndices.end()) {
     if (!isRequired[index]) {
       if (explain) {
-        std::cerr << "Including '" << ctx.graph.path(index)
+        std::cerr << "Including '" << ctx.graph.path(node)
                   << "' as it is a required input for the affected output '"
                   << ctx.graph.path(*it) << "'" << std::endl;
       }
@@ -900,14 +902,14 @@ void TrimUtil::trim(std::ostream& output,
 
     // First try the raw input
     {
-      const std::optional<std::size_t> index = graph.findPath(line);
-      if (index.has_value()) {
-        if (explain && !isAffected[*index]) {
+      const std::optional<Graph::Node> node = graph.findPath(line);
+      if (node.has_value()) {
+        if (explain && !isAffected[node->index()]) {
           std::cerr << "Including '" << line
                     << "' as it was marked as affected by the user"
                     << std::endl;
         }
-        isAffected[*index] = true;
+        isAffected[node->index()] = true;
         continue;
       }
     }
@@ -920,14 +922,14 @@ void TrimUtil::trim(std::ostream& output,
           attempted.emplace_back(std::filesystem::absolute(p, error));
       if (!error) {
         std::string absoluteStr = absolute.string();
-        const std::optional<std::size_t> index = graph.findPath(absoluteStr);
-        if (index.has_value()) {
-          if (explain && !isAffected[*index]) {
+        const std::optional<Graph::Node> node = graph.findPath(absoluteStr);
+        if (node.has_value()) {
+          if (explain && !isAffected[node->index()]) {
             std::cerr << "Including '" << line
                       << "' as it was marked as affected by the user"
                       << std::endl;
           }
-          isAffected[*index] = true;
+          isAffected[node->index()] = true;
           continue;
         }
       }
@@ -941,14 +943,14 @@ void TrimUtil::trim(std::ostream& output,
           attempted.emplace_back(std::filesystem::relative(p, error));
       if (!error) {
         std::string relativeStr = relative.string();
-        const std::optional<std::size_t> index = graph.findPath(relativeStr);
-        if (index.has_value()) {
-          if (explain && !isAffected[*index]) {
+        const std::optional<Graph::Node> node = graph.findPath(relativeStr);
+        if (node.has_value()) {
+          if (explain && !isAffected[node->index()]) {
             std::cerr << "Including '" << line
                       << "' as it was marked as affected by the user"
                       << std::endl;
           }
-          isAffected[*index] = true;
+          isAffected[node->index()] = true;
           continue;
         }
       }
@@ -971,8 +973,8 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all outputs that have an affected input as affected
   Timer trimTimer = CPUProfiler::start("trim time");
-  for (std::size_t index = 0; index < graph.size(); ++index) {
-    markIfChildrenAffected(index, seen, isAffected, ctx, explain);
+  for (const Graph::Node node : graph.nodes()) {
+    markIfChildrenAffected(node, seen, isAffected, ctx, explain);
   }
 
   // Keep the difference between build inputs that are affected (i.e. have
@@ -984,8 +986,8 @@ void TrimUtil::trim(std::ostream& output,
   // Mark all inputs to affected outputs as required
   seen.assign(seen.size(), false);
   std::vector<bool> needsAllInputs(graph.size(), false);
-  for (std::size_t index = 0; index < graph.size(); ++index) {
-    ifRequiredRequireAllChildren(index, seen, isRequired, needsAllInputs, ctx,
+  for (const Graph::Node node : graph.nodes()) {
+    ifRequiredRequireAllChildren(node, seen, isRequired, needsAllInputs, ctx,
                                  explain);
   }
 

@@ -56,6 +56,7 @@ add_library(
     src/rule.cpp
     src/stringstack.cpp
     src/trimutil.cpp
+    thirdparty/gch/small_vector.natvis
     thirdparty/ninja/lexer.cc
     thirdparty/ninja/util.cc
     $<$<BOOL:${WIN32}>:thirdparty/ninja/getopt.c>
