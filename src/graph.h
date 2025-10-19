@@ -24,6 +24,7 @@
 #define TRIMJA_GRAPH
 
 #include "fixed_string.h"
+#include "indexinto.h"
 
 #include <boost/boost_unordered.hpp>
 #include <gch/small_vector.hpp>
@@ -61,23 +62,26 @@ class Graph {
     bool operator()(std::string_view left, const fixed_string& right) const;
   };
 
+ public:
+  using Node = IndexInto<Graph>;
+
  private:
   // A look up from path to vertex index.
-  boost::unordered_flat_map<fixed_string, std::size_t, PathHash, PathEqual>
-      m_pathToIndex;
+  boost::unordered_flat_map<fixed_string, Node, PathHash, PathEqual>
+      m_pathToNode;
 
   // An adjacency list of input -> output
-  std::vector<gch::small_vector<std::size_t>> m_inputToOutput;
+  std::vector<gch::small_vector<Node>> m_inputToOutput;
 
   // An adjacency list of output -> Input
-  std::vector<gch::small_vector<std::size_t>> m_outputToInput;
+  std::vector<gch::small_vector<Node>> m_outputToInput;
 
-  // Names of paths (this points to the keys in `m_pathToIndex`, which is always
+  // Names of paths (this points to the keys in `m_pathToNode`, which is always
   // valid since `fixed_string` has no small-string optimization and always
   // allocates on the heap.
   std::vector<std::string_view> m_path;
 
-  std::optional<std::size_t> m_defaultIndex;
+  std::optional<Node> m_defaultNode;
 
  public:
   /**
@@ -85,109 +89,113 @@ class Graph {
    */
   Graph();
 
-  Graph(Graph&&) = default;
+  // Note that the move constructor is deleted because it would
+  // invalidate the container pointers of the `Node` class.  If this is needed
+  // in the future then the contents of `Graph` should be put inside a
+  // `std::unique_ptr` - at least in debug builds.
+  Graph(Graph&&) = delete;
   Graph(const Graph&) = delete;
-  Graph& operator=(Graph&&) = default;
+  Graph& operator=(Graph&&) = delete;
   Graph& operator=(const Graph&) = delete;
 
   /**
    * @brief Adds the path to the graph if it isn't already present and returns
-   * the corresponding index.
+   * the corresponding node.
    * @param path The path to be added. It will be normalized.
-   * @return The index corresponding to the added path.
+   * @return The node corresponding to the added path.
    */
-  std::size_t addPath(std::string& path);
+  Node addPath(std::string& path);
 
   /**
    * @brief Adds a normalized path to the graph if it isn't already present and
-   * returns the corresponding index.
+   * returns the corresponding node.
    * @param path The normalized path to be added.
-   * @return The index corresponding to the added path.
+   * @return The node corresponding to the added path.
    */
-  std::size_t addNormalizedPath(std::string_view path);
+  Node addNormalizedPath(std::string_view path);
 
   /**
-   * @brief Finds the index of the specified path if it exists.
+   * @brief Finds the node of the specified path if it exists.
    * @param path The path to be found. It will be normalized.
-   * @return The index of the path if found, otherwise std::nullopt.
+   * @return The node of the path if found, otherwise std::nullopt.
    */
-  std::optional<std::size_t> findPath(std::string& path) const;
+  std::optional<Node> findPath(std::string& path) const;
 
   /**
-   * @brief Finds the index of the specified normalized path if it exists.
+   * @brief Finds the node of the specified normalized path if it exists.
    * @param path The normalized path to be found.
-   * @return The index of the path if found, otherwise std::nullopt.
+   * @return The node of the path if found, otherwise std::nullopt.
    */
-  std::optional<std::size_t> findNormalizedPath(std::string_view path) const;
+  std::optional<Node> findNormalizedPath(std::string_view path) const;
 
   /**
    * @brief Adds a default node to the graph.
-   * @return The index of the default node.
+   * @pre There is no default node already present.
+   * @return The default node.
    */
-  std::size_t addDefault();
+  Node addDefault();
 
   /**
    * @brief Adds bidirectional edge between the specified input and output
    * nodes.
-   * @param in The index of the input node.
-   * @param out The index of the output node.
+   * @param in The input node.
+   * @param out The output node.
    */
-  void addEdge(std::size_t in, std::size_t out);
+  void addEdge(Node in, Node out);
 
   /**
    * @brief Adds an one-way edge from the specified input to output node.
-   * @param in The index of the input node.
-   * @param out The index of the output node.
+   * @param in The input node.
+   * @param out The output node.
    */
-  void addOneWayEdge(std::size_t in, std::size_t out);
+  void addOneWayEdge(Node in, Node out);
 
   /**
-   * @brief Checks if the specified path index is the default node.
-   * @param pathIndex The index of the path to check.
-   * @return True if the path index is the default node, otherwise false.
+   * @brief Checks if the specified node is the default node.
+   * @param node The node to check.
+   * @return Whether the node is the default.
    */
-  bool isDefault(std::size_t pathIndex) const;
+  bool isDefault(Node node) const;
 
   /**
-   * @brief Gets the index of the default node.
-   * @return The index of the default node.
+   * @brief Gets the default node if it exists.
+   * @return The optional default node.
    */
-  std::optional<std::size_t> defaultIndex() const;
+  std::optional<Node> getDefault() const;
 
   /**
-   * @brief Gets the path corresponding to the specified path index.
-   * @param pathIndex The index of the path.
-   * @return The path corresponding to the specified index.
+   * @brief Gets the path corresponding to the specified node.
+   * @param node The node to get the path of.
+   * @return The path corresponding to the specified node.
    */
-  std::string_view path(std::size_t pathIndex) const;
+  std::string_view path(Node node) const;
 
   /**
-   * @brief Gets the vector of output nodes for the specified path index.
-   * @param pathIndex The index of the path.
+   * @brief Gets the vector of output nodes for the specified node.
+   * @param node The node to get the outputs of.
    * @return The vector of output nodes.
    */
-  const gch::small_vector<std::size_t>& out(std::size_t pathIndex) const;
+  const gch::small_vector<Node>& out(Node node) const;
 
   /**
-   * @brief Gets the vector of input nodes for the specified path index.  Note
+   * @brief Gets the vector of input nodes for the specified node.  Note
    * that this does not include order-only dependencies.
-   * @param pathIndex The index of the path.
+   * @param node The node to get the inputs of.
    * @return The vector of input nodes.
    */
-  const gch::small_vector<std::size_t>& in(std::size_t pathIndex) const;
-
-  /**
-   * @brief Gets the index of the specified path.
-   * @param path The path to be found.
-   * @return The index of the path.
-   */
-  std::size_t getPath(std::string_view path) const;
+  const gch::small_vector<Node>& in(Node node) const;
 
   /**
    * @brief Gets the number of nodes in the graph.
    * @return The number of nodes.
    */
   std::size_t size() const;
+
+  /**
+   * @brief Return a range of all nodes in this graph.
+   * @return A range of all nodes.
+   */
+  IndexIntoRange<Node> nodes() const;
 };
 
 }  // namespace trimja

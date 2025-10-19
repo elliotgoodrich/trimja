@@ -66,10 +66,10 @@ bool Graph::PathEqual::operator()(std::string_view left,
 
 Graph::Graph() = default;
 
-std::size_t Graph::addPath(std::string& path) {
+Graph::Node Graph::addPath(std::string& path) {
   const std::size_t nextIndex = m_inputToOutput.size();
   CanonicalizePath(&path);
-  const auto [it, inserted] = m_pathToIndex.try_emplace(path, nextIndex);
+  const auto [it, inserted] = m_pathToNode.try_emplace(path, nextIndex, this);
   if (inserted) {
     m_inputToOutput.emplace_back();
     m_outputToInput.emplace_back();
@@ -85,14 +85,14 @@ std::size_t Graph::addPath(std::string& path) {
   return it->second;
 }
 
-std::size_t Graph::addNormalizedPath(std::string_view path) {
+Graph::Node Graph::addNormalizedPath(std::string_view path) {
   const std::size_t nextIndex = m_inputToOutput.size();
 #ifndef NDEBUG
   std::string copy{path};
   CanonicalizePath(&copy);
   assert(copy == path);
 #endif
-  const auto [it, inserted] = m_pathToIndex.try_emplace(path, nextIndex);
+  const auto [it, inserted] = m_pathToNode.try_emplace(path, nextIndex, this);
   if (inserted) {
     m_inputToOutput.emplace_back();
     m_outputToInput.emplace_back();
@@ -101,10 +101,10 @@ std::size_t Graph::addNormalizedPath(std::string_view path) {
   return it->second;
 }
 
-std::optional<std::size_t> Graph::findPath(std::string& path) const {
+std::optional<Graph::Node> Graph::findPath(std::string& path) const {
   CanonicalizePath(&path);
-  const auto it = m_pathToIndex.find(path);
-  if (it == m_pathToIndex.end()) {
+  const auto it = m_pathToNode.find(path);
+  if (it == m_pathToNode.end()) {
     return std::nullopt;
   } else {
 #ifdef _WIN32
@@ -117,63 +117,64 @@ std::optional<std::size_t> Graph::findPath(std::string& path) const {
   }
 }
 
-std::optional<std::size_t> Graph::findNormalizedPath(
+std::optional<Graph::Node> Graph::findNormalizedPath(
     std::string_view path) const {
-  const auto it = m_pathToIndex.find(path);
-  if (it == m_pathToIndex.end()) {
+  const auto it = m_pathToNode.find(path);
+  if (it == m_pathToNode.end()) {
     return std::nullopt;
   } else {
     return it->second;
   }
 }
 
-std::size_t Graph::addDefault() {
-  assert(!m_defaultIndex.has_value());
-  const std::size_t nextIndex = m_inputToOutput.size();
+Graph::Node Graph::addDefault() {
+  assert(!m_defaultNode.has_value());
+  const Node node{m_inputToOutput.size(), this};
   m_inputToOutput.emplace_back();
   m_outputToInput.emplace_back();
   m_path.emplace_back("default");
-  m_defaultIndex = nextIndex;
-  return nextIndex;
+  m_defaultNode = node;
+  return node;
 }
 
-void Graph::addEdge(std::size_t in, std::size_t out) {
+void Graph::addEdge(Graph::Node in, Graph::Node out) {
   assert(in != out);
-  m_inputToOutput[in].push_back(out);
-  m_outputToInput[out].push_back(in);
+  m_inputToOutput[in.index()].push_back(out);
+  m_outputToInput[out.index()].push_back(in);
 }
 
-void Graph::addOneWayEdge(std::size_t in, std::size_t out) {
+void Graph::addOneWayEdge(Graph::Node in, Graph::Node out) {
   assert(in != out);
-  m_inputToOutput[in].push_back(out);
+  m_inputToOutput[in.index()].push_back(out);
 }
 
-bool Graph::isDefault(std::size_t pathIndex) const {
-  return pathIndex == m_defaultIndex;
+bool Graph::isDefault(Graph::Node node) const {
+  return node == m_defaultNode;
 }
 
-std::optional<std::size_t> Graph::defaultIndex() const {
-  return m_defaultIndex;
+std::optional<Graph::Node> Graph::getDefault() const {
+  return m_defaultNode;
 }
 
-std::string_view Graph::path(std::size_t pathIndex) const {
-  return m_path[pathIndex];
+std::string_view Graph::path(Graph::Node node) const {
+  return m_path[node.index()];
 }
 
-const gch::small_vector<std::size_t>& Graph::out(std::size_t pathIndex) const {
-  return m_inputToOutput[pathIndex];
+const gch::small_vector<Graph::Node>& Graph::out(Graph::Node node) const {
+  return m_inputToOutput[node.index()];
 }
 
-const gch::small_vector<std::size_t>& Graph::in(std::size_t pathIndex) const {
-  return m_outputToInput[pathIndex];
-}
-
-std::size_t Graph::getPath(std::string_view path) const {
-  return m_pathToIndex.find(path)->second;
+const gch::small_vector<Graph::Node>& Graph::in(Graph::Node node) const {
+  return m_outputToInput[node.index()];
 }
 
 std::size_t Graph::size() const {
   return m_inputToOutput.size();
+}
+
+IndexIntoRange<Graph::Node> Graph::nodes() const {
+  return IndexIntoRange<Graph::Node>{Node{0, this},
+                                     Node{m_inputToOutput.size(), this}};
 }
 
 }  // namespace trimja
