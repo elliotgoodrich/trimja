@@ -139,13 +139,13 @@ Graph::Node Graph::addDefault() {
 
 void Graph::addEdge(Graph::Node in, Graph::Node out) {
   assert(in != out);
-  m_inputToOutput[in.index()].push_back(out);
-  m_outputToInput[out.index()].push_back(in);
+  m_inputToOutput[in].push_back(out);
+  m_outputToInput[out].push_back(in);
 }
 
 void Graph::addOneWayEdge(Graph::Node in, Graph::Node out) {
   assert(in != out);
-  m_inputToOutput[in.index()].push_back(out);
+  m_inputToOutput[in].push_back(out);
 }
 
 bool Graph::isDefault(Graph::Node node) const {
@@ -157,15 +157,15 @@ std::optional<Graph::Node> Graph::getDefault() const {
 }
 
 std::string_view Graph::path(Graph::Node node) const {
-  return m_path[node.index()];
+  return m_path[node];
 }
 
 const gch::small_vector<Graph::Node>& Graph::out(Graph::Node node) const {
-  return m_inputToOutput[node.index()];
+  return m_inputToOutput[node];
 }
 
 const gch::small_vector<Graph::Node>& Graph::in(Graph::Node node) const {
-  return m_outputToInput[node.index()];
+  return m_outputToInput[node];
 }
 
 std::size_t Graph::size() const {

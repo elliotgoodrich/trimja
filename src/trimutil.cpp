@@ -29,6 +29,7 @@
 #include "evalstring.h"
 #include "fixed_string.h"
 #include "graph.h"
+#include "indexinto.h"
 #include "logreader.h"
 #include "manifestparser.h"
 #include "murmur_hash.h"
@@ -70,6 +71,17 @@ std::string popScopeAndRevertVariables(NestedScope& scope) {
   return result;
 }
 
+}  // namespace
+
+struct PartTag {};
+using PartIndex = IndexInto<detail::BuildContext, PartTag>;
+struct RuleTag {};
+using RuleIndex = IndexInto<detail::BuildContext, RuleTag>;
+struct BuildCommandTag {};
+using BuildCommandIndex = IndexInto<detail::BuildContext, BuildCommandTag>;
+struct NodeTag {};
+using Node = IndexInto<detail::BuildContext, NodeTag, Graph::Node>;
+
 struct BuildCommand {
   enum Resolution : std::int8_t {
     // Print the entire build command
@@ -82,7 +94,7 @@ struct BuildCommand {
   Resolution resolution;
 
   // The location of our entire build command inside `BuildContext::parts`
-  gch::small_vector<std::size_t, 3> partsIndices;
+  gch::small_vector<PartIndex, 3> partsIndices;
 
   // The build command (+ rspfile_content) that gets hashed by ninja
   std::string hashTarget;
@@ -98,9 +110,9 @@ struct BuildCommand {
   std::string_view validationStr;
 
   // The index of the rule into `BuildContext::rules`
-  std::size_t ruleIndex;
+  RuleIndex ruleIndex;
 
-  BuildCommand(Resolution resolution, std::size_t ruleIndex)
+  BuildCommand(Resolution resolution, RuleIndex ruleIndex)
       : resolution{resolution}, ruleIndex{ruleIndex} {}
 };
 
@@ -116,15 +128,13 @@ struct RuleCommand {
   std::size_t instance = 1;
 
   // The location of our entire rule inside `BuildContext::parts`
-  gch::small_vector<std::size_t, 3> partsIndices;
+  gch::small_vector<PartIndex, 3> partsIndices;
 
   // An id of the file that defined this rule or `nullopt` for built-in rules
   std::optional<std::size_t> fileId;
 
   RuleCommand(std::string_view name) : name{name} {}
 };
-
-}  // namespace
 
 namespace detail {
 
@@ -165,21 +175,21 @@ class BuildContext {
 
   // Map each output index to the index within `command`.  Use `nullopt` for
   // values that aren't an output to a build command (i.e. a source file)
-  std::vector<
-      tiny::optional<std::size_t, std::numeric_limits<std::size_t>::max()>>
-      nodeToCommand;
+  // TODO: Move back to `tiny::optional<BuildCommandIndex, sentinel>`, which is
+  // failing to compile in my attempts.
+  std::vector<std::optional<BuildCommandIndex>> nodeToCommand;
 
   // Our list of rules
   std::vector<RuleCommand> rules;
 
   struct RuleBits {
     // The index of the rule in `rules`
-    std::size_t ruleIndex;
+    RuleIndex ruleIndex;
 
     // How many rules have this name
     std::size_t duplicates;
 
-    explicit RuleBits(std::size_t ruleIndex)
+    explicit RuleBits(RuleIndex ruleIndex)
         : ruleIndex{ruleIndex}, duplicates{1} {}
   };
 
@@ -190,7 +200,7 @@ class BuildContext {
       ruleLookup;
 
   // A stack of rules that have shadowed rules in their parent file.
-  std::vector<std::vector<std::size_t>> shadowedRules;
+  std::vector<std::vector<RuleIndex>> shadowedRules;
 
   // When entering into subninja files we keep a stack of the file ids
   // that are generated from an incremental counter.
@@ -208,11 +218,11 @@ class BuildContext {
     StringStack outs;
     StringStack ins;
     StringStack orderOnlyDeps;
-    std::vector<Graph::Node> outNodes;
+    std::vector<Node> outNodes;
   } tmp;
 
   // Return whether `ruleIndex` is a built-in rule (i.e. `default` or `phony`)
-  static bool isBuiltInRule(std::size_t ruleIndex) {
+  static bool isBuiltInRule(RuleIndex ruleIndex) {
     static_assert(phonyIndex == 0);
     static_assert(defaultIndex == 1);
     return ruleIndex < 2;
@@ -236,35 +246,44 @@ class BuildContext {
     fileIds.push_back(nextFileId++);
 
     rules.emplace_back(
-        ruleLookup.try_emplace("phony", rules.size()).first->first);
+        ruleLookup.try_emplace("phony", RuleIndex{rules.size(), this})
+            .first->first);
     assert(rules[BuildContext::phonyIndex].name == "phony");
     rules.emplace_back(
-        ruleLookup.try_emplace("default", rules.size()).first->first);
+        ruleLookup.try_emplace("default", RuleIndex{rules.size(), this})
+            .first->first);
     assert(rules[BuildContext::defaultIndex].name == "default");
   }
 
-  Graph::Node getPathNode(std::string& path) {
+  // Delete move/copy operations since we need pointer stability to `this` for
+  // the `IndexInto` elements
+  BuildContext(BuildContext&&) = delete;
+  BuildContext(const BuildContext&) = delete;
+  BuildContext& operator=(BuildContext&&) = delete;
+  BuildContext& operator=(const BuildContext&) = delete;
+
+  Node getPathNode(std::string& path) {
     const Graph::Node node = graph.addPath(path);
-    if (node.index() >= nodeToCommand.size()) {
-      nodeToCommand.resize(node.index() + 1);
+    if (node >= nodeToCommand.size()) {
+      nodeToCommand.resize(node + 1);
     }
-    return node;
+    return Node{node, this};
   }
 
-  Graph::Node getPathNodeForNormalized(std::string_view path) {
+  Node getPathNodeForNormalized(std::string_view path) {
     const Graph::Node node = graph.addNormalizedPath(path);
-    if (node.index() >= nodeToCommand.size()) {
-      nodeToCommand.resize(node.index() + 1);
+    if (node >= nodeToCommand.size()) {
+      nodeToCommand.resize(node + 1);
     }
-    return node;
+    return Node{node, this};
   }
 
-  Graph::Node getDefault() {
+  Node getDefault() {
     const Graph::Node node = graph.addDefault();
-    if (node.index() >= nodeToCommand.size()) {
-      nodeToCommand.resize(node.index() + 1);
+    if (node >= nodeToCommand.size()) {
+      nodeToCommand.resize(node + 1);
     }
-    return node;
+    return Node{node, this};
   }
 
   void parse(const std::filesystem::path& ninjaFile,
@@ -300,7 +319,7 @@ class BuildContext {
 
     std::string_view ruleName = r.readName();
 
-    const std::size_t ruleIndex = [&] {
+    const RuleIndex ruleIndex = [&] {
       const auto ruleIt = ruleLookup.find(ruleName);
       if (ruleIt == ruleLookup.end()) {
         throw std::runtime_error("Unable to find " + std::string(ruleName) +
@@ -348,7 +367,7 @@ class BuildContext {
     }
 
     // Add the build command
-    const std::size_t commandIndex = commands.size();
+    const BuildCommandIndex commandIndex{commands.size(), this};
     BuildCommand& buildCommand = commands.emplace_back(
         // Always print `phony` rules since it saves us time generating an
         // identical `phony` rule later on.
@@ -359,20 +378,20 @@ class BuildContext {
     if (rules[ruleIndex].instance == 1) {
       parts.emplace_back(r.start(), r.bytesParsed());
       partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.push_back(partsIndex);
+      buildCommand.partsIndices.emplace_back(partsIndex, this);
     } else {
       const char* endOfName = ruleName.data() + ruleName.size();
       parts.emplace_back(r.start(), endOfName - r.start());
       partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.push_back(partsIndex);
+      buildCommand.partsIndices.emplace_back(partsIndex, this);
 
       parts.push_back(to_string_view(rules[ruleIndex].instance));
       partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.push_back(partsIndex + 1);
+      buildCommand.partsIndices.emplace_back(partsIndex + 1, this);
 
       parts.emplace_back(endOfName, r.bytesParsed() - (endOfName - r.start()));
       partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.push_back(partsIndex + 2);
+      buildCommand.partsIndices.emplace_back(partsIndex + 2, this);
     }
     // Check we aren't actually allocating
     assert(buildCommand.partsIndices.size() <=
@@ -382,18 +401,18 @@ class BuildContext {
     buildCommand.outStr = outStr;
 
     // Add outputs to the graph and link to the build command
-    std::vector<Graph::Node>& outNodes = tmp.outNodes;
+    std::vector<Node>& outNodes = tmp.outNodes;
     outNodes.clear();
     for (std::string& out : outs) {
-      const Graph::Node outNode = getPathNode(out);
+      const Node outNode = getPathNode(out);
       outNodes.push_back(outNode);
-      nodeToCommand[outNode.index()] = commandIndex;
+      nodeToCommand[outNode] = commandIndex;
     }
 
     // Add inputs to the graph and add the edges to the graph
     for (std::string& in : ins) {
-      const Graph::Node inNode = getPathNode(in);
-      for (const Graph::Node outNode : outNodes) {
+      const Node inNode = getPathNode(in);
+      for (const Node& outNode : outNodes) {
         graph.addEdge(inNode, outNode);
       }
     }
@@ -402,8 +421,8 @@ class BuildContext {
     // one for order-only dependencies. This is because we only include a
     // build edge if an input (implicit or not) is affected.
     for (std::string& orderOnlyDep : orderOnlyDeps) {
-      const Graph::Node inNode = getPathNode(orderOnlyDep);
-      for (const Graph::Node outNode : outNodes) {
+      const Node inNode = getPathNode(orderOnlyDep);
+      for (const Node& outNode : outNodes) {
         graph.addOneWayEdge(inNode, outNode);
       }
     }
@@ -420,7 +439,8 @@ class BuildContext {
 
   void operator()(RuleReader& r) {
     std::string_view name = r.name();
-    const auto [ruleIt, isNew] = ruleLookup.try_emplace(name, rules.size());
+    const auto [ruleIt, isNew] =
+        ruleLookup.try_emplace(name, RuleIndex{rules.size(), this});
 
     if (!isNew) {
       if (isBuiltInRule(ruleIt->second.ruleIndex)) {
@@ -448,7 +468,7 @@ class BuildContext {
         // subninja, but we never need to unshadow these
         shadowedRules.back().push_back(bits.ruleIndex);
       }
-      bits.ruleIndex = rules.size();
+      bits.ruleIndex = RuleIndex{rules.size(), this};
       ++bits.duplicates;
     }
 
@@ -464,11 +484,11 @@ class BuildContext {
       const std::size_t partsIndex = parts.size();
       parts.emplace_back(r.start(), bytesToEndOfName);
       partsType.push_back(PartType::Rule);
-      rule.partsIndices.push_back(partsIndex);
+      rule.partsIndices.emplace_back(partsIndex, this);
 
       parts.push_back(to_string_view(ruleIt->second.duplicates));
       partsType.push_back(PartType::Rule);
-      rule.partsIndices.push_back(partsIndex + 1);
+      rule.partsIndices.emplace_back(partsIndex + 1, this);
     }
 
     for (const auto& [key, value] : r.readVariables()) {
@@ -488,13 +508,13 @@ class BuildContext {
       // Include the rest of the variables if we're shadowed
       parts.emplace_back(endOfName, r.bytesParsed() - bytesToEndOfName);
       partsType.push_back(PartType::Rule);
-      rule.partsIndices.push_back(partsIndex);
+      rule.partsIndices.emplace_back(partsIndex, this);
       assert(rule.partsIndices.size() == 3);
     } else {
       // If we're not shadowed then we can include the whole rule
       parts.emplace_back(r.start(), r.bytesParsed());
       partsType.push_back(PartType::Rule);
-      rule.partsIndices.push_back(partsIndex);
+      rule.partsIndices.emplace_back(partsIndex, this);
       assert(rule.partsIndices.size() == 1);
     }
     // Check we aren't actually allocating
@@ -508,17 +528,17 @@ class BuildContext {
       evaluate(ins.emplace_back(), path, fileScope);
     }
 
-    const std::size_t partsIndex = parts.size();
+    const PartIndex partsIndex{parts.size(), this};
     parts.emplace_back(r.start(), r.bytesParsed());
     partsType.push_back(PartType::Default);
 
-    const std::size_t commandIndex = commands.size();
-    BuildCommand& buildCommand =
-        commands.emplace_back(BuildCommand::Print, BuildContext::defaultIndex);
+    const BuildCommandIndex commandIndex{commands.size(), this};
+    BuildCommand& buildCommand = commands.emplace_back(
+        BuildCommand::Print, RuleIndex{BuildContext::defaultIndex, this});
     buildCommand.partsIndices.push_back(partsIndex);
 
-    const Graph::Node outNode = getDefault();
-    nodeToCommand[outNode.index()] = commandIndex;
+    const Node outNode = getDefault();
+    nodeToCommand[outNode] = commandIndex;
     for (std::string& in : ins) {
       graph.addEdge(getPathNode(in), outNode);
     }
@@ -590,7 +610,7 @@ class BuildContext {
     // For all the shadowed rules, set name to ruleIndex lookup back to the
     // shadowed index.  We have to grab the name and then find since
     // `unordered_flat_map` doesn't have iterator/reference stability by default
-    for (const std::size_t shadowedRuleIndex : shadowedRules.back()) {
+    for (const RuleIndex shadowedRuleIndex : shadowedRules.back()) {
       const RuleCommand& shadowedRule = rules[shadowedRuleIndex];
       ruleLookup.find(shadowedRule.name)->second.ruleIndex = shadowedRuleIndex;
     }
@@ -637,7 +657,7 @@ void parseDepFile(const std::filesystem::path& ninjaDeps,
     throw std::runtime_error{msg};
   }
 
-  std::vector<Graph::Node> lookup(paths.size());
+  std::vector<Node> lookup(paths.size());
   std::transform(paths.cbegin(), paths.cend(), lookup.begin(),
                  [&](const std::string_view path) {
                    return ctx.getPathNodeForNormalized(path);
@@ -674,10 +694,10 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
       continue;
     }
 
-    seen[node->index()] = true;
-    std::optional<std::uint64_t>& cachedHash = cachedHashes[node->index()];
+    seen[*node] = true;
+    std::optional<std::uint64_t>& cachedHash = cachedHashes[*node];
     if (!cachedHash) {
-      const std::string_view command = getBuildCommand(node->index());
+      const std::string_view command = getBuildCommand(*node);
       switch (entry.hashType) {
         case HashType::murmur:
           cachedHash.emplace(murmur_hash::hash(command.data(), command.size()));
@@ -689,32 +709,38 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
           assert(false);  // TODO: `std::unreachable` in C++23
       }
     }
-    hashMismatch[node->index()] = (entry.hash != *cachedHash);
+    hashMismatch[*node] = (entry.hash != *cachedHash);
   }
 
   // Mark all build commands that are new or have been changed as required
   for (const Graph::Node node : graph.nodes()) {
     const bool isBuildCommand = !graph.in(node).empty();
-    const std::size_t index = node.index();
-    if (isAffected[index] || !isBuildCommand) {
+    if (isAffected[node] || !isBuildCommand) {
       continue;
     }
+
+    // If we get to this place then we have children, therefore
+    // we must have been built by a command
+    const std::optional<BuildCommandIndex>& commandIndex =
+        ctx.nodeToCommand[node];
+    assert(commandIndex.has_value());
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    const std::size_t idx = *commandIndex;
 
     // built-in rules don't appear in the build log so skip them
-    if (detail::BuildContext::isBuiltInRule(
-            ctx.commands[*ctx.nodeToCommand[index]].ruleIndex)) {
+    if (detail::BuildContext::isBuiltInRule(ctx.commands[idx].ruleIndex)) {
       continue;
     }
 
-    if (!seen[index]) {
-      isAffected[index] = true;
+    if (!seen[node]) {
+      isAffected[node] = true;
       if (explain) {
         std::cerr << "Including '" << graph.path(node)
                   << "' as it was not found in '" << ninjaLog << "'"
                   << std::endl;
       }
-    } else if (hashMismatch[index]) {
-      isAffected[index] = true;
+    } else if (hashMismatch[node]) {
+      isAffected[node] = true;
       if (explain) {
         std::cerr << "Including '" << graph.path(node)
                   << "' as the build command hash differs in '" << ninjaLog
@@ -726,18 +752,17 @@ void parseLogFile(const std::filesystem::path& ninjaLog,
 
 // If `node` has not been seen (using `seen`) then call
 // `markIfChildrenAffected` for all inputs to `node` and then set
-// `isAffected[node.index()]` if any child is affected. Return whether this
+// `isAffected[node]` if any child is affected. Return whether this
 // NOLINTNEXTLINE(misc-no-recursion)
 void markIfChildrenAffected(Graph::Node node,
                             std::vector<bool>& seen,
                             std::vector<bool>& isAffected,
                             const detail::BuildContext& ctx,
                             bool explain) {
-  const std::size_t index = node.index();
-  if (seen[index]) {
+  if (seen[node]) {
     return;
   }
-  seen[index] = true;
+  seen[node] = true;
 
   // Always process all our children so that `isAffected` is updated for them
   const Graph& graph = ctx.graph;
@@ -746,32 +771,39 @@ void markIfChildrenAffected(Graph::Node node,
     markIfChildrenAffected(in, seen, isAffected, ctx, explain);
   }
 
-  if (isAffected[index]) {
+  if (isAffected[node]) {
     return;
   }
 
   // Otherwise, find out if at least one of our children is affected and if
   // so, mark ourselves as affected
-  const auto it = std::find_if(
-      inIndices.begin(), inIndices.end(),
-      [&](const Graph::Node in) { return isAffected[in.index()]; });
+  const auto it =
+      std::find_if(inIndices.begin(), inIndices.end(),
+                   [&](const Graph::Node in) { return isAffected[in]; });
   if (it != inIndices.end()) {
     if (explain) {
+      const std::optional<BuildCommandIndex>& commandIndex =
+          ctx.nodeToCommand[node];
+      // If we get to this place then we have children, therefore
+      // we must have been built by a command
+      assert(commandIndex.has_value());
+      // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+      const std::size_t idx = *commandIndex;
+
       // Only mention user-defined rules since built-in rules are always kept
-      if (!detail::BuildContext::isBuiltInRule(
-              ctx.commands[*ctx.nodeToCommand[index]].ruleIndex)) {
+      if (!detail::BuildContext::isBuiltInRule(ctx.commands[idx].ruleIndex)) {
         std::cerr << "Including '" << graph.path(node)
                   << "' as it has the affected input '" << graph.path(*it)
                   << "'" << std::endl;
       }
     }
-    isAffected[index] = true;
+    isAffected[node] = true;
   }
 }
 
 // If `node` has not been seen (using `seen`) then call
 // `ifRequiredRequireAllChildren` for all outputs to `node` and then set
-// `isRequired[node.index()]` if any child is required.
+// `isRequired[node]` if any child is required.
 // NOLINTNEXTLINE(misc-no-recursion)
 void ifRequiredRequireAllChildren(Graph::Node node,
                                   std::vector<bool>& seen,
@@ -779,11 +811,10 @@ void ifRequiredRequireAllChildren(Graph::Node node,
                                   std::vector<bool>& needsAllInputs,
                                   const detail::BuildContext& ctx,
                                   bool explain) {
-  const std::size_t index = node.index();
-  if (seen[index]) {
+  if (seen[node]) {
     return;
   }
-  seen[index] = true;
+  seen[node] = true;
 
   for (const Graph::Node out : ctx.graph.out(node)) {
     ifRequiredRequireAllChildren(out, seen, isRequired, needsAllInputs, ctx,
@@ -795,10 +826,17 @@ void ifRequiredRequireAllChildren(Graph::Node node,
     return;
   }
 
-  if (!detail::BuildContext::isBuiltInRule(
-          ctx.commands[*ctx.nodeToCommand[index]].ruleIndex)) {
-    if (isRequired[index]) {
-      needsAllInputs[index] = true;
+  // If we get to this place then we have children, therefore
+  // we must have been built by a command
+  const std::optional<BuildCommandIndex>& commandIndex =
+      ctx.nodeToCommand[node];
+  assert(commandIndex.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  const std::size_t idx = *commandIndex;
+
+  if (!detail::BuildContext::isBuiltInRule(ctx.commands[idx].ruleIndex)) {
+    if (isRequired[node]) {
+      needsAllInputs[node] = true;
       return;
     }
   }
@@ -806,19 +844,19 @@ void ifRequiredRequireAllChildren(Graph::Node node,
   // If any build commands requiring us are marked as needing all inputs then
   // mark ourselves as affected and that we also need all our inputs.
   const auto& outIndices = ctx.graph.out(node);
-  const auto it = std::find_if(
-      outIndices.begin(), outIndices.end(),
-      [&](const Graph::Node out) { return needsAllInputs[out.index()]; });
+  const auto it =
+      std::find_if(outIndices.begin(), outIndices.end(),
+                   [&](const Graph::Node out) { return needsAllInputs[out]; });
   if (it != outIndices.end()) {
-    if (!isRequired[index]) {
+    if (!isRequired[node]) {
       if (explain) {
         std::cerr << "Including '" << ctx.graph.path(node)
                   << "' as it is a required input for the affected output '"
                   << ctx.graph.path(*it) << "'" << std::endl;
       }
-      isRequired[index] = true;
+      isRequired[node] = true;
     }
-    needsAllInputs[index] = true;
+    needsAllInputs[node] = true;
   }
 }
 }  // namespace
@@ -885,8 +923,8 @@ void TrimUtil::trim(std::ostream& output,
     const Timer t = CPUProfiler::start(".ninja_log parse");
     parseLogFile(
         ninjaLog, ctx, isAffected,
-        [&](const std::size_t index) -> std::string_view {
-          return ctx.commands[*ctx.nodeToCommand[index]].hashTarget;
+        [&](const Graph::Node node) -> std::string_view {
+          return ctx.commands[*ctx.nodeToCommand[node]].hashTarget;
         },
         explain);
   }
@@ -904,12 +942,12 @@ void TrimUtil::trim(std::ostream& output,
     {
       const std::optional<Graph::Node> node = graph.findPath(line);
       if (node.has_value()) {
-        if (explain && !isAffected[node->index()]) {
+        if (explain && !isAffected[*node]) {
           std::cerr << "Including '" << line
                     << "' as it was marked as affected by the user"
                     << std::endl;
         }
-        isAffected[node->index()] = true;
+        isAffected[*node] = true;
         continue;
       }
     }
@@ -924,12 +962,12 @@ void TrimUtil::trim(std::ostream& output,
         std::string absoluteStr = absolute.string();
         const std::optional<Graph::Node> node = graph.findPath(absoluteStr);
         if (node.has_value()) {
-          if (explain && !isAffected[node->index()]) {
+          if (explain && !isAffected[*node]) {
             std::cerr << "Including '" << line
                       << "' as it was marked as affected by the user"
                       << std::endl;
           }
-          isAffected[node->index()] = true;
+          isAffected[*node] = true;
           continue;
         }
       }
@@ -945,12 +983,12 @@ void TrimUtil::trim(std::ostream& output,
         std::string relativeStr = relative.string();
         const std::optional<Graph::Node> node = graph.findPath(relativeStr);
         if (node.has_value()) {
-          if (explain && !isAffected[node->index()]) {
+          if (explain && !isAffected[*node]) {
             std::cerr << "Including '" << line
                       << "' as it was marked as affected by the user"
                       << std::endl;
           }
-          isAffected[node->index()] = true;
+          isAffected[*node] = true;
           continue;
         }
       }
@@ -1012,22 +1050,22 @@ void TrimUtil::trim(std::ostream& output,
 
   // Float all affected edges to the top so they are prioritized first
   // and Mark all required edges as needing to print them out
-  for (std::size_t index = 0; index < graph.size(); ++index) {
-    if (isRequired[index]) {
-      const tiny::optional commandIndex = ctx.nodeToCommand[index];
+  for (const Graph::Node node : graph.nodes()) {
+    if (isRequired[node]) {
+      const std::optional commandIndex = ctx.nodeToCommand[node];
       if (commandIndex.has_value()) {
         BuildCommand& command = ctx.commands[*commandIndex];
         command.resolution = BuildCommand::Print;
 
-        if (isAffected[index]) {
-          for (const std::size_t partsIndex : command.partsIndices) {
+        if (isAffected[node]) {
+          for (const PartIndex partsIndex : command.partsIndices) {
             floatToTop[partsIndex] = true;
           }
         }
       }
     } else {
       // All affected indices are required
-      assert(!isAffected[index]);
+      assert(!isAffected[node]);
     }
   }
 
@@ -1064,7 +1102,7 @@ void TrimUtil::trim(std::ostream& output,
       ctx.parts[command.partsIndices.front()] = std::string_view{phony};
       std::for_each(std::next(command.partsIndices.begin()),
                     command.partsIndices.end(),
-                    [&](std::size_t index) { ctx.parts[index] = ""; });
+                    [&](const PartIndex part) { ctx.parts[part] = ""; });
       command.partsIndices.clear();
     }
   }
@@ -1076,10 +1114,10 @@ void TrimUtil::trim(std::ostream& output,
     RuleCommand& rule = ctx.rules[ruleIndex];
     if (!ruleReferenced[ruleIndex]) {
       std::for_each(rule.partsIndices.begin(), rule.partsIndices.end(),
-                    [&](const std::size_t index) { ctx.parts[index] = ""; });
+                    [&](const PartIndex part) { ctx.parts[part] = ""; });
     } else {
       std::for_each(rule.partsIndices.begin(), rule.partsIndices.end(),
-                    [&](const std::size_t index) { floatToTop[index] = true; });
+                    [&](const PartIndex part) { floatToTop[part] = true; });
     }
   }
 
