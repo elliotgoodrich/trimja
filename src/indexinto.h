@@ -23,7 +23,10 @@
 #ifndef TRIMJA_INDEXINTO
 #define TRIMJA_INDEXINTO
 
+#include <concepts>
 #include <cstddef>
+#include <limits>
+#include <type_traits>
 
 namespace trimja {
 
@@ -47,6 +50,18 @@ namespace trimja {
 #endif
 #endif
 
+namespace detail {
+
+struct DefaultTag {};
+
+}  // namespace detail
+
+template <typename INDEX>
+concept IndexConcept =
+    std::copyable<INDEX> && std::incrementable<INDEX> && requires(INDEX idx) {
+      { static_cast<std::size_t>(idx) } -> std::convertible_to<std::size_t>;
+    };
+
 #if INDEXINTO_DEBUG_INFO
 
 namespace detail {
@@ -59,10 +74,15 @@ namespace detail {
  * to the container for additional debugging assistance.
  *
  * @tparam CONTAINER The container type being indexed.
+ * @tparam TAG An additional, optional distinguishing tag if you want to
+ * differentiate multiple containers as members of `CONTAINER`.
+ * @tparam INDEX The type to hold the index value.
  */
-template <typename CONTAINER>
+template <typename CONTAINER,
+          typename TAG = DefaultTag,
+          IndexConcept INDEX = std::size_t>
 class IndexIntoDebug {
-  std::size_t m_index;
+  INDEX m_index;
   const CONTAINER* m_container;
 
  public:
@@ -73,7 +93,7 @@ class IndexIntoDebug {
    *
    * In debug builds, also initializes the container pointer to nullptr.
    */
-  IndexIntoDebug() : m_index{0}, m_container{nullptr} {}
+  constexpr IndexIntoDebug() : m_index{}, m_container{nullptr} {}
 
   /**
    * @brief Constructs an IndexIntoDebug with a given index and container
@@ -82,14 +102,32 @@ class IndexIntoDebug {
    * @param index The index value.
    * @param container Pointer to the container.
    */
-  IndexIntoDebug(std::size_t index, const CONTAINER* container)
+  constexpr IndexIntoDebug(INDEX index, const CONTAINER* container)
       : m_index{index}, m_container{container} {}
+
+  /**
+   * @brief Returns the current index value as `std::size_t`.
+   * @return The index value.
+   */
+  constexpr operator std::size_t() const noexcept { return m_index; }
+
+  /**
+   * @brief Returns the current index value as `std::size_t`.
+   * @return The index value.
+   */
+  constexpr std::size_t asIndex() const noexcept {
+    return static_cast<std::size_t>(*this);
+  }
 
   /**
    * @brief Returns the current index value.
    * @return The index value.
    */
-  std::size_t index() const noexcept { return m_index; }
+  template <typename I = INDEX,
+            typename = std::enable_if_t<!std::is_same_v<I, std::size_t>>>
+  constexpr operator INDEX() const noexcept {
+    return m_index;
+  }
 
   /**
    * @brief Pre-increment operator. Advances the index by one.
@@ -111,6 +149,7 @@ class IndexIntoDebug {
     return tmp;
   }
 };
+
 }  // namespace detail
 
 /**
@@ -123,9 +162,14 @@ class IndexIntoDebug {
  * debugging purposes.
  *
  * @tparam CONTAINER The container type being indexed.
+ * @tparam TAG An additional, optional distinguishing tag if you want to
+ * differentiate multiple containers as members of `CONTAINER`.
+ * @tparam INDEX The type to hold the index value.
  */
-template <typename CONTAINER>
-using IndexInto = detail::IndexIntoDebug<CONTAINER>;
+template <typename CONTAINER,
+          typename TAG = detail::DefaultTag,
+          IndexConcept INDEX = std::size_t>
+using IndexInto = detail::IndexIntoDebug<CONTAINER, TAG, INDEX>;
 
 #else  // INDEXINTO_DEBUG_INFO
 
@@ -138,10 +182,15 @@ namespace detail {
  * iterating or referencing elements within a container.
  *
  * @tparam CONTAINER The container type being indexed.
+ * @tparam TAG An additional, optional distinguishing tag if you want to
+ * differentiate multiple containers as members of `CONTAINER`.
+ * @tparam INDEX The type to hold the index value.
  */
-template <typename CONTAINER>
+template <typename CONTAINER,
+          typename TAG = DefaultTag,
+          IndexConcept INDEX = std::size_t>
 class IndexIntoNoDebug {
-  std::size_t m_index;
+  INDEX m_index;
 
  public:
   using difference_type = std::ptrdiff_t;
@@ -149,7 +198,7 @@ class IndexIntoNoDebug {
   /**
    * @brief Default constructor. Initializes index to zero.
    */
-  IndexIntoNoDebug() : m_index{0} {}
+  constexpr IndexIntoNoDebug() : m_index{} {}
 
   /**
    * @brief Constructs an IndexIntoNoDebug with a given index and container
@@ -158,13 +207,31 @@ class IndexIntoNoDebug {
    * @param index The index value.
    * @param container Pointer to the container - completely ignored.
    */
-  IndexIntoNoDebug(std::size_t index, const void*) : m_index{index} {}
+  constexpr IndexIntoNoDebug(INDEX index, const void*) : m_index{index} {}
+
+  /**
+   * @brief Returns the current index value as `std::size_t`.
+   * @return The index value.
+   */
+  constexpr operator std::size_t() const noexcept { return m_index; }
+
+  /**
+   * @brief Returns the current index value as `std::size_t`.
+   * @return The index value.
+   */
+  constexpr std::size_t asIndex() const noexcept {
+    return static_cast<std::size_t>(*this);
+  }
 
   /**
    * @brief Returns the current index value.
    * @return The index value.
    */
-  std::size_t index() const noexcept { return m_index; }
+  template <typename I = INDEX,
+            typename = std::enable_if_t<!std::is_same_v<I, std::size_t>>>
+  constexpr operator INDEX() const noexcept {
+    return m_index;
+  }
 
   /**
    * @brief Pre-increment operator. Advances the index by one.
@@ -199,9 +266,14 @@ class IndexIntoNoDebug {
  * debugging purposes.
  *
  * @tparam CONTAINER The container type being indexed.
+ * @tparam TAG An additional, optional distinguishing tag if you want to
+ * differentiate multiple containers as members of `CONTAINER`.
+ * @tparam INDEX The type to hold the index value.
  */
-template <typename CONTAINER>
-using IndexInto = detail::IndexIntoNoDebug<CONTAINER>;
+template <typename CONTAINER,
+          typename TAG = detail::DefaultTag,
+          IndexConcept INDEX = std::size_t>
+using IndexInto = detail::IndexIntoNoDebug<CONTAINER, TAG, INDEX>;
 
 #endif  // INDEXINTO_DEBUG_INFO
 
@@ -211,13 +283,14 @@ using IndexInto = detail::IndexIntoNoDebug<CONTAINER>;
  * @param rhs Right-hand side IndexInto.
  * @return The difference in their index values.
  */
-template <typename CONTAINER>
-typename IndexInto<CONTAINER>::difference_type operator-(
-    const IndexInto<CONTAINER>& lhs,
-    const IndexInto<CONTAINER>& rhs) noexcept {
-  using difference_type = typename IndexInto<CONTAINER>::difference_type;
-  return static_cast<difference_type>(lhs.index()) -
-         static_cast<difference_type>(rhs.index());
+template <typename CONTAINER, typename TAG, IndexConcept INDEX>
+typename IndexInto<CONTAINER, TAG, INDEX>::difference_type operator-(
+    const IndexInto<CONTAINER, TAG, INDEX>& lhs,
+    const IndexInto<CONTAINER, TAG, INDEX>& rhs) noexcept {
+  using difference_type =
+      typename IndexInto<CONTAINER, TAG, INDEX>::difference_type;
+  return static_cast<difference_type>(lhs.asIndex()) -
+         static_cast<difference_type>(rhs.asIndex());
 }
 
 /**
@@ -226,10 +299,11 @@ typename IndexInto<CONTAINER>::difference_type operator-(
  * @param right Second IndexInto.
  * @return Whether their indices are equal.
  */
-template <typename CONTAINER>
-bool operator==(const IndexInto<CONTAINER>& left,
-                const IndexInto<CONTAINER>& right) noexcept {
-  return left.index() == right.index();
+template <typename CONTAINER, typename TAG, IndexConcept INDEX>
+constexpr bool operator==(
+    const IndexInto<CONTAINER, TAG, INDEX>& left,
+    const IndexInto<CONTAINER, TAG, INDEX>& right) noexcept {
+  return left.asIndex() == right.asIndex();
 }
 
 /**
@@ -238,10 +312,10 @@ bool operator==(const IndexInto<CONTAINER>& left,
  * @param right Second IndexInto.
  * @return Whether their indices are not equal.
  */
-template <typename CONTAINER>
-bool operator!=(const IndexInto<CONTAINER>& left,
-                const IndexInto<CONTAINER>& right) noexcept {
-  return left.index() != right.index();
+template <typename CONTAINER, typename TAG, IndexConcept INDEX>
+bool operator!=(const IndexInto<CONTAINER, TAG, INDEX>& left,
+                const IndexInto<CONTAINER, TAG, INDEX>& right) noexcept {
+  return left.asIndex() != right.asIndex();
 }
 
 /**
