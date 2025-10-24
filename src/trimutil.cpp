@@ -264,8 +264,8 @@ class BuildContext {
   BuildContext& operator=(BuildContext&&) = delete;
   BuildContext& operator=(const BuildContext&) = delete;
 
-  Node getPathNode(std::string& path) {
-    const Graph::Node node = graph.addPath(path);
+  Node getPathNode(std::string&& path) {
+    const Graph::Node node = graph.addPath(std::move(path));
     if (node >= nodeToCommand.size()) {
       nodeToCommand.resize(node + 1);
     }
@@ -406,14 +406,14 @@ class BuildContext {
     std::vector<Node>& outNodes = tmp.outNodes;
     outNodes.clear();
     for (std::string& out : outs) {
-      const Node outNode = getPathNode(out);
+      const Node outNode = getPathNode(std::move(out));
       outNodes.push_back(outNode);
       nodeToCommand[outNode] = commandIndex;
     }
 
     // Add inputs to the graph and add the edges to the graph
     for (std::string& in : ins) {
-      const Node inNode = getPathNode(in);
+      const Node inNode = getPathNode(std::move(in));
       for (const Node& outNode : outNodes) {
         graph.addEdge(inNode, outNode);
       }
@@ -423,7 +423,7 @@ class BuildContext {
     // one for order-only dependencies. This is because we only include a
     // build edge if an input (implicit or not) is affected.
     for (std::string& orderOnlyDep : orderOnlyDeps) {
-      const Node inNode = getPathNode(orderOnlyDep);
+      const Node inNode = getPathNode(std::move(orderOnlyDep));
       for (const Node& outNode : outNodes) {
         graph.addOneWayEdge(inNode, outNode);
       }
@@ -542,7 +542,7 @@ class BuildContext {
     const Node outNode = getDefault();
     nodeToCommand[outNode] = commandIndex;
     for (std::string& in : ins) {
-      graph.addEdge(getPathNode(in), outNode);
+      graph.addEdge(getPathNode(std::move(in)), outNode);
     }
   }
 
@@ -935,7 +935,7 @@ void TrimUtil::trim(std::ostream& output,
 
     // First try the raw input
     {
-      const std::optional<Graph::Node> node = graph.findPath(line);
+      const std::optional<Graph::Node> node = graph.findPath(std::string{line});
       if (node.has_value()) {
         if (explain && !isAffected[*node]) {
           std::cerr << "Including '" << line
@@ -954,8 +954,8 @@ void TrimUtil::trim(std::ostream& output,
       const std::filesystem::path& absolute =
           attempted.emplace_back(std::filesystem::absolute(p, error));
       if (!error) {
-        std::string absoluteStr = absolute.string();
-        const std::optional<Graph::Node> node = graph.findPath(absoluteStr);
+        const std::optional<Graph::Node> node =
+            graph.findPath(absolute.string());
         if (node.has_value()) {
           if (explain && !isAffected[*node]) {
             std::cerr << "Including '" << line
@@ -975,8 +975,8 @@ void TrimUtil::trim(std::ostream& output,
       const std::filesystem::path& relative =
           attempted.emplace_back(std::filesystem::relative(p, error));
       if (!error) {
-        std::string relativeStr = relative.string();
-        const std::optional<Graph::Node> node = graph.findPath(relativeStr);
+        const std::optional<Graph::Node> node =
+            graph.findPath(relative.string());
         if (node.has_value()) {
           if (explain && !isAffected[*node]) {
             std::cerr << "Including '" << line

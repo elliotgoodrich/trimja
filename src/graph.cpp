@@ -66,7 +66,7 @@ bool Graph::PathEqual::operator()(std::string_view left,
 
 Graph::Graph() = default;
 
-Graph::Node Graph::addPath(std::string& path) {
+Graph::Node Graph::addPath(std::string&& path) {
   const std::size_t nextIndex = m_inputToOutput.size();
   CanonicalizePath(&path);
   const auto [it, inserted] = m_pathToNode.try_emplace(path, nextIndex, this);
@@ -101,7 +101,7 @@ Graph::Node Graph::addNormalizedPath(std::string_view path) {
   return it->second;
 }
 
-std::optional<Graph::Node> Graph::findPath(std::string& path) const {
+std::optional<Graph::Node> Graph::findPath(std::string&& path) const {
   CanonicalizePath(&path);
   const auto it = m_pathToNode.find(path);
   if (it == m_pathToNode.end()) {
