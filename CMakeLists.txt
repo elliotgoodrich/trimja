@@ -77,6 +77,8 @@ target_compile_options(core PUBLIC
 target_compile_definitions(core PUBLIC
     # debug iterators cause default ctor of std::string and std::vector to allocate
     $<$<CXX_COMPILER_ID:MSVC>:_ITERATOR_DEBUG_LEVEL=0 NOMINMAX>
+    # Issues with unsupported architecture in MacOS 14
+    TINY_OPTIONAL_USE_SEPARATE_BOOL_INSTEAD_OF_UNUSED_BITS
 )
 
 # Decide when to enable link-time optimization.

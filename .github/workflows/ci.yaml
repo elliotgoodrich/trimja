@@ -20,7 +20,7 @@ jobs:
           # platforms to maximise compiler compatibility.
           {name: Linux (clang), image: ubuntu-22.04, cpp: clang++-13, c: clang-13, generator: Ninja, clang-tidy: true, package: true},
           {name: Linux (gcc), image: ubuntu-22.04, cpp: g++-12, c: gcc-12, generator: Ninja, package: false},
-          {name: MacOS, image: macos-13, cpp: clang++, c: clang, generator: Ninja, package: true},
+          {name: MacOS, image: macos-14, cpp: clang++, c: clang, generator: Ninja, package: true},
           {name: Windows, image: windows-latest, cpp: cl, c: cl, package: true},
           # Compile on the latest clang to get the latest clang-tidy
           {name: Linux (clang-latest), image: ubuntu-latest, cpp: clang++, c: clang, generator: Ninja, clang-tidy: true, package: false},

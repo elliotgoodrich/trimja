@@ -39,7 +39,6 @@
 
 #include <ninja/util.h>
 #include <rapidhash/rapidhash.h>
-#include <tiny/optional.h>
 #include <boost/boost_unordered.hpp>
 
 #include <cassert>
