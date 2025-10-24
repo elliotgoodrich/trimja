@@ -104,7 +104,7 @@ class Graph {
    * @param path The path to be added. It will be normalized.
    * @return The node corresponding to the added path.
    */
-  Node addPath(std::string& path);
+  Node addPath(std::string&& path);
 
   /**
    * @brief Adds a normalized path to the graph if it isn't already present and
@@ -119,7 +119,7 @@ class Graph {
    * @param path The path to be found. It will be normalized.
    * @return The node of the path if found, otherwise std::nullopt.
    */
-  std::optional<Node> findPath(std::string& path) const;
+  std::optional<Node> findPath(std::string&& path) const;
 
   /**
    * @brief Finds the node of the specified normalized path if it exists.
