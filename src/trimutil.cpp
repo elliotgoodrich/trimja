@@ -180,6 +180,9 @@ class BuildContext {
   // failing to compile in my attempts.
   std::vector<std::optional<BuildCommandIndex>> nodeToCommand;
 
+  std::vector<bool> isAffected;
+  std::vector<bool> isRequired;
+
   // Our list of rules
   std::vector<RuleCommand> rules;
 
@@ -243,6 +246,8 @@ class BuildContext {
     return numbers[n];
   }
 
+  Node augment(const Graph::Node& node) const { return Node{node, this}; }
+
   BuildContext() {
     fileIds.push_back(nextFileId++);
 
@@ -267,24 +272,30 @@ class BuildContext {
     const Graph::Node node = graph.addPath(std::move(path));
     if (node >= nodeToCommand.size()) {
       nodeToCommand.resize(node + 1);
+      isAffected.resize(node + 1);
+      isRequired.resize(node + 1);
     }
-    return Node{node, this};
+    return augment(node);
   }
 
   Node getPathNodeForNormalized(std::string_view path) {
     const Graph::Node node = graph.addNormalizedPath(path);
     if (node >= nodeToCommand.size()) {
       nodeToCommand.resize(node + 1);
+      isAffected.resize(node + 1);
+      isRequired.resize(node + 1);
     }
-    return Node{node, this};
+    return augment(node);
   }
 
   Node getDefault() {
     const Graph::Node node = graph.addDefault();
     if (node >= nodeToCommand.size()) {
       nodeToCommand.resize(node + 1);
+      isAffected.resize(node + 1);
+      isRequired.resize(node + 1);
     }
-    return Node{node, this};
+    return augment(node);
   }
 
   void parse(const std::filesystem::path& ninjaFile,
@@ -667,9 +678,8 @@ class BuildContext {
 
   template <typename F>
   void parseLogFile(const std::filesystem::path& ninjaLog,
-                    std::vector<bool>& isAffected,
                     F&& getBuildCommand,
-                    bool explain) const {
+                    bool explain) {
     std::ifstream deps(ninjaLog);
 
     // As there can be duplicate entries and subsequent entries take precedence
@@ -691,7 +701,7 @@ class BuildContext {
       seen[*node] = true;
       std::optional<std::uint64_t>& cachedHash = cachedHashes[*node];
       if (!cachedHash) {
-        const std::string_view command = getBuildCommand(*node);
+        const std::string_view command = getBuildCommand(augment(*node));
         switch (entry.hashType) {
           case HashType::murmur:
             cachedHash.emplace(
@@ -708,7 +718,7 @@ class BuildContext {
     }
 
     // Mark all build commands that are new or have been changed as required
-    for (const Graph::Node node : graph.nodes()) {
+    for (const Node& node : nodes()) {
       const bool isBuildCommand = !graph.in(node).empty();
       if (isAffected[node] || !isBuildCommand) {
         continue;
@@ -749,10 +759,9 @@ class BuildContext {
   // `markIfChildrenAffected` for all inputs to `node` and then set
   // `isAffected[node]` if any child is affected. Return whether this
   // NOLINTNEXTLINE(misc-no-recursion)
-  void markIfChildrenAffected(Graph::Node node,
+  void markIfChildrenAffected(Node node,
                               std::vector<bool>& seen,
-                              std::vector<bool>& isAffected,
-                              bool explain) const {
+                              bool explain) {
     if (seen[node]) {
       return;
     }
@@ -760,8 +769,8 @@ class BuildContext {
 
     // Always process all our children so that `isAffected` is updated for them
     const auto& inIndices = graph.in(node);
-    for (const Graph::Node in : inIndices) {
-      markIfChildrenAffected(in, seen, isAffected, explain);
+    for (const Graph::Node& in : inIndices) {
+      markIfChildrenAffected(augment(in), seen, explain);
     }
 
     if (isAffected[node]) {
@@ -798,19 +807,17 @@ class BuildContext {
   // `ifRequiredRequireAllChildren` for all outputs to `node` and then set
   // `isRequired[node]` if any child is required.
   // NOLINTNEXTLINE(misc-no-recursion)
-  void ifRequiredRequireAllChildren(Graph::Node node,
+  void ifRequiredRequireAllChildren(Node node,
                                     std::vector<bool>& seen,
-                                    std::vector<bool>& isRequired,
                                     std::vector<bool>& needsAllInputs,
-                                    bool explain) const {
+                                    bool explain) {
     if (seen[node]) {
       return;
     }
     seen[node] = true;
 
-    for (const Graph::Node out : graph.out(node)) {
-      ifRequiredRequireAllChildren(out, seen, isRequired, needsAllInputs,
-                                   explain);
+    for (const Graph::Node& out : graph.out(node)) {
+      ifRequiredRequireAllChildren(augment(out), seen, needsAllInputs, explain);
     }
 
     // Nothing to do if we have no children
@@ -849,6 +856,10 @@ class BuildContext {
       }
       needsAllInputs[node] = true;
     }
+  }
+
+  IndexIntoRange<Node> nodes() const {
+    return IndexIntoRange<Node>{graph.nodes(), this};
   }
 };
 
@@ -898,7 +909,6 @@ void TrimUtil::trim(std::ostream& output,
   }
 
   const Graph& graph = ctx.graph;
-  std::vector<bool> isAffected(graph.size(), false);
 
   // Look through all log entries and mark as required those build commands that
   // are either absent in the log (representing new commands that have never
@@ -912,12 +922,12 @@ void TrimUtil::trim(std::ostream& output,
       std::cerr << "Unable to find '" << ninjaLog
                 << "', so including everything" << std::endl;
     }
-    isAffected.assign(isAffected.size(), true);
+    ctx.isAffected.assign(ctx.isAffected.size(), true);
   } else {
     const Timer t = CPUProfiler::start(".ninja_log parse");
     ctx.parseLogFile(
-        ninjaLog, isAffected,
-        [&](const Graph::Node node) -> std::string_view {
+        ninjaLog,
+        [&](const BuildContext::Node& node) -> std::string_view {
           return ctx.commands[*ctx.nodeToCommand[node]].hashTarget;
         },
         explain);
@@ -936,12 +946,12 @@ void TrimUtil::trim(std::ostream& output,
     {
       const std::optional<Graph::Node> node = graph.findPath(std::string{line});
       if (node.has_value()) {
-        if (explain && !isAffected[*node]) {
+        if (explain && !ctx.isAffected[*node]) {
           std::cerr << "Including '" << line
                     << "' as it was marked as affected by the user"
                     << std::endl;
         }
-        isAffected[*node] = true;
+        ctx.isAffected[*node] = true;
         continue;
       }
     }
@@ -956,12 +966,12 @@ void TrimUtil::trim(std::ostream& output,
         const std::optional<Graph::Node> node =
             graph.findPath(absolute.string());
         if (node.has_value()) {
-          if (explain && !isAffected[*node]) {
+          if (explain && !ctx.isAffected[*node]) {
             std::cerr << "Including '" << line
                       << "' as it was marked as affected by the user"
                       << std::endl;
           }
-          isAffected[*node] = true;
+          ctx.isAffected[*node] = true;
           continue;
         }
       }
@@ -977,12 +987,12 @@ void TrimUtil::trim(std::ostream& output,
         const std::optional<Graph::Node> node =
             graph.findPath(relative.string());
         if (node.has_value()) {
-          if (explain && !isAffected[*node]) {
+          if (explain && !ctx.isAffected[*node]) {
             std::cerr << "Including '" << line
                       << "' as it was marked as affected by the user"
                       << std::endl;
           }
-          isAffected[*node] = true;
+          ctx.isAffected[*node] = true;
           continue;
         }
       }
@@ -1005,22 +1015,21 @@ void TrimUtil::trim(std::ostream& output,
 
   // Mark all outputs that have an affected input as affected
   Timer trimTimer = CPUProfiler::start("trim time");
-  for (const Graph::Node node : graph.nodes()) {
-    ctx.markIfChildrenAffected(node, seen, isAffected, explain);
+  for (const BuildContext::Node& node : ctx.nodes()) {
+    ctx.markIfChildrenAffected(node, seen, explain);
   }
 
   // Keep the difference between build inputs that are affected (i.e. have
   // an input that is directly affected) or inputs that are required (i.e.
   // don't have an input that is directly affected but it itself is relied
   // on by an affected command)
-  std::vector<bool> isRequired{isAffected};
+  ctx.isRequired = ctx.isAffected;
 
   // Mark all inputs to affected outputs as required
   seen.assign(seen.size(), false);
   std::vector<bool> needsAllInputs(graph.size(), false);
-  for (const Graph::Node node : graph.nodes()) {
-    ctx.ifRequiredRequireAllChildren(node, seen, isRequired, needsAllInputs,
-                                     explain);
+  for (const BuildContext::Node& node : ctx.nodes()) {
+    ctx.ifRequiredRequireAllChildren(node, seen, needsAllInputs, explain);
   }
 
   assert(ctx.parts.size() == ctx.partsType.size());
@@ -1044,14 +1053,14 @@ void TrimUtil::trim(std::ostream& output,
 
   // Float all affected edges to the top so they are prioritized first
   // and Mark all required edges as needing to print them out
-  for (const Graph::Node node : graph.nodes()) {
-    if (isRequired[node]) {
+  for (const BuildContext::Node& node : ctx.nodes()) {
+    if (ctx.isRequired[node]) {
       const std::optional commandIndex = ctx.nodeToCommand[node];
       if (commandIndex.has_value()) {
         BuildContext::BuildCommand& command = ctx.commands[*commandIndex];
         command.resolution = BuildContext::BuildCommand::Print;
 
-        if (isAffected[node]) {
+        if (ctx.isAffected[node]) {
           for (const BuildContext::PartIndex partsIndex :
                command.partsIndices) {
             floatToTop[partsIndex] = true;
@@ -1060,7 +1069,7 @@ void TrimUtil::trim(std::ostream& output,
       }
     } else {
       // All affected indices are required
-      assert(!isAffected[node]);
+      assert(!ctx.isAffected[node]);
     }
   }
 

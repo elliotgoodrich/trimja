@@ -368,6 +368,9 @@ class IndexIntoRange {
 
  public:
   IndexIntoRange(INDEX first, INDEX last) : m_first{first}, m_last{last} {}
+  template <typename OTHER, typename CONTAINER>
+  IndexIntoRange(IndexIntoRange<OTHER> range, const CONTAINER* container)
+      : m_first{*range.begin(), container}, m_last{*range.end(), container} {}
 
   IndexIntoIterator<INDEX> begin() const { return m_first; }
   IndexIntoIterator<INDEX> end() const { return m_last; }

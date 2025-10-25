@@ -88,6 +88,8 @@
     <Expand>
       <ExpandedItem>m_index</ExpandedItem>
       <Item Name="command">m_container->nodeToCommand[m_index.m_index]</Item>
+      <Item Name="affected">m_container->isAffected[m_index.m_index]</Item>
+      <Item Name="required">m_container->isRequired[m_index.m_index]</Item>
     </Expand>
   </Type>
 
