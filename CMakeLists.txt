@@ -202,6 +202,10 @@ file(
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/*
 )
 
+# Sometimes test execution on MSVC leaves behind `_err1_.txt` and `_out1_.txt`
+# from previous runs so we filter these out so they don't get mistaken for tests.
+list(FILTER TRIMJA_TESTS EXCLUDE REGEX "\.txt$")
+
 # Some tests are Windows-specific due to their use of backslashes as a path separator
 if(NOT(WIN32))
     list(FILTER TRIMJA_TESTS EXCLUDE REGEX "win32")
