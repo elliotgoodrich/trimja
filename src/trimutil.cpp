@@ -642,13 +642,13 @@ class BuildContext {
             [&](auto&& view) {
               using T = std::decay_t<decltype(view)>;
               if constexpr (std::is_same<T, PathRecordView>()) {
-                paths.resize(
-                    std::max<std::size_t>(paths.size(), view.index + 1));
+                paths.resize(std::max(
+                    paths.size(), static_cast<std::size_t>(view.index) + 1));
                 // Entries in `.ninja_deps` are already normalized when written
                 paths[view.index] = view.path;
               } else {
-                deps.resize(
-                    std::max<std::size_t>(deps.size(), view.outIndex + 1));
+                deps.resize(std::max(
+                    deps.size(), static_cast<std::size_t>(view.outIndex) + 1));
                 deps[view.outIndex].assign(view.deps.begin(), view.deps.end());
               }
             },
