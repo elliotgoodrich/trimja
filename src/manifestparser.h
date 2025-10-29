@@ -82,6 +82,7 @@ class VariableReader : public detail::BaseReaderWithStart {
   VariableReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   std::string_view name() const;
   const EvalString& value() const;
+  void skip();
 
   template <std::size_t I>
   std::tuple_element_t<I, VariableReader> get() const& {
@@ -121,6 +122,7 @@ class LetRangeReader : public detail::BaseReaderWithStart {
 
   iterator begin();
   sentinel end() const;
+  void skip();
 };
 
 /**
@@ -162,6 +164,7 @@ class PathRangeReader : public detail::BaseReader {
                   Lexer::Token expectedLastToken);
   iterator begin();
   sentinel end() const;
+  void skip();
 };
 
 /**
@@ -176,6 +179,7 @@ class PoolReader : public detail::BaseReaderWithStart {
   PoolReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   std::string_view name() const;
   LetRangeReader readVariables();
+  void skip();
 };
 
 /**
@@ -193,6 +197,7 @@ class BuildReader : public detail::BaseReaderWithStart {
   PathRangeReader readOrderOnlyDeps();
   PathRangeReader readValidations();
   LetRangeReader readVariables();
+  void skip();
 };
 
 /**
@@ -206,6 +211,7 @@ class RuleReader : public detail::BaseReaderWithStart {
   RuleReader(Lexer* lexer, EvalStringBuilder* storage, const char* start);
   std::string_view name() const;
   LetRangeReader readVariables();
+  void skip();
 };
 
 /**
@@ -216,6 +222,7 @@ class DefaultReader : public detail::BaseReaderWithStart {
  public:
   using detail::BaseReaderWithStart::BaseReaderWithStart;
   PathRangeReader readPaths();
+  void skip();
 };
 
 /**
@@ -229,6 +236,7 @@ class IncludeReader : public detail::BaseReaderWithStart {
 
   // Return the path passed in to the `ManifestReader` constructor.
   const std::filesystem::path& parent() const;
+  void skip();
 };
 
 /**
@@ -242,6 +250,7 @@ class SubninjaReader : public detail::BaseReaderWithStart {
 
   // Return the path passed in to the `ManifestReader` constructor.
   const std::filesystem::path& parent() const;
+  void skip();
 };
 
 /**

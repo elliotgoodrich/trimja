@@ -30,6 +30,11 @@ namespace trimja {
 
 namespace {
 
+void consume(auto&& range) {
+  for ([[maybe_unused]] auto&& _ : range) {
+  }
+}
+
 void expectToken(Lexer* lexer, Lexer::Token expected) {
   const Lexer::Token token = lexer->ReadToken();
   if (token != expected) {
@@ -90,7 +95,10 @@ std::string_view VariableReader::name() const {
 
 const EvalString& VariableReader::value() const {
   return m_storage->str();
-  ;
+}
+
+void VariableReader::skip() {
+  // Does nothing since we read during the constructor
 }
 
 LetRangeReader::iterator::iterator(Lexer* lexer, EvalStringBuilder* storage)
@@ -133,6 +141,10 @@ LetRangeReader::iterator LetRangeReader::begin() {
 
 LetRangeReader::sentinel LetRangeReader::end() const {
   return sentinel{};
+}
+
+void LetRangeReader::skip() {
+  consume(*this);
 }
 
 PathRangeReader::iterator::iterator(Lexer* lexer,
@@ -197,6 +209,10 @@ PathRangeReader::sentinel PathRangeReader::end() const {
   return sentinel{};
 }
 
+void PathRangeReader::skip() {
+  consume(*this);
+}
+
 PoolReader::PoolReader()
     : detail::BaseReaderWithStart{nullptr, nullptr, nullptr}, m_name{} {}
 
@@ -218,6 +234,10 @@ std::string_view PoolReader::name() const {
 LetRangeReader PoolReader::readVariables() {
   return LetRangeReader{m_lexer, m_storage};
 };
+
+void PoolReader::skip() {
+  consume(readVariables());
+}
 
 PathRangeReader BuildReader::readOut() {
   return PathRangeReader{m_lexer, m_storage};
@@ -261,6 +281,17 @@ LetRangeReader BuildReader::readVariables() {
   return LetRangeReader{m_lexer, m_storage};
 }
 
+void BuildReader::skip() {
+  consume(readOut());
+  consume(readImplicitOut());
+  [[maybe_unused]] const std::string_view ruleName = readName();
+  consume(readIn());
+  consume(readImplicitIn());
+  consume(readOrderOnlyDeps());
+  consume(readValidations());
+  consume(readVariables());
+}
+
 RuleReader::RuleReader(Lexer* lexer,
                        EvalStringBuilder* storage,
                        const char* start)
@@ -280,8 +311,16 @@ LetRangeReader RuleReader::readVariables() {
   return LetRangeReader{m_lexer, m_storage};
 };
 
+void RuleReader::skip() {
+  consume(readVariables());
+}
+
 PathRangeReader DefaultReader::readPaths() {
   return PathRangeReader{m_lexer, m_storage, Lexer::NEWLINE};
+}
+
+void DefaultReader::skip() {
+  consume(readPaths());
 }
 
 IncludeReader::IncludeReader(Lexer* lexer,
@@ -304,6 +343,10 @@ const std::filesystem::path& IncludeReader::parent() const {
   return m_lexer->getFilename();
 }
 
+void IncludeReader::skip() {
+  // Does nothing since we read during the constructor
+}
+
 SubninjaReader::SubninjaReader(Lexer* lexer,
                                EvalStringBuilder* storage,
                                const char* start)
@@ -322,6 +365,10 @@ const EvalString& SubninjaReader::path() const {
 
 const std::filesystem::path& SubninjaReader::parent() const {
   return m_lexer->getFilename();
+}
+
+void SubninjaReader::skip() {
+  // Does nothing since we read during the constructor
 }
 
 ManifestReader::iterator::iterator(Lexer* lexer, EvalStringBuilder* storage)

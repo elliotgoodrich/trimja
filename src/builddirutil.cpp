@@ -40,12 +40,6 @@ class BuildDirContext {
 
   BuildDirContext() = default;
 
-  template <typename RANGE>
-  static void consume(RANGE&& range) {
-    for ([[maybe_unused]] auto&& _ : range) {
-    }
-  }
-
   void parse(const std::filesystem::path& ninjaFile,
              const std::string& ninjaFileContents) {
     for (auto&& part : ManifestReader(ninjaFile, ninjaFileContents)) {
@@ -53,30 +47,18 @@ class BuildDirContext {
     }
   }
 
-  void operator()(PoolReader& r) const { consume(r.readVariables()); }
+  void operator()(auto& r) const { r.skip(); }
 
-  void operator()(BuildReader& r) const {
-    consume(r.readOut());
-    consume(r.readImplicitOut());
-    [[maybe_unused]] const std::string_view ruleName = r.readName();
-    consume(r.readIn());
-    consume(r.readImplicitIn());
-    consume(r.readOrderOnlyDeps());
-    consume(r.readValidations());
-    consume(r.readVariables());
-  }
-
-  void operator()(RuleReader& r) const { consume(r.readVariables()); }
-
-  void operator()(DefaultReader& r) const { consume(r.readPaths()); }
-
-  void operator()(const VariableReader& r) {
+  void operator()(VariableReader& r) {
     std::string value;
     evaluate(value, r.value(), fileScope);
     fileScope.set(r.name(), std::move(value));
   }
 
-  void operator()(const IncludeReader& r) {
+  void operator()(IncludeReader& r) {
+    // We handle include, but never subninja as it introduces a new scope so we
+    // can never modify the top-level `builddir` variable
+
     const std::filesystem::path file = [&] {
       const EvalString& pathEval = r.path();
       std::string path;
@@ -95,11 +77,6 @@ class BuildDirContext {
     const std::ifstream ninja(file);
     ninjaCopy << ninja.rdbuf();
     parse(file, ninjaCopy.str());
-  }
-
-  void operator()(const SubninjaReader&) const {
-    // subninja introduces a new scope so we can never modify the top-level
-    // `builddir` variable
   }
 };
 

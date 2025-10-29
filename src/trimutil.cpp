@@ -306,7 +306,7 @@ class BuildContext {
   }
 
   void operator()(PoolReader& r) {
-    consume(r.readVariables());
+    r.skip();
     parts.emplace_back(r.start(), r.bytesParsed());
     partsType.push_back(PartType::Pool);
   }
