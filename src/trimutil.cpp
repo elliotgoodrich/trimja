@@ -42,9 +42,9 @@
 #include <boost/boost_unordered.hpp>
 
 #include <cassert>
-#include <forward_list>
 #include <fstream>
 #include <iostream>
+#include <memory_resource>
 #include <numeric>
 #include <sstream>
 
@@ -53,26 +53,6 @@ namespace trimja {
 using BuildContext = detail::BuildContext;
 
 // NOLINTBEGIN(performance-avoid-endl)
-
-namespace {
-
-std::string popScopeAndRevertVariables(NestedScope& scope) {
-  std::string result;
-  BasicScope top = scope.pop();
-  for (const auto& [name, value] : top.revert(scope)) {
-    result += name;
-    if (value.empty()) {
-      result += " =\n";
-    } else {
-      result += " = ";
-      result += value;
-      result += '\n';
-    }
-  }
-  return result;
-}
-
-}  // namespace
 
 namespace detail {
 
@@ -150,7 +130,7 @@ class BuildContext {
   // `subninja` and we need to extend the lifetime of the file contents until
   // all parsing has finished.  We use a `std::forward_list` so that we get
   // stable references to the contents.
-  std::forward_list<std::string> stringStorage;
+  std::pmr::monotonic_buffer_resource stringStorage;
 
   // A place to hold numbers as strings that can be put into `parts` if we have
   // duplicate rules and need a suffix.
@@ -238,6 +218,50 @@ class BuildContext {
     }
   }
 
+  // Create a long-lived copy of `str` in our string storage. As the storage
+  // is a managed resource, it will clean up all allocated strings with it when
+  // it is destructed.
+  std::string_view copyString(std::string_view str) {
+    char* out = static_cast<char*>(stringStorage.allocate(str.size()));
+    std::copy(str.cbegin(), str.cend(), out);
+    return std::string_view{out, str.size()};
+  }
+
+  // Create and return a reference to a string that will be destructed
+  // automatically when this `BuildContext` is destructed.
+  std::pmr::string& createManagedString() {
+    std::pmr::polymorphic_allocator alloc{&stringStorage};
+    return *alloc.new_object<std::pmr::string>();
+  }
+
+  // Create and return a reference to a  `std::stringstream` that will be
+  // destructed automatically when this `BuildContext` is destructed.
+  std::basic_stringstream<char,
+                          std::char_traits<char>,
+                          std::pmr::polymorphic_allocator<char>>&
+  createManagedSStream() {
+    std::pmr::polymorphic_allocator alloc{&stringStorage};
+    return *alloc.new_object<std::basic_stringstream<
+        char, std::char_traits<char>, std::pmr::polymorphic_allocator<char>>>(
+        std::pmr::string{}, std::ios_base::in | std::ios_base::out);
+  }
+
+  std::string_view popScopeAndRevertVariables() {
+    BasicScope top = fileScope.pop();
+    std::pmr::string& result = createManagedString();
+    for (const auto& [name, value] : top.revert(fileScope)) {
+      result += name;
+      if (value.empty()) {
+        result += " =\n";
+      } else {
+        result += " = ";
+        result += value;
+        result += '\n';
+      }
+    }
+    return result;
+  }
+
   std::string_view to_string_view(std::size_t n) {
     for (std::size_t i = numbers.size(); i <= n; ++i) {
       numbers.emplace_back(std::to_string(i));
@@ -299,8 +323,8 @@ class BuildContext {
   }
 
   void parse(const std::filesystem::path& ninjaFile,
-             const std::string& ninjaFileContents) {
-    for (auto&& part : ManifestReader(ninjaFile, ninjaFileContents)) {
+             std::string_view ninjaFileContents) {
+    for (auto&& part : ManifestReader{ninjaFile, ninjaFileContents}) {
       std::visit(*this, part);
     }
   }
@@ -579,11 +603,12 @@ class BuildContext {
       msg += "!";
       throw std::runtime_error(msg);
     }
-    std::stringstream ninjaCopy;
-    const std::ifstream ninja(file);
-    ninjaCopy << ninja.rdbuf();
-    stringStorage.push_front(ninjaCopy.str());
-    parse(file, stringStorage.front());
+
+    auto& stream = createManagedSStream();
+    const std::ifstream ninja{file};
+    stream << ninja.rdbuf();
+    stream << '\0';  // ensure our `string_view` is null-terminated
+    parse(file, stream.view());
   }
 
   void operator()(const SubninjaReader& r) {
@@ -605,18 +630,17 @@ class BuildContext {
     fileScope.push();
     shadowedRules.emplace_back();
 
-    std::stringstream ninjaCopy;
+    auto& stream = createManagedSStream();
     const std::ifstream ninja{file};
-    ninjaCopy << ninja.rdbuf();
-    stringStorage.push_front(ninjaCopy.str());
+    stream << ninja.rdbuf();
+    stream << '\0';  // ensure our `string_view` is null-terminated
 
     fileIds.push_back(nextFileId++);
-    parse(file, stringStorage.front());
+    parse(file, stream.view());
     fileIds.pop_back();
 
     // Everything pushed back from popping a scope is a variable assignment
-    stringStorage.push_front(popScopeAndRevertVariables(fileScope));
-    parts.push_back(stringStorage.front());
+    parts.push_back(popScopeAndRevertVariables());
     partsType.push_back(PartType::Variable);
 
     // For all the shadowed rules, set name to ruleIndex lookup back to the
@@ -886,7 +910,9 @@ void TrimUtil::trim(std::ostream& output,
   // canonical paths in the same way that ninja does
   {
     const Timer t = CPUProfiler::start(".ninja parse");
-    ctx.parse(ninjaFile, ninjaFileContents);
+    const std::string_view nullTerminated{ninjaFileContents.data(),
+                                          ninjaFileContents.size() + 1};
+    ctx.parse(ninjaFile, nullTerminated);
   }
 
   const std::filesystem::path ninjaFileDir = [&] {
@@ -1075,7 +1101,6 @@ void TrimUtil::trim(std::ostream& output,
 
   // Go through all build commands, keep a note of rules that are needed and
   // `phony` out the build edges that weren't required.
-  std::forward_list<std::string> phonyStorage;
   std::vector<bool> ruleReferenced(ctx.rules.size());
   for (BuildContext::BuildCommand& command : ctx.commands) {
     if (command.resolution == BuildContext::BuildCommand::Print) {
@@ -1088,7 +1113,7 @@ void TrimUtil::trim(std::ostream& output,
           command.validationStr,
           "\n",
       };
-      std::string& phony = phonyStorage.emplace_front();
+      std::pmr::string& phony = ctx.createManagedString();
       phony.resize(
           std::accumulate(parts.begin(), parts.end(), phony.size(),
                           [](std::size_t size, const std::string_view part) {

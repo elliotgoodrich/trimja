@@ -278,9 +278,9 @@ bool instrumentMemory = false;
   const std::string ninjaFileContents = [&] {
     const Timer ninjaRead = CPUProfiler::start(".ninja read");
     std::stringstream ninjaCopy;
-    const std::ifstream ninja(ninjaFile);
+    const std::ifstream ninja{ninjaFile};
     ninjaCopy << ninja.rdbuf();
-    return ninjaCopy.str();
+    return std::move(ninjaCopy).str();
   }();
 
   // If we have `--builddir` then ignore all other flags other than -f

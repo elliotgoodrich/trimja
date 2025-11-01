@@ -42,7 +42,7 @@ class BuildDirContext {
 
   void parse(const std::filesystem::path& ninjaFile,
              const std::string& ninjaFileContents) {
-    for (auto&& part : ManifestReader(ninjaFile, ninjaFileContents)) {
+    for (auto&& part : ManifestReader{ninjaFile, ninjaFileContents}) {
       std::visit(*this, part);
     }
   }
@@ -74,9 +74,9 @@ class BuildDirContext {
       throw std::runtime_error(msg);
     }
     std::stringstream ninjaCopy;
-    const std::ifstream ninja(file);
+    const std::ifstream ninja{file};
     ninjaCopy << ninja.rdbuf();
-    parse(file, ninjaCopy.str());
+    parse(file, std::move(ninjaCopy).str());
   }
 };
 

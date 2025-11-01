@@ -256,6 +256,12 @@ class SubninjaReader : public detail::BaseReaderWithStart {
 /**
  * @class ManifestReader
  * @brief Class for parsing a Ninja build file.
+ *
+ * This class is responsible for reading and interpreting the contents
+ * of a Ninja build file. It utilizes a lexer to tokenize the input
+ * and provides an iterator to traverse the various components of the
+ * build file, such as pools, builds, rules, defaults, variables,
+ * includes, and subninja statements.
  */
 class ManifestReader {
   Lexer m_lexer;
@@ -279,18 +285,36 @@ class ManifestReader {
 
    public:
     iterator(Lexer* lexer, EvalStringBuilder* storage);
-
     value_type operator*() const;
-
     iterator& operator++();
     void operator++(int);
     friend bool operator==(const iterator& iter, sentinel s);
     friend bool operator!=(const iterator& iter, sentinel s);
   };
 
+  /**
+   * @brief Constructs a ManifestReader for the specified Ninja file.
+   * @param ninjaFile The path to the Ninja build file.
+   * @param ninjaFileContents The contents of the Ninja build file.
+   * @pre `ninjaFileContents` is null-terminated
+   * @pre `ninjaFileContents` points to a string that outlives this
+   * object.
+   */
+  ManifestReader(const std::filesystem::path& ninjaFile,
+                 std::string_view ninjaFileContents);
   ManifestReader(const std::filesystem::path& ninjaFile,
                  const std::string& ninjaFileContents);
+
+  /**
+   * @brief Returns an iterator to the beginning of the components.
+   * @return An iterator to the start of the components.
+   */
   iterator begin();
+
+  /**
+   * @brief Returns a sentinel indicating the end of the components.
+   * @return A sentinel for the end of the components.
+   */
   sentinel end();
 };
 
