@@ -443,7 +443,7 @@ bool operator!=(const ManifestReader::iterator& iter,
 }
 
 ManifestReader::ManifestReader(const std::filesystem::path& ninjaFile,
-                               const std::string& ninjaFileContents)
+                               std::string_view ninjaFileContents)
     : m_lexer(), m_storage() {
   m_lexer.Start(ninjaFile, ninjaFileContents);
 }

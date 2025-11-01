@@ -289,7 +289,7 @@ class ManifestReader {
   };
 
   ManifestReader(const std::filesystem::path& ninjaFile,
-                 const std::string& ninjaFileContents);
+                 std::string_view ninjaFileContents);
   iterator begin();
   sentinel end();
 };
