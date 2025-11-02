@@ -397,9 +397,7 @@ class BuildContext {
                     std::span{outs.data(), outSize}};
 
     for (const auto& [name, value] : r.readVariables()) {
-      std::string varValue;
-      evaluate(varValue, value, scope);
-      scope.set(name, std::move(varValue));
+      scope.set(name, evaluate(value, scope));
     }
 
     // Add the build command
@@ -581,20 +579,15 @@ class BuildContext {
   }
 
   void operator()(const VariableReader& r) {
-    std::string value;
-    evaluate(value, r.value(), fileScope);
-    fileScope.set(r.name(), std::move(value));
+    fileScope.set(r.name(), evaluate(r.value(), fileScope));
     parts.emplace_back(r.start(), r.bytesParsed());
     partsType.push_back(PartType::Variable);
   }
 
   void operator()(const IncludeReader& r) {
-    const std::filesystem::path file = [&] {
-      const EvalString& pathEval = r.path();
-      std::string path;
-      evaluate(path, pathEval, fileScope);
-      return std::filesystem::path(r.parent()).remove_filename() / path;
-    }();
+    const std::filesystem::path file =
+        std::filesystem::path{r.parent()}.remove_filename() /
+        evaluate(r.path(), fileScope);
 
     if (!std::filesystem::exists(file)) {
       std::string msg;
@@ -612,12 +605,9 @@ class BuildContext {
   }
 
   void operator()(const SubninjaReader& r) {
-    const std::filesystem::path file = [&] {
-      const EvalString& pathEval = r.path();
-      std::string path;
-      evaluate(path, pathEval, fileScope);
-      return std::filesystem::path{r.parent()}.remove_filename() / path;
-    }();
+    const std::filesystem::path file =
+        std::filesystem::path{r.parent()}.remove_filename() /
+        evaluate(r.path(), fileScope);
 
     if (!std::filesystem::exists(file)) {
       std::string msg;

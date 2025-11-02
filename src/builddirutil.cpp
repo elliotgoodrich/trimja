@@ -50,21 +50,16 @@ class BuildDirContext {
   void operator()(auto& r) const { r.skip(); }
 
   void operator()(VariableReader& r) {
-    std::string value;
-    evaluate(value, r.value(), fileScope);
-    fileScope.set(r.name(), std::move(value));
+    fileScope.set(r.name(), evaluate(r.value(), fileScope));
   }
 
   void operator()(IncludeReader& r) {
     // We handle include, but never subninja as it introduces a new scope so we
     // can never modify the top-level `builddir` variable
 
-    const std::filesystem::path file = [&] {
-      const EvalString& pathEval = r.path();
-      std::string path;
-      evaluate(path, pathEval, fileScope);
-      return std::filesystem::path(r.parent()).remove_filename() / path;
-    }();
+    const std::filesystem::path file =
+        std::filesystem::path{r.parent()}.remove_filename() /
+        evaluate(r.path(), fileScope);
 
     if (!std::filesystem::exists(file)) {
       std::string msg;

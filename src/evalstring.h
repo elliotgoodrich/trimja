@@ -168,6 +168,20 @@ void evaluate(std::string& output,
   }
 }
 
+/**
+ * @brief Evaluates the EvalString and returns the result.
+ * @tparam SCOPE The type of the scope.
+ * @param variable The EvalString to evaluate.
+ * @param scope The scope to use for variable evaluation.
+ * @return The result of evaluating the EvalString against the scope.
+ */
+template <typename SCOPE>
+std::string evaluate(const EvalString& variable, const SCOPE& scope) {
+  std::string result;
+  evaluate(result, variable, scope);
+  return result;
+}
+
 }  // namespace trimja
 
 #endif  // TRIMJA_EVALSTRING
