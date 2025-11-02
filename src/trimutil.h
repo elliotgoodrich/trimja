@@ -31,7 +31,7 @@
 namespace trimja {
 
 namespace detail {
-class BuildContext;
+class Imp;
 }  // namespace detail
 
 /**
@@ -39,7 +39,7 @@ class BuildContext;
  * @brief Utility to trim a Ninja build file based on a list of affected files.
  */
 class TrimUtil {
-  std::unique_ptr<detail::BuildContext> m_imp;
+  std::unique_ptr<detail::Imp> m_imp;
 
  public:
   /**

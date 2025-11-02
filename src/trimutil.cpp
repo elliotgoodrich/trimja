@@ -50,11 +50,62 @@
 
 namespace trimja {
 
-using BuildContext = detail::BuildContext;
-
 // NOLINTBEGIN(performance-avoid-endl)
 
 namespace detail {
+
+/**
+ * @class ManagedResources
+ * @brief A class to create long lived objects that will get automatically
+ * cleaned up.
+ * @private
+ */
+class ManagedResources {
+  std::pmr::monotonic_buffer_resource m_buffer;
+
+ public:
+  /**
+   * @brief Default constructor for ManagedResources.
+   */
+  ManagedResources() = default;
+
+  /**
+   * @brief Create a copy of a string in managed storage.
+   * @param str The string to copy.
+   * @return A string_view pointing to the copied string whose lifetime is as
+   * long as this ManagedResources.
+   */
+  std::string_view copyString(std::string_view str) {
+    char* out = static_cast<char*>(m_buffer.allocate(str.size()));
+    std::copy(str.cbegin(), str.cend(), out);
+    return std::string_view{out, str.size()};
+  }
+
+  /**
+   * @brief Create an empty string in managed storage.
+   * @return A std::pmr::string whose lifetime is as long as this
+   * ManagedResources.
+   */
+  std::pmr::string& createManagedString() {
+    std::pmr::polymorphic_allocator alloc{&m_buffer};
+    return *alloc.new_object<std::pmr::string>();
+  }
+
+  /**
+   * @brief Create an empty stringstream in managed storage.
+   * @return A std::stringstream whose lifetime is as long as this
+   * ManagedResources.
+   */
+  std::basic_stringstream<char,
+                          std::char_traits<char>,
+                          std::pmr::polymorphic_allocator<char>>&
+  createManagedSStream() {
+    std::pmr::polymorphic_allocator alloc{&m_buffer};
+    return *alloc.new_object<std::basic_stringstream<
+        char, std::char_traits<char>, std::pmr::polymorphic_allocator<char>>>(
+        std::pmr::string{}, std::ios_base::in | std::ios_base::out);
+  }
+};
 
 class BuildContext {
  public:
@@ -125,12 +176,10 @@ class BuildContext {
   inline static const std::size_t phonyIndex = 0;
   inline static const std::size_t defaultIndex = 1;
 
-  // An optional storage for any generated strings or strings whose lifetime
-  // needs extending. e.g. This is useful when processing `include` and
-  // `subninja` and we need to extend the lifetime of the file contents until
-  // all parsing has finished.  We use a `std::forward_list` so that we get
-  // stable references to the contents.
-  std::pmr::monotonic_buffer_resource stringStorage;
+  // A storage for generated strings or strings whose lifetime needs extending.
+  // e.g. This is useful when processing `include` and `subninja` and we need to
+  // extend the lifetime of the file contents until all parsing has finished.
+  ManagedResources& storage;
 
   // A place to hold numbers as strings that can be put into `parts` if we have
   // duplicate rules and need a suffix.
@@ -144,9 +193,8 @@ class BuildContext {
     Default,
   };
 
-  // All parts of the input build file, possibly indexing into an element of
-  // `stringStorage`.  Note that we may swap out build command sections with
-  // phony commands.
+  // All parts of the input build file.  Note that we may swap out build command
+  // sections with phony commands.
   std::vector<std::string_view> parts;
 
   std::vector<PartType> partsType;
@@ -218,37 +266,9 @@ class BuildContext {
     }
   }
 
-  // Create a long-lived copy of `str` in our string storage. As the storage
-  // is a managed resource, it will clean up all allocated strings with it when
-  // it is destructed.
-  std::string_view copyString(std::string_view str) {
-    char* out = static_cast<char*>(stringStorage.allocate(str.size()));
-    std::copy(str.cbegin(), str.cend(), out);
-    return std::string_view{out, str.size()};
-  }
-
-  // Create and return a reference to a string that will be destructed
-  // automatically when this `BuildContext` is destructed.
-  std::pmr::string& createManagedString() {
-    std::pmr::polymorphic_allocator alloc{&stringStorage};
-    return *alloc.new_object<std::pmr::string>();
-  }
-
-  // Create and return a reference to a  `std::stringstream` that will be
-  // destructed automatically when this `BuildContext` is destructed.
-  std::basic_stringstream<char,
-                          std::char_traits<char>,
-                          std::pmr::polymorphic_allocator<char>>&
-  createManagedSStream() {
-    std::pmr::polymorphic_allocator alloc{&stringStorage};
-    return *alloc.new_object<std::basic_stringstream<
-        char, std::char_traits<char>, std::pmr::polymorphic_allocator<char>>>(
-        std::pmr::string{}, std::ios_base::in | std::ios_base::out);
-  }
-
   std::string_view popScopeAndRevertVariables() {
     BasicScope top = fileScope.pop();
-    std::pmr::string& result = createManagedString();
+    std::pmr::string& result = storage.createManagedString();
     for (const auto& [name, value] : top.revert(fileScope)) {
       result += name;
       if (value.empty()) {
@@ -272,7 +292,7 @@ class BuildContext {
 
   Node augment(const Graph::Node& node) const { return Node{node, this}; }
 
-  BuildContext() {
+  BuildContext(ManagedResources& storage) : storage{storage} {
     fileIds.push_back(nextFileId++);
 
     rules.emplace_back(
@@ -597,7 +617,7 @@ class BuildContext {
       throw std::runtime_error(msg);
     }
 
-    auto& stream = createManagedSStream();
+    auto& stream = storage.createManagedSStream();
     const std::ifstream ninja{file};
     stream << ninja.rdbuf();
     stream << '\0';  // ensure our `string_view` is null-terminated
@@ -620,7 +640,7 @@ class BuildContext {
     fileScope.push();
     shadowedRules.emplace_back();
 
-    auto& stream = createManagedSStream();
+    auto& stream = storage.createManagedSStream();
     const std::ifstream ninja{file};
     stream << ninja.rdbuf();
     stream << '\0';  // ensure our `string_view` is null-terminated
@@ -877,9 +897,15 @@ class BuildContext {
   }
 };
 
-}  // namespace detail
+class Imp {
+ public:
+  ManagedResources buffer;
+  BuildContext ctx;
 
-namespace {}  // namespace
+  Imp() : buffer{}, ctx{buffer} {}
+};
+
+}  // namespace detail
 
 TrimUtil::TrimUtil() : m_imp{nullptr} {}
 
@@ -890,11 +916,13 @@ void TrimUtil::trim(std::ostream& output,
                     const std::string& ninjaFileContents,
                     std::istream& affected,
                     bool explain) {
+  using namespace detail;
+
   // Keep our state inside `m_imp` so that we defer cleanup until the destructor
   // of `TrimUtil`. This allows the calling code to skip all destructors when
   // calling `std::_Exit`.
-  m_imp = std::make_unique<BuildContext>();
-  BuildContext& ctx = *m_imp;
+  m_imp = std::make_unique<Imp>();
+  BuildContext& ctx = m_imp->ctx;
 
   // Parse the build file, this needs to be the first thing so we choose the
   // canonical paths in the same way that ninja does
@@ -905,11 +933,8 @@ void TrimUtil::trim(std::ostream& output,
     ctx.parse(ninjaFile, nullTerminated);
   }
 
-  const std::filesystem::path ninjaFileDir = [&] {
-    std::filesystem::path dir(ninjaFile);
-    dir.remove_filename();
-    return dir;
-  }();
+  const std::filesystem::path ninjaFileDir =
+      std::filesystem::path{ninjaFile}.remove_filename();
 
   const std::filesystem::path builddir = [&] {
     std::string path;
@@ -1103,7 +1128,7 @@ void TrimUtil::trim(std::ostream& output,
           command.validationStr,
           "\n",
       };
-      std::pmr::string& phony = ctx.createManagedString();
+      std::pmr::string& phony = m_imp->buffer.createManagedString();
       phony.resize(
           std::accumulate(parts.begin(), parts.end(), phony.size(),
                           [](std::size_t size, const std::string_view part) {
