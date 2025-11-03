@@ -25,7 +25,7 @@
 
 #include "basicscope.h"
 #include "evalstring.h"
-#include "rule.h"
+#include "rulevariables.h"
 
 #include <span>
 #include <string>
@@ -56,7 +56,7 @@ class EdgeScope {
   std::span<const std::string> m_ins;
   std::span<const std::string> m_outs;
   BasicScope m_local;
-  const Rule& m_rule;
+  const RuleVariables& m_rule;
   SCOPE& m_parent;
 
  public:
@@ -69,7 +69,7 @@ class EdgeScope {
    * @param outs The output files for the build edge.
    */
   EdgeScope(SCOPE& parent,
-            const Rule& rule,
+            const RuleVariables& rule,
             std::span<const std::string> ins,
             std::span<const std::string> outs)
       : m_ins{ins}, m_outs{outs}, m_local{}, m_rule{rule}, m_parent{parent} {}

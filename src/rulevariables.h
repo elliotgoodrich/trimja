@@ -20,8 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef TRIMJA_RULE
-#define TRIMJA_RULE
+#ifndef TRIMJA_RULEVARIABLES
+#define TRIMJA_RULEVARIABLES
 
 #include <string_view>
 #include <utility>
@@ -32,10 +32,10 @@ namespace trimja {
 class EvalString;
 
 /**
- * @class Rule
- * @brief Represents a build rule in the Ninja build system.
+ * @class RuleVariables
+ * @brief Represents the variables of a build rule in the Ninja build system.
  */
-class Rule {
+class RuleVariables {
  public:
   /**
    * @brief List of reserved variable names in a rule.
@@ -60,9 +60,9 @@ class Rule {
   static std::size_t getLookupIndex(std::string_view varName);
 
   /**
-   * @brief Constructs a Rule
+   * @brief Constructs an empty RuleVariables.
    */
-  Rule();
+  RuleVariables();
 
   /**
    * @brief Adds a variable and its value to the rule.

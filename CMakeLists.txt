@@ -53,7 +53,7 @@ add_library(
     src/murmur_hash.cpp
     src/nestedscope.cpp
     src/ninja_clock.cpp
-    src/rule.cpp
+    src/rulevariables.cpp
     src/stringstack.cpp
     src/trimutil.cpp
     thirdparty/gch/small_vector.natvis

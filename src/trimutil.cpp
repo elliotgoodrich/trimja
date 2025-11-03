@@ -34,7 +34,7 @@
 #include "manifestparser.h"
 #include "murmur_hash.h"
 #include "nestedscope.h"
-#include "rule.h"
+#include "rulevariables.h"
 #include "stringstack.h"
 
 #include <ninja/util.h>
@@ -107,10 +107,219 @@ class ManagedResources {
   }
 };
 
+/**
+ * @class OutputText
+ * @brief A class to manage the final output of trimming the ninja file.
+ * @private
+ */
+class OutputText {
+ public:
+  /**
+   * @brief The index of elements in this container.
+   */
+  using Index = IndexInto<OutputText>;
+
+  enum class PartType : std::int8_t {
+    BuildEdge,
+    Pool,
+    Rule,
+    Variable,
+    Default,
+  };
+
+  // All parts of the input build file.  Note that we may swap out build command
+  // sections with phony commands.
+  std::vector<std::string_view> parts;
+
+  std::vector<PartType> partsType;
+
+  /**
+   * @brief Add the text with the specified type to the end.
+   * @param text The text to insert
+   * @param type The type of the text inserted
+   * @pre text must point to a string that outlives this object
+   * @return An Index representing the newly inserted element
+   */
+  Index emplace_back(std::string_view text, PartType type) {
+    parts.push_back(text);
+    partsType.push_back(type);
+    return Index{parts.size() - 1, this};
+  }
+
+  /**
+   * @brief Add the text with the specified type to the end.
+   * @param data The start of the string
+   * @param size The size of the string
+   * @param type The type of the text inserted
+   * @pre data must point to a string that outlives this object
+   * @return An Index representing the newly inserted element
+   */
+  Index emplace_back(const char* data, std::size_t size, PartType type) {
+    parts.emplace_back(data, size);
+    partsType.push_back(type);
+    return Index{parts.size() - 1, this};
+  }
+
+  /**
+   * @brief Return the number of elements
+   * @return The number of elements.
+   */
+  std::size_t size() const {
+    assert(parts.size() == partsType.size());
+    return parts.size();
+  }
+
+  /**
+   * @brief Return a range containing all Index values of inserted elements.
+   * @return The range of all parts
+   */
+  IndexIntoRange<Index> allParts() const {
+    return {Index{0, this}, Index{parts.size(), this}};
+  }
+};
+
+/**
+ * @class RuleTextParts
+ * @brief A class to manage the parts of a ninja rule inside OutputText
+ * @private
+ */
+class RuleTextParts {
+  OutputText::Index m_start;
+  OutputText::Index m_name;
+  OutputText::Index m_rest;
+
+ public:
+  /**
+   * @brief Construct a RuleTextParts object.
+   * @param start The index of the start of the rule, up to the start of the
+   * rule name
+   * @param name The index of the name of the rule
+   * @param rest The index of the rest of the rule after the name, including all
+   * variables.
+   */
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+  RuleTextParts(OutputText::Index start,
+                OutputText::Index name,
+                OutputText::Index rest)
+      : m_start{start}, m_name{name}, m_rest{rest} {}
+
+  /**
+   * @brief Get the name of this rule.
+   * @param output The output text containing the rule parts.
+   * @return The name of this rule.
+   */
+  std::string_view getName(const OutputText& output) const {
+    return output.parts[m_name];
+  }
+
+  /**
+   * @brief Set the name of this rule.
+   * @param newName The new name of the rule.
+   * @param output The output text containing the rule parts.
+   * @pre newName must point to a string that outlives output.
+   */
+  void setName(std::string_view newName, OutputText& output) {
+    output.parts[m_name] = newName;
+  }
+
+  /**
+   * @brief Get an iterator to the beginning of the rule parts.
+   */
+  const OutputText::Index* begin() const { return &m_start; }
+
+  /**
+   * @brief Get an iterator to the end of the rule parts.
+   */
+  const OutputText::Index* end() const { return &m_rest + 1; }
+};
+
+/**
+ * @brief Parse a RuleReader into its text parts and variables.
+ * @param r The RuleReader to parse.
+ * @param output The output text to insert the rule parts into.
+ * @pre r has not had any non-const methods called on it.
+ * @post r would have been completely read.
+ * @return A pair of the RuleTextParts and RuleVariables parsed.
+ */
+std::pair<RuleTextParts, RuleVariables> parseRule(RuleReader& r,
+                                                  OutputText& output) {
+  const std::string_view name = r.name();
+
+  RuleVariables variables;
+  for (const auto& [key, value] : r.readVariables()) {
+    if (!variables.add(key, value)) {
+      std::string msg;
+      msg += "Unexpected variable '";
+      msg += key;
+      msg += "' in rule '";
+      msg += name;
+      msg += "' found!";
+      throw std::runtime_error{msg};
+    }
+  }
+
+  const char* endOfName = name.data() + name.size();
+  const OutputText::Index startIndex = output.emplace_back(
+      r.start(), name.data() - r.start(), OutputText::PartType::Rule);
+  const OutputText::Index nameIndex =
+      output.emplace_back(name, OutputText::PartType::Rule);
+  const OutputText::Index restIndex =
+      output.emplace_back(name.data() + name.size(), r.position() - endOfName,
+                          OutputText::PartType::Rule);
+
+  return std::pair<RuleTextParts, RuleVariables>{
+      std::piecewise_construct,
+      std::forward_as_tuple(startIndex, nameIndex, restIndex),
+      std::forward_as_tuple(std::move(variables))};
+}
+
+/**
+ * @class Rule
+ * @brief A class to manage everything about a ninja rule
+ * @private
+ */
+struct Rule {
+  // The name of this rule.
+  std::string_view name;
+
+  // Our list of variables
+  RuleVariables variables;
+
+  // An optional RuleTextParts to contain our output into OutputText.
+  // This is only nullopt when the rule is a built-in rule.
+  std::optional<RuleTextParts> parts;
+
+  // The number of rules (including this one) that have this name. e.g. if
+  // this is the first rule with this name then `instance` will be 1.
+  std::size_t instance = 1;
+
+  // An id of the file that defined this rule or `nullopt` for built-in rules.
+  std::optional<std::size_t> fileId;
+
+  /**
+   * @brief Construct a Rule object with a given name
+   * @param name The name of the rule
+   * @pre The lifetime of name exceeds the lifetime of this object
+   */
+  Rule(std::string_view name) : name{name} {}
+
+  /**
+   * @brief Get an iterator to the beginning of the rule parts.
+   */
+  const OutputText::Index* begin() const {
+    return parts ? parts->begin() : nullptr;
+  }
+
+  /**
+   * @brief Get an iterator to the end of the rule parts.
+   */
+  const OutputText::Index* end() const {
+    return parts ? parts->end() : nullptr;
+  }
+};
+
 class BuildContext {
  public:
-  struct PartTag {};
-  using PartIndex = IndexInto<BuildContext, PartTag>;
   struct RuleTag {};
   using RuleIndex = IndexInto<BuildContext, RuleTag>;
   struct BuildCommandTag {};
@@ -130,7 +339,7 @@ class BuildContext {
     Resolution resolution;
 
     // The location of our entire build command inside `BuildContext::parts`
-    gch::small_vector<PartIndex, 3> partsIndices;
+    gch::small_vector<OutputText::Index, 3> partsIndices;
 
     // The build command (+ rspfile_content) that gets hashed by ninja
     std::string hashTarget;
@@ -152,26 +361,6 @@ class BuildContext {
         : resolution{resolution}, ruleIndex{ruleIndex} {}
   };
 
-  struct RuleCommand {
-    // Our list of variables
-    Rule variables;
-
-    // The name of our rule
-    std::string_view name;
-
-    // The number of rules (including this one) that have this name. e.g. if
-    // this is the first rule with this name then `instance` will be 1.
-    std::size_t instance = 1;
-
-    // The location of our entire rule inside `BuildContext::parts`
-    gch::small_vector<PartIndex, 3> partsIndices;
-
-    // An id of the file that defined this rule or `nullopt` for built-in rules
-    std::optional<std::size_t> fileId;
-
-    RuleCommand(std::string_view name) : name{name} {}
-  };
-
   // The indexes of the built-in rules within `rules`
   inline static const std::size_t phonyIndex = 0;
   inline static const std::size_t defaultIndex = 1;
@@ -185,19 +374,7 @@ class BuildContext {
   // duplicate rules and need a suffix.
   std::vector<fixed_string> numbers;
 
-  enum class PartType : std::int8_t {
-    BuildEdge,
-    Pool,
-    Rule,
-    Variable,
-    Default,
-  };
-
-  // All parts of the input build file.  Note that we may swap out build command
-  // sections with phony commands.
-  std::vector<std::string_view> parts;
-
-  std::vector<PartType> partsType;
+  OutputText output;
 
   // All build commands and default statements mentioned
   std::vector<BuildCommand> commands;
@@ -212,7 +389,7 @@ class BuildContext {
   std::vector<bool> isRequired;
 
   // Our list of rules
-  std::vector<RuleCommand> rules;
+  std::vector<Rule> rules;
 
   struct RuleBits {
     // The index of the rule in `rules`
@@ -351,8 +528,7 @@ class BuildContext {
 
   void operator()(PoolReader& r) {
     r.skip();
-    parts.emplace_back(r.start(), r.bytesParsed());
-    partsType.push_back(PartType::Pool);
+    output.emplace_back(r.start(), r.bytesParsed(), OutputText::PartType::Pool);
   }
 
   void operator()(BuildReader& r) {
@@ -428,24 +604,21 @@ class BuildContext {
         isBuiltInRule(ruleIndex) ? BuildCommand::Print : BuildCommand::Phony,
         ruleIndex);
 
-    const std::size_t partsIndex = parts.size();
     if (rules[ruleIndex].instance == 1) {
-      parts.emplace_back(r.start(), r.bytesParsed());
-      partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.emplace_back(partsIndex, this);
+      buildCommand.partsIndices.push_back(output.emplace_back(
+          r.start(), r.bytesParsed(), OutputText::PartType::BuildEdge));
     } else {
       const char* endOfName = ruleName.data() + ruleName.size();
-      parts.emplace_back(r.start(), endOfName - r.start());
-      partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.emplace_back(partsIndex, this);
+      buildCommand.partsIndices.push_back(output.emplace_back(
+          r.start(), endOfName - r.start(), OutputText::PartType::BuildEdge));
 
-      parts.push_back(to_string_view(rules[ruleIndex].instance));
-      partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.emplace_back(partsIndex + 1, this);
+      buildCommand.partsIndices.push_back(
+          output.emplace_back(to_string_view(rules[ruleIndex].instance),
+                              OutputText::PartType::BuildEdge));
 
-      parts.emplace_back(endOfName, r.bytesParsed() - (endOfName - r.start()));
-      partsType.push_back(PartType::BuildEdge);
-      buildCommand.partsIndices.emplace_back(partsIndex + 2, this);
+      buildCommand.partsIndices.push_back(output.emplace_back(
+          endOfName, r.bytesParsed() - (endOfName - r.start()),
+          OutputText::PartType::BuildEdge));
     }
     // Check we aren't actually allocating
     assert(buildCommand.partsIndices.size() <=
@@ -492,9 +665,10 @@ class BuildContext {
   }
 
   void operator()(RuleReader& r) {
-    std::string_view name = r.name();
-    const auto [ruleIt, isNew] =
-        ruleLookup.try_emplace(name, RuleIndex{rules.size(), this});
+    auto [ruleParts, ruleVariables] = parseRule(r, output);
+    const std::string_view name = ruleParts.getName(output);
+    const RuleIndex ruleIndex{rules.size(), this};
+    const auto [ruleIt, isNew] = ruleLookup.try_emplace(name, ruleIndex);
 
     if (!isNew) {
       if (isBuiltInRule(ruleIt->second.ruleIndex)) {
@@ -506,8 +680,8 @@ class BuildContext {
         throw std::runtime_error{msg};
       }
 
-      const RuleCommand& ruleCommand = rules[ruleIt->second.ruleIndex];
-      if (ruleCommand.fileId == fileIds.back()) {
+      const Rule& rule = rules[ruleIt->second.ruleIndex];
+      if (rule.fileId == fileIds.back()) {
         // Throw an exception if we have a duplicate rule in the same file
         std::string msg;
         msg += "Duplicate rule '";
@@ -522,57 +696,23 @@ class BuildContext {
         // subninja, but we never need to unshadow these
         shadowedRules.back().push_back(bits.ruleIndex);
       }
-      bits.ruleIndex = RuleIndex{rules.size(), this};
+      bits.ruleIndex = ruleIndex;
       ++bits.duplicates;
     }
 
-    const char* endOfName = name.data() + name.size();
-    const std::size_t bytesToEndOfName = endOfName - r.start();
-
-    RuleCommand& rule = rules.emplace_back(name);
+    Rule& rule = rules.emplace_back(name);
+    rule.parts = ruleParts;
     rule.fileId = fileIds.back();
     rule.instance = ruleIt->second.duplicates;
+    rule.variables = std::move(ruleVariables);
     if (!isNew) {
       // If shadowed we need to add the rule suffix to the list of parts to
       // print
-      const std::size_t partsIndex = parts.size();
-      parts.emplace_back(r.start(), bytesToEndOfName);
-      partsType.push_back(PartType::Rule);
-      rule.partsIndices.emplace_back(partsIndex, this);
-
-      parts.push_back(to_string_view(ruleIt->second.duplicates));
-      partsType.push_back(PartType::Rule);
-      rule.partsIndices.emplace_back(partsIndex + 1, this);
+      std::pmr::string& newName = storage.createManagedString();
+      newName = name;
+      newName += std::to_string(ruleIt->second.duplicates);
+      rule.parts->setName(newName, output);
     }
-
-    for (const auto& [key, value] : r.readVariables()) {
-      if (!rule.variables.add(key, value)) {
-        std::string msg;
-        msg += "Unexpected variable '";
-        msg += key;
-        msg += "' in rule '";
-        msg += name;
-        msg += "' found!";
-        throw std::runtime_error(msg);
-      }
-    }
-
-    const std::size_t partsIndex = parts.size();
-    if (!isNew) {
-      // Include the rest of the variables if we're shadowed
-      parts.emplace_back(endOfName, r.bytesParsed() - bytesToEndOfName);
-      partsType.push_back(PartType::Rule);
-      rule.partsIndices.emplace_back(partsIndex, this);
-      assert(rule.partsIndices.size() == 3);
-    } else {
-      // If we're not shadowed then we can include the whole rule
-      parts.emplace_back(r.start(), r.bytesParsed());
-      partsType.push_back(PartType::Rule);
-      rule.partsIndices.emplace_back(partsIndex, this);
-      assert(rule.partsIndices.size() == 1);
-    }
-    // Check we aren't actually allocating
-    assert(rule.partsIndices.size() <= rule.partsIndices.inline_capacity_v);
   }
 
   void operator()(DefaultReader& r) {
@@ -582,9 +722,8 @@ class BuildContext {
       evaluate(ins.emplace_back(), path, fileScope);
     }
 
-    const PartIndex partsIndex{parts.size(), this};
-    parts.emplace_back(r.start(), r.bytesParsed());
-    partsType.push_back(PartType::Default);
+    const OutputText::Index partsIndex = output.emplace_back(
+        r.start(), r.bytesParsed(), OutputText::PartType::Default);
 
     const BuildCommandIndex commandIndex{commands.size(), this};
     BuildCommand& buildCommand = commands.emplace_back(
@@ -600,8 +739,8 @@ class BuildContext {
 
   void operator()(const VariableReader& r) {
     fileScope.set(r.name(), evaluate(r.value(), fileScope));
-    parts.emplace_back(r.start(), r.bytesParsed());
-    partsType.push_back(PartType::Variable);
+    output.emplace_back(r.start(), r.bytesParsed(),
+                        OutputText::PartType::Variable);
   }
 
   void operator()(const IncludeReader& r) {
@@ -650,14 +789,14 @@ class BuildContext {
     fileIds.pop_back();
 
     // Everything pushed back from popping a scope is a variable assignment
-    parts.push_back(popScopeAndRevertVariables());
-    partsType.push_back(PartType::Variable);
+    output.emplace_back(popScopeAndRevertVariables(),
+                        OutputText::PartType::Variable);
 
     // For all the shadowed rules, set name to ruleIndex lookup back to the
     // shadowed index.  We have to grab the name and then find since
     // `unordered_flat_map` doesn't have iterator/reference stability by default
     for (const RuleIndex shadowedRuleIndex : shadowedRules.back()) {
-      const RuleCommand& shadowedRule = rules[shadowedRuleIndex];
+      const Rule& shadowedRule = rules[shadowedRuleIndex];
       ruleLookup.find(shadowedRule.name)->second.ruleIndex = shadowedRuleIndex;
     }
     shadowedRules.pop_back();
@@ -1073,18 +1212,16 @@ void TrimUtil::trim(std::ostream& output,
     ctx.ifRequiredRequireAllChildren(node, seen, needsAllInputs, explain);
   }
 
-  assert(ctx.parts.size() == ctx.partsType.size());
-  std::vector<bool> immovable(ctx.parts.size());
-  std::vector<bool> floatToTop(ctx.parts.size());
-  for (std::size_t partIndex = 0; partIndex < ctx.partsType.size();
-       ++partIndex) {
-    switch (ctx.partsType[partIndex]) {
-      case BuildContext::PartType::Variable:
+  std::vector<bool> immovable(ctx.output.size());
+  std::vector<bool> floatToTop(ctx.output.size());
+  for (const OutputText::Index partIndex : ctx.output.allParts()) {
+    switch (ctx.output.partsType[partIndex]) {
+      case OutputText::PartType::Variable:
         immovable[partIndex] = true;
         break;
-      case BuildContext::PartType::Pool:
+      case OutputText::PartType::Pool:
         [[fallthrough]];
-      case BuildContext::PartType::Rule:
+      case OutputText::PartType::Rule:
         floatToTop[partIndex] = true;
         break;
       default:
@@ -1102,8 +1239,7 @@ void TrimUtil::trim(std::ostream& output,
         command.resolution = BuildContext::BuildCommand::Print;
 
         if (ctx.isAffected[node]) {
-          for (const BuildContext::PartIndex partsIndex :
-               command.partsIndices) {
+          for (const OutputText::Index partsIndex : command.partsIndices) {
             floatToTop[partsIndex] = true;
           }
         }
@@ -1143,10 +1279,10 @@ void TrimUtil::trim(std::ostream& output,
 
       // Clear all parts and replace them with 1 part that is the phony string
       assert(!command.partsIndices.empty());
-      ctx.parts[command.partsIndices.front()] = std::string_view{phony};
+      ctx.output.parts[command.partsIndices.front()] = std::string_view{phony};
       std::for_each(
           std::next(command.partsIndices.begin()), command.partsIndices.end(),
-          [&](const BuildContext::PartIndex part) { ctx.parts[part] = ""; });
+          [&](const OutputText::Index part) { ctx.output.parts[part] = ""; });
       command.partsIndices.clear();
     }
   }
@@ -1155,34 +1291,34 @@ void TrimUtil::trim(std::ostream& output,
   // the top so they remain above any build commands we are rearranging
   // imminently
   for (std::size_t ruleIndex = 0; ruleIndex < ctx.rules.size(); ++ruleIndex) {
-    BuildContext::RuleCommand& rule = ctx.rules[ruleIndex];
+    const Rule& rule = ctx.rules[ruleIndex];
     if (!ruleReferenced[ruleIndex]) {
       std::for_each(
-          rule.partsIndices.begin(), rule.partsIndices.end(),
-          [&](const BuildContext::PartIndex part) { ctx.parts[part] = ""; });
+          rule.begin(), rule.end(),
+          [&](const OutputText::Index part) { ctx.output.parts[part] = ""; });
     } else {
       std::for_each(
-          rule.partsIndices.begin(), rule.partsIndices.end(),
-          [&](const BuildContext::PartIndex part) { floatToTop[part] = true; });
+          rule.begin(), rule.end(),
+          [&](const OutputText::Index part) { floatToTop[part] = true; });
     }
   }
 
   // Float marked parts to the top of the file, making sure not to cross over
   // any parts marked as immovable
-  auto start = ctx.parts.begin();
-  while (start != ctx.parts.end()) {
+  auto start = ctx.output.parts.begin();
+  while (start != ctx.output.parts.end()) {
     start = std::find_if(
-        start, ctx.parts.end(), [&](const std::string_view& command) {
-          const std::size_t partIndex = &command - ctx.parts.data();
+        start, ctx.output.parts.end(), [&](const std::string_view& command) {
+          const std::size_t partIndex = &command - ctx.output.parts.data();
           return !immovable[partIndex];
         });
     const auto end = std::find_if(
-        start, ctx.parts.end(), [&](const std::string_view& command) {
-          const std::size_t partIndex = &command - ctx.parts.data();
+        start, ctx.output.parts.end(), [&](const std::string_view& command) {
+          const std::size_t partIndex = &command - ctx.output.parts.data();
           return immovable[partIndex];
         });
     std::stable_partition(start, end, [&](const std::string_view& command) {
-      const std::size_t partIndex = &command - ctx.parts.data();
+      const std::size_t partIndex = &command - ctx.output.parts.data();
       return floatToTop[partIndex];
     });
     start = end;
@@ -1191,8 +1327,8 @@ void TrimUtil::trim(std::ostream& output,
   trimTimer.stop();
 
   const Timer writeTimer = CPUProfiler::start("output time");
-  std::copy(ctx.parts.begin(), ctx.parts.end(),
-            std::ostream_iterator<std::string_view>(output));
+  std::copy(ctx.output.parts.begin(), ctx.output.parts.end(),
+            std::ostream_iterator<std::string_view>{output});
 }
 
 // NOLINTEND(performance-avoid-endl)
