@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "rule.h"
+#include "rulevariables.h"
 
 #include "evalstring.h"
 
@@ -28,14 +28,14 @@
 
 namespace trimja {
 
-Rule::Rule() = default;
+RuleVariables::RuleVariables() = default;
 
-std::size_t Rule::getLookupIndex(std::string_view varName) {
+std::size_t RuleVariables::getLookupIndex(std::string_view varName) {
   return std::find(std::begin(reserved), std::end(reserved), varName) -
          std::begin(reserved);
 }
 
-bool Rule::add(std::string_view varName, EvalString value) {
+bool RuleVariables::add(std::string_view varName, EvalString value) {
   const auto it = std::find_if(
       m_bindings.begin(), m_bindings.end(),
       [varName](const std::pair<const std::string_view*, EvalString>& binding) {
@@ -57,7 +57,7 @@ bool Rule::add(std::string_view varName, EvalString value) {
   return true;
 }
 
-const EvalString* Rule::lookupVar(std::string_view varName) const {
+const EvalString* RuleVariables::lookupVar(std::string_view varName) const {
   const auto it = std::find_if(
       m_bindings.cbegin(), m_bindings.cend(),
       [varName](const std::pair<const std::string_view*, EvalString>& binding) {
