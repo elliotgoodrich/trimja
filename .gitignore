@@ -3,6 +3,7 @@ build
 tests/**/.ninja_deps
 tests/**/.ninja_log
 tests/**/*.rsp
+CMakeSettings.json
 
 # CMake test artifacts that are sometimes left behind when running from MSVC
 tests/_err1_.txt
