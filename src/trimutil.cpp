@@ -44,6 +44,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <list>
 #include <memory_resource>
 #include <numeric>
 #include <sstream>
@@ -113,12 +114,9 @@ class ManagedResources {
  * @private
  */
 class OutputText {
- public:
-  /**
-   * @brief The index of elements in this container.
-   */
-  using Index = IndexInto<OutputText>;
+  std::pmr::monotonic_buffer_resource m_buffer;
 
+ public:
   enum class PartType : std::int8_t {
     BuildEdge,
     Pool,
@@ -127,11 +125,33 @@ class OutputText {
     Default,
   };
 
+  /**
+   * @brief Whether a part of the output text can be moved.
+   */
+  enum class Movable : std::int8_t {
+    No,   ///< This piece cannot be moved and acts a sequence point where no
+          ///< other pieces can be moved before/after it.
+    Yes,  ///< This piece can be moved, but not before/after pieces that are not
+          ///< movable.
+  };
+
+  /**
+   * @brief Whether a part of the output text should be moved as high as
+   * possible.
+   */
+  enum class FloatToTop : std::int8_t {
+    No,   ///< Do not move this part.
+    Yes,  ///< Move this part up as high as possible, but not crossing paths
+          ///< with a `Moveable::No` piece.
+  };
+
   // All parts of the input build file.  Note that we may swap out build command
   // sections with phony commands.
-  std::vector<std::string_view> parts;
+  std::pmr::list<std::tuple<std::string_view, Movable, FloatToTop>> parts;
 
-  std::vector<PartType> partsType;
+  using iterator = decltype(parts)::iterator;
+
+  OutputText() : m_buffer{}, parts{&m_buffer} {}
 
   /**
    * @brief Add the text with the specified type to the end.
@@ -140,10 +160,20 @@ class OutputText {
    * @pre text must point to a string that outlives this object
    * @return An Index representing the newly inserted element
    */
-  Index emplace_back(std::string_view text, PartType type) {
-    parts.push_back(text);
-    partsType.push_back(type);
-    return Index{parts.size() - 1, this};
+  iterator emplace_back(std::string_view text, PartType type) {
+    const auto [movable, floatToTop] = [&] {
+      switch (type) {
+        case OutputText::PartType::Variable:
+          return std::make_pair(Movable::No, FloatToTop::No);
+        case OutputText::PartType::Pool:
+          [[fallthrough]];
+        case OutputText::PartType::Rule:
+          return std::make_pair(Movable::Yes, FloatToTop::Yes);
+        default:
+          return std::make_pair(Movable::Yes, FloatToTop::No);
+      }
+    }();
+    return parts.emplace(parts.end(), text, movable, floatToTop);
   }
 
   /**
@@ -154,27 +184,39 @@ class OutputText {
    * @pre data must point to a string that outlives this object
    * @return An Index representing the newly inserted element
    */
-  Index emplace_back(const char* data, std::size_t size, PartType type) {
-    parts.emplace_back(data, size);
-    partsType.push_back(type);
-    return Index{parts.size() - 1, this};
+  iterator emplace_back(const char* data, std::size_t size, PartType type) {
+    return emplace_back(std::string_view{data, size}, type);
   }
 
   /**
    * @brief Return the number of elements
    * @return The number of elements.
    */
-  std::size_t size() const {
-    assert(parts.size() == partsType.size());
-    return parts.size();
-  }
+  std::size_t size() const { return parts.size(); }
 
   /**
-   * @brief Return a range containing all Index values of inserted elements.
-   * @return The range of all parts
+   * @brief Rearrange the text parts.
+   *
+   * Rearrange the text parts so that all parts marked as `FloatToTop::Yes` come
+   * before those marked `FloatToTop::No`, but do not move any parts before or
+   * after those marked `Movable::No`.  The relative posisition between parts
+   * with the same value for `FloatToTop` is unchanged.
    */
-  IndexIntoRange<Index> allParts() const {
-    return {Index{0, this}, Index{parts.size(), this}};
+  void rearrange() {
+    auto start = parts.begin();
+    while (start != parts.end()) {
+      start = std::find_if(start, parts.end(), [&](const auto& part) {
+        return std::get<Movable>(part) == Movable::Yes;
+      });
+      const auto seqPoint =
+          std::find_if(start, parts.end(), [&](const auto& part) {
+            return std::get<Movable>(part) == Movable::No;
+          });
+      std::stable_partition(start, seqPoint, [&](const auto& part) {
+        return std::get<FloatToTop>(part) == FloatToTop::Yes;
+      });
+      start = seqPoint;
+    }
   }
 };
 
@@ -184,9 +226,9 @@ class OutputText {
  * @private
  */
 class RuleTextParts {
-  OutputText::Index m_start;
-  OutputText::Index m_name;
-  OutputText::Index m_rest;
+  OutputText::iterator m_start;
+  OutputText::iterator m_name;
+  OutputText::iterator m_rest;
 
  public:
   /**
@@ -198,39 +240,37 @@ class RuleTextParts {
    * variables.
    */
   // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-  RuleTextParts(OutputText::Index start,
-                OutputText::Index name,
-                OutputText::Index rest)
+  RuleTextParts(OutputText::iterator start,
+                OutputText::iterator name,
+                OutputText::iterator rest)
       : m_start{start}, m_name{name}, m_rest{rest} {}
 
   /**
    * @brief Get the name of this rule.
-   * @param output The output text containing the rule parts.
    * @return The name of this rule.
    */
-  std::string_view getName(const OutputText& output) const {
-    return output.parts[m_name];
+  std::string_view getName() const {
+    return std::get<std::string_view>(*m_name);
   }
 
   /**
    * @brief Set the name of this rule.
    * @param newName The new name of the rule.
-   * @param output The output text containing the rule parts.
    * @pre newName must point to a string that outlives output.
    */
-  void setName(std::string_view newName, OutputText& output) {
-    output.parts[m_name] = newName;
+  void setName(std::string_view newName) {
+    std::get<std::string_view>(*m_name) = newName;
   }
 
   /**
    * @brief Get an iterator to the beginning of the rule parts.
    */
-  const OutputText::Index* begin() const { return &m_start; }
+  OutputText::iterator begin() const { return m_start; }
 
   /**
    * @brief Get an iterator to the end of the rule parts.
    */
-  const OutputText::Index* end() const { return &m_rest + 1; }
+  OutputText::iterator end() const { return std::next(m_rest); }
 };
 
 /**
@@ -259,17 +299,15 @@ std::pair<RuleTextParts, RuleVariables> parseRule(RuleReader& r,
   }
 
   const char* endOfName = name.data() + name.size();
-  const OutputText::Index startIndex = output.emplace_back(
-      r.start(), name.data() - r.start(), OutputText::PartType::Rule);
-  const OutputText::Index nameIndex =
-      output.emplace_back(name, OutputText::PartType::Rule);
-  const OutputText::Index restIndex =
+  const auto startIt = output.emplace_back(r.start(), name.data() - r.start(),
+                                           OutputText::PartType::Rule);
+  const auto nameIt = output.emplace_back(name, OutputText::PartType::Rule);
+  const auto restIt =
       output.emplace_back(name.data() + name.size(), r.position() - endOfName,
                           OutputText::PartType::Rule);
 
   return std::pair<RuleTextParts, RuleVariables>{
-      std::piecewise_construct,
-      std::forward_as_tuple(startIndex, nameIndex, restIndex),
+      std::piecewise_construct, std::forward_as_tuple(startIt, nameIt, restIt),
       std::forward_as_tuple(std::move(variables))};
 }
 
@@ -306,15 +344,15 @@ struct Rule {
   /**
    * @brief Get an iterator to the beginning of the rule parts.
    */
-  const OutputText::Index* begin() const {
-    return parts ? parts->begin() : nullptr;
+  OutputText::iterator begin() const {
+    return parts ? parts->begin() : OutputText::iterator{};
   }
 
   /**
    * @brief Get an iterator to the end of the rule parts.
    */
-  const OutputText::Index* end() const {
-    return parts ? parts->end() : nullptr;
+  OutputText::iterator end() const {
+    return parts ? parts->end() : OutputText::iterator{};
   }
 };
 
@@ -339,7 +377,7 @@ class BuildContext {
     Resolution resolution;
 
     // The location of our entire build command inside `BuildContext::parts`
-    gch::small_vector<OutputText::Index, 3> partsIndices;
+    gch::small_vector<OutputText::iterator, 3> partIterators;
 
     // The build command (+ rspfile_content) that gets hashed by ninja
     std::string hashTarget;
@@ -435,12 +473,6 @@ class BuildContext {
     static_assert(phonyIndex == 0);
     static_assert(defaultIndex == 1);
     return ruleIndex < 2;
-  }
-
-  template <typename RANGE>
-  static void consume(RANGE&& range) {
-    for ([[maybe_unused]] auto&& _ : range) {
-    }
   }
 
   std::string_view popScopeAndRevertVariables() {
@@ -583,7 +615,7 @@ class BuildContext {
     // required input then we include that, otherwise the validation is
     // `phony`ed out.
     const char* validationStart = r.position();
-    consume(r.readValidations());
+    r.readValidations().skip();
     const std::string_view validationStr{
         validationStart,
         static_cast<std::size_t>(r.position() - validationStart)};
@@ -605,24 +637,24 @@ class BuildContext {
         ruleIndex);
 
     if (rules[ruleIndex].instance == 1) {
-      buildCommand.partsIndices.push_back(output.emplace_back(
+      buildCommand.partIterators.push_back(output.emplace_back(
           r.start(), r.bytesParsed(), OutputText::PartType::BuildEdge));
     } else {
       const char* endOfName = ruleName.data() + ruleName.size();
-      buildCommand.partsIndices.push_back(output.emplace_back(
+      buildCommand.partIterators.push_back(output.emplace_back(
           r.start(), endOfName - r.start(), OutputText::PartType::BuildEdge));
 
-      buildCommand.partsIndices.push_back(
+      buildCommand.partIterators.push_back(
           output.emplace_back(to_string_view(rules[ruleIndex].instance),
                               OutputText::PartType::BuildEdge));
 
-      buildCommand.partsIndices.push_back(output.emplace_back(
+      buildCommand.partIterators.push_back(output.emplace_back(
           endOfName, r.bytesParsed() - (endOfName - r.start()),
           OutputText::PartType::BuildEdge));
     }
     // Check we aren't actually allocating
-    assert(buildCommand.partsIndices.size() <=
-           buildCommand.partsIndices.inline_capacity_v);
+    assert(buildCommand.partIterators.size() <=
+           buildCommand.partIterators.inline_capacity_v);
 
     buildCommand.validationStr = validationStr;
     buildCommand.outStr = outStr;
@@ -666,7 +698,7 @@ class BuildContext {
 
   void operator()(RuleReader& r) {
     auto [ruleParts, ruleVariables] = parseRule(r, output);
-    const std::string_view name = ruleParts.getName(output);
+    const std::string_view name = ruleParts.getName();
     const RuleIndex ruleIndex{rules.size(), this};
     const auto [ruleIt, isNew] = ruleLookup.try_emplace(name, ruleIndex);
 
@@ -711,7 +743,7 @@ class BuildContext {
       std::pmr::string& newName = storage.createManagedString();
       newName = name;
       newName += std::to_string(ruleIt->second.duplicates);
-      rule.parts->setName(newName, output);
+      rule.parts->setName(newName);
     }
   }
 
@@ -722,13 +754,13 @@ class BuildContext {
       evaluate(ins.emplace_back(), path, fileScope);
     }
 
-    const OutputText::Index partsIndex = output.emplace_back(
-        r.start(), r.bytesParsed(), OutputText::PartType::Default);
+    const auto partIt = output.emplace_back(r.start(), r.bytesParsed(),
+                                            OutputText::PartType::Default);
 
     const BuildCommandIndex commandIndex{commands.size(), this};
     BuildCommand& buildCommand = commands.emplace_back(
         BuildCommand::Print, RuleIndex{BuildContext::defaultIndex, this});
-    buildCommand.partsIndices.push_back(partsIndex);
+    buildCommand.partIterators.push_back(partIt);
 
     const Node outNode = getDefault();
     nodeToCommand[outNode] = commandIndex;
@@ -1212,23 +1244,6 @@ void TrimUtil::trim(std::ostream& output,
     ctx.ifRequiredRequireAllChildren(node, seen, needsAllInputs, explain);
   }
 
-  std::vector<bool> immovable(ctx.output.size());
-  std::vector<bool> floatToTop(ctx.output.size());
-  for (const OutputText::Index partIndex : ctx.output.allParts()) {
-    switch (ctx.output.partsType[partIndex]) {
-      case OutputText::PartType::Variable:
-        immovable[partIndex] = true;
-        break;
-      case OutputText::PartType::Pool:
-        [[fallthrough]];
-      case OutputText::PartType::Rule:
-        floatToTop[partIndex] = true;
-        break;
-      default:
-        break;
-    }
-  }
-
   // Float all affected edges to the top so they are prioritized first
   // and Mark all required edges as needing to print them out
   for (const BuildContext::Node& node : ctx.nodes()) {
@@ -1239,8 +1254,8 @@ void TrimUtil::trim(std::ostream& output,
         command.resolution = BuildContext::BuildCommand::Print;
 
         if (ctx.isAffected[node]) {
-          for (const OutputText::Index partsIndex : command.partsIndices) {
-            floatToTop[partsIndex] = true;
+          for (const OutputText::iterator it : command.partIterators) {
+            std::get<OutputText::FloatToTop>(*it) = OutputText::FloatToTop::Yes;
           }
         }
       }
@@ -1278,57 +1293,41 @@ void TrimUtil::trim(std::ostream& output,
       assert(it == phony.end());
 
       // Clear all parts and replace them with 1 part that is the phony string
-      assert(!command.partsIndices.empty());
-      ctx.output.parts[command.partsIndices.front()] = std::string_view{phony};
+      assert(!command.partIterators.empty());
+
+      std::get<std::string_view>(*command.partIterators.front()) = phony;
       std::for_each(
-          std::next(command.partsIndices.begin()), command.partsIndices.end(),
-          [&](const OutputText::Index part) { ctx.output.parts[part] = ""; });
-      command.partsIndices.clear();
+          std::next(command.partIterators.begin()), command.partIterators.end(),
+          [&](const OutputText::iterator it) { ctx.output.parts.erase(it); });
+      command.partIterators.clear();
     }
   }
 
   // Remove all rules that weren't referenced and float the remaining to
   // the top so they remain above any build commands we are rearranging
   // imminently
-  for (std::size_t ruleIndex = 0; ruleIndex < ctx.rules.size(); ++ruleIndex) {
+  for (BuildContext::RuleIndex ruleIndex{0, &ctx}; ruleIndex < ctx.rules.size();
+       ++ruleIndex) {
     const Rule& rule = ctx.rules[ruleIndex];
     if (!ruleReferenced[ruleIndex]) {
-      std::for_each(
-          rule.begin(), rule.end(),
-          [&](const OutputText::Index part) { ctx.output.parts[part] = ""; });
+      ctx.output.parts.erase(rule.begin(), rule.end());
     } else {
-      std::for_each(
-          rule.begin(), rule.end(),
-          [&](const OutputText::Index part) { floatToTop[part] = true; });
+      std::for_each(rule.begin(), rule.end(), [&](auto& parts) {
+        std::get<OutputText::FloatToTop>(parts) = OutputText::FloatToTop::Yes;
+      });
     }
   }
 
   // Float marked parts to the top of the file, making sure not to cross over
   // any parts marked as immovable
-  auto start = ctx.output.parts.begin();
-  while (start != ctx.output.parts.end()) {
-    start = std::find_if(
-        start, ctx.output.parts.end(), [&](const std::string_view& command) {
-          const std::size_t partIndex = &command - ctx.output.parts.data();
-          return !immovable[partIndex];
-        });
-    const auto end = std::find_if(
-        start, ctx.output.parts.end(), [&](const std::string_view& command) {
-          const std::size_t partIndex = &command - ctx.output.parts.data();
-          return immovable[partIndex];
-        });
-    std::stable_partition(start, end, [&](const std::string_view& command) {
-      const std::size_t partIndex = &command - ctx.output.parts.data();
-      return floatToTop[partIndex];
-    });
-    start = end;
-  }
-
+  ctx.output.rearrange();
   trimTimer.stop();
 
   const Timer writeTimer = CPUProfiler::start("output time");
-  std::copy(ctx.output.parts.begin(), ctx.output.parts.end(),
-            std::ostream_iterator<std::string_view>{output});
+  std::transform(
+      ctx.output.parts.begin(), ctx.output.parts.end(),
+      std::ostream_iterator<std::string_view>{output},
+      [](const auto& parts) { return std::get<std::string_view>(parts); });
 }
 
 // NOLINTEND(performance-avoid-endl)

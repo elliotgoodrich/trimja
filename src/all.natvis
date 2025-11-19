@@ -68,14 +68,6 @@
     </Expand>
   </Type>
 
-  <Type Name="trimja::detail::IndexIntoDebug&lt;trimja::detail::OutputText,*,*&gt;">
-    <DisplayString>{{ text = {m_container->parts[m_index]}, type = {m_container->partsType[m_index]} }}</DisplayString>
-    <Expand>
-      <Item Name="text">m_container->parts[m_index]</Item>
-      <Item Name="type">m_container->partsType[m_index]</Item>
-    </Expand>
-  </Type>
-
   <Type Name="trimja::detail::IndexIntoDebug&lt;trimja::detail::BuildContext,trimja::detail::BuildContext::BuildCommandTag,*&gt;">
     <DisplayString>{{ out = {m_container->commands[m_index].outStr} }}</DisplayString>
     <Expand>
