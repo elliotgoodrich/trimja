@@ -24,6 +24,7 @@
 #define TRIMJA_BASICSCOPE
 
 #include "fixed_string.h"
+#include "scope.h"
 
 #include <boost/boost_unordered.hpp>
 
@@ -81,8 +82,8 @@ class BasicScope {
    * @param parent The parent scope to revert against.
    * @return A reference to this newly modified BasicScope.
    */
-  template <typename SCOPE>
-  BasicScope& revert(const SCOPE& parent);
+  template <Scope S>
+  BasicScope& revert(const S& parent);
 
   /**
    * @brief Sets a variable in the scope.
@@ -119,8 +120,8 @@ class BasicScope {
   friend void swap(BasicScope& lhs, BasicScope& rhs) noexcept;
 };
 
-template <typename SCOPE>
-BasicScope& BasicScope::revert(const SCOPE& parent) {
+template <Scope S>
+BasicScope& BasicScope::revert(const S& parent) {
   std::string parentValue;
   for (auto it = m_variables.begin(), last = m_variables.end(); it != last;) {
     auto& [name, value] = *it;

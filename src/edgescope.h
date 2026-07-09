@@ -26,6 +26,7 @@
 #include "basicscope.h"
 #include "evalstring.h"
 #include "rulevariables.h"
+#include "scope.h"
 
 #include <span>
 #include <string>
@@ -49,15 +50,15 @@ void appendPaths(std::string& output,
  * substitutions within the context of a specific build edge. It extends
  * the functionality of EdgeScopeBase and interacts with a parent scope.
  *
- * @tparam SCOPE The type of the parent scope.
+ * @tparam S The type of the parent scope.
  */
-template <typename SCOPE>
+template <Scope S>
 class EdgeScope {
   std::span<const std::string> m_ins;
   std::span<const std::string> m_outs;
   BasicScope m_local;
   const RuleVariables& m_rule;
-  SCOPE& m_parent;
+  S& m_parent;
 
  public:
   /**
@@ -68,7 +69,7 @@ class EdgeScope {
    * @param ins The input files for the build edge.
    * @param outs The output files for the build edge.
    */
-  EdgeScope(SCOPE& parent,
+  EdgeScope(S& parent,
             const RuleVariables& rule,
             std::span<const std::string> ins,
             std::span<const std::string> outs)

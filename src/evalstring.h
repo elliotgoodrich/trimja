@@ -23,6 +23,8 @@
 #ifndef TRIMJA_EVALSTRING
 #define TRIMJA_EVALSTRING
 
+#include "scope.h"
+
 #include <cassert>
 #include <string>
 #include <string_view>
@@ -139,15 +141,13 @@ class EvalStringBuilder {
 
 /**
  * @brief Evaluates the EvalString and appends the result to the output.
- * @tparam SCOPE The type of the scope.
+ * @tparam S The type of the scope.
  * @param output The output string to append the result to.
  * @param variable The EvalString to evaluate.
  * @param scope The scope to use for variable evaluation.
  */
-template <typename SCOPE>
-void evaluate(std::string& output,
-              const EvalString& variable,
-              const SCOPE& scope) {
+template <Scope S>
+void evaluate(std::string& output, const EvalString& variable, const S& scope) {
   const auto end = variable.end();
   for (auto it = variable.begin(); it != end; ++it) {
     auto [str, type] = *it;
@@ -170,13 +170,13 @@ void evaluate(std::string& output,
 
 /**
  * @brief Evaluates the EvalString and returns the result.
- * @tparam SCOPE The type of the scope.
+ * @tparam S The type of the scope.
  * @param variable The EvalString to evaluate.
  * @param scope The scope to use for variable evaluation.
  * @return The result of evaluating the EvalString against the scope.
  */
-template <typename SCOPE>
-std::string evaluate(const EvalString& variable, const SCOPE& scope) {
+template <Scope S>
+std::string evaluate(const EvalString& variable, const S& scope) {
   std::string result;
   evaluate(result, variable, scope);
   return result;
