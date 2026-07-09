@@ -76,11 +76,12 @@ jobs:
           output/trimja-*-win64.exe
           output/trimja-*.zip
   format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
     - name: Run clang-format
-      uses: jidicula/clang-format-action@v4.13.0
-      with:
-        clang-format-version: '17'
-        check-path: 'src'
+      run: >
+        git ls-files -z
+        'src/*.c' 'src/*.h' 'src/*.cpp' 'src/*.hpp'
+        'src/*.cc' 'src/*.hh' 'src/*.cxx' 'src/*.hxx'
+        | xargs -0 clang-format --dry-run --Werror
