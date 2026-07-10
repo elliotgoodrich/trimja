@@ -20,6 +20,9 @@ fail faster, thereby giving quicker feedback to developers.
 For a ready-to-use Github Action see
 [trimja-action](https://github.com/elliotgoodrich/trimja-action).
 
+This repository is using `trimja` itself on pull requests to avoid doing any
+unnecessary work.
+
 ## Help
 
 The following instruction on how to use trimja can be found by running

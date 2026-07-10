@@ -400,3 +400,16 @@ foreach(TEST ${TRIMJA_TESTS})
     )
 endforeach()
 
+# CMake's built-in `test` target has no dependencies on the binaries it
+# exercises (it is not a real target, so `add_dependencies(test ...)` is
+# rejected), which means a ninja build graph built from this project never
+# shows `test` depending on `trimja` itself. Provide a real custom target
+# that depends on every executable used by the test suite so that tools
+# consuming build.ninja, such as trimja, see the correct edges.
+add_custom_target(
+    run_test_with_dependencies
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure
+    DEPENDS trimja fuzzbuilddirutil fuzzdepsreader fuzzlogreader
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
