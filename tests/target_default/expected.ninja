@@ -1,0 +1,3 @@
+build a: phony
+build c: phony
+default c

@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <iosfwd>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace trimja {
@@ -59,12 +60,23 @@ class TrimUtil {
    * @param ninjaFile The path to the original Ninja build file.
    * @param ninjaFileContents The contents of the original Ninja build file.
    * @param affected The input stream containing the list of affected files.
+   * @param targets If non-empty, restricts the output to only build commands
+   * that are needed (transitively) to build one of these targets. Build
+   * commands that are not reachable from any target are removed entirely
+   * rather than turned into a `phony` command, so that requesting them from
+   * ninja fails. An empty string is a reserved sentinel (no valid ninja
+   * output path can be empty) meaning "everything listed in the input
+   * file's own `default` statement"; if the input file has no `default`
+   * statement then, just as plain `ninja` builds everything when there is
+   * no `default` statement, the sentinel resolves to "everything" rather
+   * than being an error.
    * @param explain If true, prints to stderr why each build command was kept.
    */
   void trim(std::ostream& output,
             const std::filesystem::path& ninjaFile,
             const std::string& ninjaFileContents,
             std::istream& affected,
+            std::span<const std::string> targets,
             bool explain);
 };
 

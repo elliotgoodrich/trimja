@@ -372,9 +372,19 @@ set_property(TEST trimja.--builddir PROPERTY PASS_REGULAR_EXPRESSION "builddir\/
 
 # Snapshot tests
 foreach(TEST ${TRIMJA_TESTS})
+    # If a test directory has an `additional_arguments.txt` file, read it (one
+    # argument per line, mirroring the one-path-per-line convention already
+    # used by `changed.txt`) and pass those extra arguments to `trimja` too.
+    # This lets a fixture exercise flags like `--target`/`--target-default`
+    # without needing a bespoke `add_test` of its own.
+    set(ADDITIONAL_ARGS "")
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/additional_arguments.txt)
+        file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/additional_arguments.txt ADDITIONAL_ARGS)
+    endif()
+
     add_test(
         NAME trimja.snapshot.${TEST}
-        COMMAND trimja -f ${TEST}/build.ninja --expected ${TEST}/expected.ninja --affected ${TEST}/changed.txt --explain
+        COMMAND trimja -f ${TEST}/build.ninja --expected ${TEST}/expected.ninja --affected ${TEST}/changed.txt --explain ${ADDITIONAL_ARGS}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
     )
     set_tests_properties(

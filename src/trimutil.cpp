@@ -372,6 +372,10 @@ class BuildContext {
 
       // Create a phony command for all the (implicit) outputs
       Phony,
+
+      // Remove the build command entirely since none of its outputs are
+      // reachable from any `--target`
+      Remove,
     };
 
     Resolution resolution;
@@ -884,6 +888,7 @@ class BuildContext {
   template <typename F>
   void parseLogFile(const std::filesystem::path& ninjaLog,
                     F&& getBuildCommand,
+                    const std::vector<bool>& inScope,
                     bool explain) {
     std::ifstream deps(ninjaLog);
 
@@ -900,6 +905,12 @@ class BuildContext {
       if (!node) {
         // If we don't have the path then it was since removed from the ninja
         // build file
+        continue;
+      }
+
+      if (!inScope[*node]) {
+        // Out of scope of any `--target`, so its build command will be
+        // removed entirely regardless of what `.ninja_log` says
         continue;
       }
 
@@ -932,7 +943,7 @@ class BuildContext {
     // Mark all build commands that are new or have been changed as required
     for (const Node& node : nodes()) {
       const bool isBuildCommand = !graph.in(node).empty();
-      if (isAffected[node] || !isBuildCommand) {
+      if (isAffected[node] || !isBuildCommand || !inScope[node]) {
         continue;
       }
 
@@ -964,6 +975,22 @@ class BuildContext {
                     << "'" << std::endl;
         }
       }
+    }
+  }
+
+  // Mark `node` and all of its transitive inputs (i.e. everything needed to
+  // build it) as in scope.
+  // NOLINTNEXTLINE(misc-no-recursion)
+  void markInScope(Node node,
+                   std::vector<bool>& seen,
+                   std::vector<bool>& inScope) {
+    if (seen[node]) {
+      return;
+    }
+    seen[node] = true;
+    inScope[node] = true;
+    for (const Graph::Node& in : graph.in(node)) {
+      markInScope(augment(in), seen, inScope);
     }
   }
 
@@ -1093,6 +1120,7 @@ void TrimUtil::trim(std::ostream& output,
                     const std::filesystem::path& ninjaFile,
                     const std::string& ninjaFileContents,
                     std::istream& affected,
+                    std::span<const std::string> targets,
                     bool explain) {
   using namespace detail;
 
@@ -1129,6 +1157,51 @@ void TrimUtil::trim(std::ostream& output,
 
   const Graph& graph = ctx.graph;
 
+  // If `targets` is non-empty, restrict our attention to those targets and
+  // everything transitively needed to build them.  Anything else is out of
+  // scope and its build command will be removed entirely further down.
+  //
+  // An empty string is a reserved sentinel meaning "everything listed in the
+  // input file's own `default` statement" (no valid ninja output path can be
+  // empty, so this can never collide with a real target).  If there is no
+  // `default` statement then, just as plain `ninja` builds everything when
+  // there is no `default` statement, the sentinel resolves to "everything"
+  // rather than being an error.
+  std::vector<bool> inScope(graph.size(), true);
+  if (!targets.empty()) {
+    inScope.assign(graph.size(), false);
+    std::vector<bool> seenScope(graph.size());
+    bool keepEverything = false;
+    for (const std::string& target : targets) {
+      if (target.empty()) {
+        if (const std::optional<Graph::Node> defaultNode = graph.getDefault();
+            defaultNode.has_value()) {
+          for (const Graph::Node& in : graph.in(*defaultNode)) {
+            ctx.markInScope(ctx.augment(in), seenScope, inScope);
+          }
+        } else {
+          keepEverything = true;
+        }
+        continue;
+      }
+
+      const std::optional<Graph::Node> node =
+          graph.findPath(std::string{target});
+      if (!node.has_value()) {
+        std::string msg;
+        msg += "Unable to find target '";
+        msg += target;
+        msg += "' in the input file!";
+        throw std::runtime_error{msg};
+      }
+      ctx.markInScope(ctx.augment(*node), seenScope, inScope);
+    }
+
+    if (keepEverything) {
+      inScope.assign(graph.size(), true);
+    }
+  }
+
   // Look through all log entries and mark as required those build commands that
   // are either absent in the log (representing new commands that have never
   // been run) or those whose hash has changed.
@@ -1149,7 +1222,7 @@ void TrimUtil::trim(std::ostream& output,
         [&](const BuildContext::Node& node) -> std::string_view {
           return ctx.commands[*ctx.nodeToCommand[node]].hashTarget;
         },
-        explain);
+        inScope, explain);
   }
 
   // Mark all files in `affected` as required
@@ -1272,12 +1345,40 @@ void TrimUtil::trim(std::ostream& output,
     }
   }
 
-  // Go through all build commands, keep a note of rules that are needed and
-  // `phony` out the build edges that weren't required.
+  // Any build command whose outputs are all out of scope of every `--target`
+  // is removed entirely, rather than turned into `phony`, so that requesting
+  // it from ninja fails outright instead of silently succeeding.
+  if (!targets.empty()) {
+    std::vector<bool> commandInScope(ctx.commands.size());
+    for (const BuildContext::Node& node : ctx.nodes()) {
+      if (inScope[node]) {
+        if (const std::optional commandIndex = ctx.nodeToCommand[node]) {
+          commandInScope[*commandIndex] = true;
+        }
+      }
+    }
+
+    for (std::size_t i = 0; i < ctx.commands.size(); ++i) {
+      BuildContext::BuildCommand& command = ctx.commands[i];
+      if (!commandInScope[i] &&
+          !BuildContext::isBuiltInRule(command.ruleIndex)) {
+        command.resolution = BuildContext::BuildCommand::Remove;
+      }
+    }
+  }
+
+  // Go through all build commands, keep a note of rules that are needed,
+  // `phony` out the build edges that weren't required, and drop those that
+  // are out of scope of every `--target` entirely.
   std::vector<bool> ruleReferenced(ctx.rules.size());
   for (BuildContext::BuildCommand& command : ctx.commands) {
     if (command.resolution == BuildContext::BuildCommand::Print) {
       ruleReferenced[command.ruleIndex] = true;
+    } else if (command.resolution == BuildContext::BuildCommand::Remove) {
+      for (const OutputText::iterator it : command.partIterators) {
+        ctx.output.parts.erase(it);
+      }
+      command.partIterators.clear();
     } else {
       assert(command.resolution == BuildContext::BuildCommand::Phony);
       const std::initializer_list<std::string_view> parts = {
