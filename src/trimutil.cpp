@@ -903,6 +903,13 @@ class BuildContext {
         continue;
       }
 
+      if (!nodeToCommand[*node].has_value()) {
+        // This entry is stale: `entry.out` used to be a build command's
+        // output when `.ninja_log` was written, but is no longer produced by
+        // any command in the current build file.
+        continue;
+      }
+
       seen[*node] = true;
       std::optional<std::uint64_t>& cachedHash = cachedHashes[*node];
       if (!cachedHash) {
