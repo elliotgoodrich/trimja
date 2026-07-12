@@ -1,0 +1,10 @@
+rule copy
+  command = ninja --version $in -> $out
+
+rule compile
+  deps = gcc
+  depfile = $out.d
+  command = ninja --version $in -> $out
+
+build foo: compile in1
+build out1: copy foo
