@@ -41,6 +41,7 @@
 #include <sstream>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -65,13 +66,16 @@ $ trimja --help
 $ trimja --builddir [-f FILE]
     Print out the $builddir path in the ninja build file relative to the cwd
 
-$ trimja [-f FILE] [--write | -o OUT] [--affected PATH | -] [--explain]
+$ trimja [-f FILE] [--write | -o OUT] [--affected PATH | -] [--target NAME]...
+         [--target-default] [--explain]
     Trim down the ninja build file to only required outputs and inputs
 
 Options:
   -f FILE, --file=FILE      path to input ninja build file [default=build.ninja]
   -a PATH, --affected=PATH  path to file containing affected file paths
   -                         read affected file paths from stdin
+  -t NAME, --target=NAME    keep build commands needed for NAME
+  --target-default          keep build commands needed for default target
   -o OUT, --output=OUT      output file path [default=stdout]
   -w, --write               overwrite input ninja build file
   --explain                 print why each part of the build file was kept
@@ -98,6 +102,11 @@ branch, note the lone '-' argument to specify we are reading from stdin,
   $ git diff main --name-only | trimja - --write
   $ ninja
 
+Build only those commands that relate to files that differ from the 'main' git
+branch and restrict to the 'run_all_things' target.
+  $ git diff main --name-only | trimja - --write --target run_all_things
+  $ ninja run_all_things
+
 For more information visit the homepage https://github.com/elliotgoodrich/trimja)HELP";
 
 // NOLINTNEXTLINE(modernize-avoid-c-arrays)
@@ -110,6 +119,8 @@ const option g_longOptions[] = {
     {"help", no_argument, nullptr, 'h'},
     {"output", required_argument, nullptr, 'o'},
     {"affected", required_argument, nullptr, 'a'},
+    {"target", required_argument, nullptr, 't'},
+    {"target-default", no_argument, nullptr, 'd'},
     {"version", no_argument, nullptr, 'v'},
     {"write", no_argument, nullptr, 'w'},
     {"memory-stats", required_argument, nullptr, 'm'},
@@ -168,12 +179,13 @@ bool instrumentMemory = false;
 
   std::optional<std::string> expectedFile;
   std::filesystem::path ninjaFile = "build.ninja";
+  std::vector<std::string> targets;
   bool explain = false;
   bool builddir = false;
 
   int ch = -1;
-  while ((ch = getopt_long(argc, argv, "a:f:ho:vw", g_longOptions, nullptr)) !=
-         -1) {
+  while ((ch = getopt_long(argc, argv, "a:f:ho:t:vw", g_longOptions,
+                           nullptr)) != -1) {
     switch (ch) {
       case 'a':
         if (std::get_if<std::monostate>(&affectedFile)) {
@@ -186,6 +198,11 @@ bool instrumentMemory = false;
         break;
       case 'b':
         builddir = true;
+        break;
+      case 'd':
+        // An empty string is a reserved sentinel meaning "everything listed
+        // in the input file's own `default` statement" -- see `TrimUtil::trim`
+        targets.emplace_back();
         break;
       case 'e':
         explain = true;
@@ -261,6 +278,9 @@ bool instrumentMemory = false;
           leave(EXIT_FAILURE);
         }
         break;
+      case 't':
+        targets.emplace_back(optarg);
+        break;
       case 'u':
         CPUProfiler::enable();
         break;
@@ -326,7 +346,7 @@ bool instrumentMemory = false;
       outputFile);
 
   TrimUtil util;
-  util.trim(output, ninjaFile, ninjaFileContents, affected, explain);
+  util.trim(output, ninjaFile, ninjaFileContents, affected, targets, explain);
   output.flush();
 
   if (!expectedFile.has_value()) {

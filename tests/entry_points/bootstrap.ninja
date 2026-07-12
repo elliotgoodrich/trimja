@@ -1,0 +1,3 @@
+rule copy
+  command = ninja --version $in -> $out
+build a: copy in_a
