@@ -59,6 +59,10 @@ jobs:
       run: cmake --build output --config ${{ matrix.build_type }}
     - name: Test
       run: ctest --test-dir output --build-config ${{ matrix.build_type }} --output-on-failure
+    - name: Install NSIS
+      # windows-latest no longer ships NSIS, but we need it to build the .exe installer
+      if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release' && matrix.environment.package && matrix.environment.name == 'Windows'
+      run: choco install nsis -y --no-progress
     - name: Install
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release' && matrix.environment.package
       run: cmake --build output --config ${{ matrix.build_type }} --target package
