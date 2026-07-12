@@ -879,8 +879,15 @@ class BuildContext {
                    });
 
     for (std::size_t outIndex = 0; outIndex < deps.size(); ++outIndex) {
+      const Node outNode = lookup[outIndex];
+      if (!nodeToCommand[outNode].has_value()) {
+        // This entry is stale: this path used to be a build command's
+        // output when `.ninja_deps` was written, but is no longer produced
+        // by any command in the current build file.
+        continue;
+      }
       for (const std::int32_t inIndex : deps[outIndex]) {
-        graph.addEdge(lookup[inIndex], lookup[outIndex]);
+        graph.addEdge(lookup[inIndex], outNode);
       }
     }
   }
