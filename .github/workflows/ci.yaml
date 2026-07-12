@@ -31,8 +31,7 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@v4
-    - uses: seanmiddleditch/gha-setup-ninja@master
+    - uses: actions/checkout@v7
     - name: Configure CMake
       run: >
         cmake -B output
@@ -67,7 +66,7 @@ jobs:
       run: git show -s --format='%b' > output/CHANGELOG.txt
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release' && matrix.environment.package
     - name: Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/') && matrix.build_type == 'Release' && matrix.environment.package
       with:
         body_path: output/CHANGELOG.txt
@@ -79,7 +78,7 @@ jobs:
   format:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Run clang-format
       run: >
         git ls-files -z
