@@ -6,7 +6,7 @@
 large C/C++ projects.  It does this by looking at a Ninja build file, which
 contains the build commands and describes dependencies between files.
 
-**trimja** is a command line utility to trim down Ninja build files to only
+`trimja` is a command line utility to trim down Ninja build files to only
 those commands that are dependent or necessary for a subset of input files.
 
 This can be used to **speed up CI** to create only those build artifacts that
@@ -18,10 +18,9 @@ using affected files are prioritized. This means that unsuccessful builds will
 fail faster, thereby giving quicker feedback to developers.
 
 For a ready-to-use Github Action see
-[trimja-action](https://github.com/elliotgoodrich/trimja-action).
-
-This repository is using `trimja` itself on pull requests to avoid doing any
-unnecessary work.
+[trimja-action](https://github.com/elliotgoodrich/trimja-action).  This
+repository is using `trimja` itself on pull requests via `trimja-action` to
+avoid unnecessary work.
 
 ## Help
 

@@ -48,4 +48,3 @@ the
   3. `git fetch origin`
   4. `git tag vA.B.C origin/main`
   5. `git push origin tag vA.B.C`
-`
