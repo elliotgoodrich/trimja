@@ -1,0 +1,85 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*.*.*"
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [
+          # Linux (Clang) and MacOS must use the oldest GitHub Action runner
+          # since we want to compile against the oldest libc version
+          # possible.  This means that all binaries created will be compatible
+          # with all GitHub Action runners.
+          {name: Linux (clang), image: ubuntu-22.04, cpp: clang++-13, c: clang-13, generator: Ninja, clang-tidy: true},
+          {name: MacOS, image: macos-14, cpp: clang++, c: clang, generator: Ninja},
+          {name: Windows, image: windows-latest, cpp: cl, c: cl},
+        ]
+    name: ${{ matrix.environment.name }}
+    runs-on: ${{ matrix.environment.image }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    # NOTE: the Configure CMake/Build/Test steps below are duplicated in
+    # ci.yaml (for the full environment/build_type matrix, plus trimja).
+    # Keep the two in sync when editing either one.
+    - name: Configure CMake
+      run: >
+        cmake -B output
+        -DCMAKE_CXX_COMPILER=${{ matrix.environment.cpp }}
+        -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
+        ${{ matrix.environment.name == 'Windows' && '-DCMAKE_CONFIGURATION_TYPES=Release' || '-DCMAKE_BUILD_TYPE=Release' }}
+        ${{ matrix.environment.generator != '' && format('-G {0}', matrix.environment.generator) || ''}}
+        ${{ matrix.environment.clang-tidy && '-DENABLE_CLANG_TIDY=ON' || ''}}
+    - name: Build
+      run: cmake --build output --config Release
+    - name: Test
+      run: cmake --build output --target run_test_with_dependencies --config Release
+    - name: Install NSIS
+      # windows-latest no longer ships NSIS, but we need it to build the .exe installer
+      if: matrix.environment.name == 'Windows'
+      run: choco install nsis -y --no-progress
+    - name: Install
+      run: cmake --build output --config Release --target package
+    - name: Upload package
+      uses: actions/upload-artifact@v7
+      with:
+        name: package-${{ matrix.environment.name }}
+        if-no-files-found: ignore
+        path: |
+          output/trimja-*-Linux.tar.gz
+          output/trimja-*-Darwin.tar.gz
+          output/trimja-*-win64.exe
+          output/trimja-*.zip
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Download packages
+      uses: actions/download-artifact@v8
+      with:
+        pattern: package-*
+        path: output
+        merge-multiple: true
+    - name: Generate Changelog
+      run: git show -s --format='%b' > output/CHANGELOG.txt
+    - name: Release
+      uses: softprops/action-gh-release@v3
+      with:
+        fail_on_unmatched_files: true
+        body_path: output/CHANGELOG.txt
+        files: |
+          output/trimja-*-Linux.tar.gz
+          output/trimja-*-Darwin.tar.gz
+          output/trimja-*-win64.exe
+          output/trimja-*.zip
