@@ -29,7 +29,7 @@ jobs:
     name: ${{ matrix.environment.name }} (${{ matrix.build_type }})
     runs-on: ${{ matrix.environment.image }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     # NOTE: the Configure CMake/Build/Test steps below are duplicated in
@@ -43,7 +43,7 @@ jobs:
         ${{ format('-D{0}={1}', matrix.environment.name == 'Windows' && 'CMAKE_CONFIGURATION_TYPES' || 'CMAKE_BUILD_TYPE', matrix.build_type) }}
         ${{ matrix.environment.generator != '' && format('-G {0}', matrix.environment.generator) || ''}}
         ${{ matrix.environment.clang-tidy && '-DENABLE_CLANG_TIDY=ON' || ''}}
-    - uses: elliotgoodrich/trimja-action@v2
+    - uses: elliotgoodrich/trimja-action@5029df3e1a452e6c5a88f62b578ff042cd81764c # v2.0.0
       # Skip Windows (which doesn't yet use Ninja)
       if: matrix.environment.name != 'Windows'
       with:
@@ -61,7 +61,7 @@ jobs:
   format:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - name: Run clang-format
