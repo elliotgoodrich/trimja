@@ -22,7 +22,7 @@ jobs:
     name: ${{ matrix.environment.name }}
     runs-on: ${{ matrix.environment.image }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     # NOTE: the Configure CMake/Build/Test steps below are duplicated in
@@ -47,7 +47,7 @@ jobs:
     - name: Install
       run: cmake --build output --config Release --target package
     - name: Upload package
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: package-${{ matrix.environment.name }}
         if-no-files-found: ignore
@@ -62,11 +62,11 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - name: Download packages
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         pattern: package-*
         path: output
@@ -74,7 +74,7 @@ jobs:
     - name: Generate Changelog
       run: git show -s --format='%b' > output/CHANGELOG.txt
     - name: Release
-      uses: softprops/action-gh-release@v3
+      uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
       with:
         fail_on_unmatched_files: true
         body_path: output/CHANGELOG.txt
