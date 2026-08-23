@@ -23,6 +23,7 @@
 #ifndef TRIMJA_RULEVARIABLES
 #define TRIMJA_RULEVARIABLES
 
+#include <array>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -40,11 +41,19 @@ class RuleVariables {
   /**
    * @brief List of reserved variable names in a rule.
    */
-  inline static const std::string_view reserved[] = {
-      "command",          "depfile", "dyndep", "description", "deps",
-      "generator",        "pool",    "restat", "rspfile",     "rspfile_content",
+  inline static const auto reserved = std::to_array<std::string_view>({
+      "command",
+      "depfile",
+      "dyndep",
+      "description",
+      "deps",
+      "generator",
+      "pool",
+      "restat",
+      "rspfile",
+      "rspfile_content",
       "msvc_deps_prefix",
-  };
+  });
 
  private:
   // The std::string_view* points to an element of reserved

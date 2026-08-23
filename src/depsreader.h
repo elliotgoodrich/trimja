@@ -125,7 +125,6 @@ class DepsReader {
 
   explicit DepsReader(std::istream* input);
 
- public:
   /**
    * @brief Constructs a DepsReader for the given input stream to a Ninja
    * dependency file setting the exception mask for the stream to throw on

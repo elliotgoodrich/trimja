@@ -38,7 +38,7 @@ namespace detail {
 
 void appendPaths(std::string& output,
                  std::span<const std::string> paths,
-                 const char separator);
+                 char separator);
 
 }  // namespace detail
 

@@ -26,6 +26,7 @@
 #include "scope.h"
 
 #include <cassert>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -54,7 +55,7 @@ class EvalString {
    * @enum TokenType
    * @brief Enum to represent the type of token.
    */
-  enum class TokenType {
+  enum class TokenType : std::uint8_t {
     Text = 0,      ///< Represents a text token.
     Variable = 1,  ///< Represents a variable token.
   };

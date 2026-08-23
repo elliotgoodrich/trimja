@@ -123,8 +123,8 @@ class IndexIntoDebug {
    * @brief Returns the current index value.
    * @return The index value.
    */
-  template <typename I = INDEX,
-            typename = std::enable_if_t<!std::is_same_v<I, std::size_t>>>
+  template <typename I = INDEX>
+    requires(!std::is_same_v<I, std::size_t>)
   constexpr operator INDEX() const noexcept {
     return m_index;
   }
@@ -227,8 +227,8 @@ class IndexIntoNoDebug {
    * @brief Returns the current index value.
    * @return The index value.
    */
-  template <typename I = INDEX,
-            typename = std::enable_if_t<!std::is_same_v<I, std::size_t>>>
+  template <typename I = INDEX>
+    requires(!std::is_same_v<I, std::size_t>)
   constexpr operator INDEX() const noexcept {
     return m_index;
   }

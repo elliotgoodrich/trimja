@@ -27,6 +27,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 
 namespace trimja {
@@ -35,7 +36,7 @@ namespace trimja {
  * @enum HashType
  * @brief Represents the type of hash function used to compute the build hash.
  */
-enum class HashType {
+enum class HashType : std::uint8_t {
   murmur,
   rapidhash,
 };
@@ -54,7 +55,7 @@ struct LogEntry {
    * @brief Represents the fields that can be read from a log entry.
    */
   struct Fields {
-    enum {
+    enum : std::uint8_t {
       startTime = 1 << 1,
       endTime = 1 << 2,
       mtime = 1 << 3,
