@@ -110,7 +110,6 @@ class LogReader {
     friend bool operator!=(const iterator& iter, sentinel s);
   };
 
- public:
   /**
    * @brief Constructs a LogReader with the given input stream.
    * @param logs The input stream to read log entries from.

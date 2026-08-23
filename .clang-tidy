@@ -1,5 +1,6 @@
 ---
 Checks: "bugprone-*,
+         -bugprone-easily-swappable-parameters,
          misc-*,
          -misc-include-cleaner,
          -misc-no-recursion,
@@ -21,6 +22,7 @@ Checks: "bugprone-*,
          -readability-qualified-auto,
 "
 WarningsAsErrors: "bugprone-*,
+                   -bugprone-easily-swappable-parameters,
                    misc-*,
                    -misc-include-cleaner,
                    -misc-no-recursion,
@@ -41,5 +43,5 @@ WarningsAsErrors: "bugprone-*,
                    -readability-redundant-member-init,
                    -readability-qualified-auto,
 "
-HeaderFilterRegex: 'thirdparty/'
+HeaderFilterRegex: 'src/'
 FormatStyle: none

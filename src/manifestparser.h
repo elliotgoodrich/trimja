@@ -117,7 +117,6 @@ class LetRangeReader : public detail::BaseReaderWithStart {
     friend bool operator!=(const iterator& iter, sentinel s);
   };
 
- public:
   LetRangeReader(Lexer* lexer, EvalStringBuilder* storage);
 
   iterator begin();
