@@ -1007,8 +1007,9 @@ class BuildContext {
   // NOLINTNEXTLINE(misc-no-recursion)
   void markIfChildrenAffected(Node node,
                               std::vector<bool>& seen,
+                              const std::vector<bool>& inScope,
                               bool explain) {
-    if (seen[node]) {
+    if (!inScope[node] || seen[node]) {
       return;
     }
     seen[node] = true;
@@ -1016,7 +1017,7 @@ class BuildContext {
     // Always process all our children so that `isAffected` is updated for them
     const auto& inIndices = graph.in(node);
     for (const Graph::Node& in : inIndices) {
-      markIfChildrenAffected(augment(in), seen, explain);
+      markIfChildrenAffected(augment(in), seen, inScope, explain);
     }
 
     if (isAffected[node]) {
@@ -1056,14 +1057,16 @@ class BuildContext {
   void ifRequiredRequireAllChildren(Node node,
                                     std::vector<bool>& seen,
                                     std::vector<bool>& needsAllInputs,
+                                    const std::vector<bool>& inScope,
                                     bool explain) {
-    if (seen[node]) {
+    if (!inScope[node] || seen[node]) {
       return;
     }
     seen[node] = true;
 
     for (const Graph::Node& out : graph.out(node)) {
-      ifRequiredRequireAllChildren(augment(out), seen, needsAllInputs, explain);
+      ifRequiredRequireAllChildren(augment(out), seen, needsAllInputs, inScope,
+                                   explain);
     }
 
     // Nothing to do if we have no children
@@ -1312,10 +1315,11 @@ void TrimUtil::trim(std::ostream& output,
 
   std::vector<bool> seen(graph.size());
 
-  // Mark all outputs that have an affected input as affected
+  // Propagate only within the target scope. An out-of-scope consumer must not
+  // become affected and then pull unrelated inputs into the required set.
   Timer trimTimer = CPUProfiler::start("trim time");
   for (const BuildContext::Node& node : ctx.nodes()) {
-    ctx.markIfChildrenAffected(node, seen, explain);
+    ctx.markIfChildrenAffected(node, seen, inScope, explain);
   }
 
   // Keep the difference between build inputs that are affected (i.e. have
@@ -1328,12 +1332,16 @@ void TrimUtil::trim(std::ostream& output,
   seen.assign(seen.size(), false);
   std::vector<bool> needsAllInputs(graph.size(), false);
   for (const BuildContext::Node& node : ctx.nodes()) {
-    ctx.ifRequiredRequireAllChildren(node, seen, needsAllInputs, explain);
+    ctx.ifRequiredRequireAllChildren(node, seen, needsAllInputs, inScope,
+                                     explain);
   }
 
   // Float all affected edges to the top so they are prioritized first
   // and Mark all required edges as needing to print them out
   for (const BuildContext::Node& node : ctx.nodes()) {
+    if (!inScope[node]) {
+      continue;
+    }
     if (ctx.isRequired[node]) {
       const std::optional commandIndex = ctx.nodeToCommand[node];
       if (commandIndex.has_value()) {
