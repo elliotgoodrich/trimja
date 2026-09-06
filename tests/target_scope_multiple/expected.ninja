@@ -1,0 +1,7 @@
+rule copy
+  command = ninja --version $in -> $out
+build a: copy a.cpp
+build all: phony a b
+build b: phony
+build c: phony
+default all
