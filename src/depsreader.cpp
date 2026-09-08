@@ -158,6 +158,13 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
       return static_cast<std::int32_t>(~checksum);
     }();
 
+    if (id < 0 || id > m_nodeCount) {
+      throw std::runtime_error{"Path record has an out-of-range index"};
+    }
+    if (id == m_nodeCount) {
+      ++m_nodeCount;
+    }
+
     *output = PathRecordView{id, path};
   } else {
     if (recordSize < sizeof(std::int32_t) + 2 * sizeof(std::uint32_t)) {
@@ -179,6 +186,20 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
     m_deps->read(reinterpret_cast<char*>(m_depsStorage.data()),
                  static_cast<std::streamsize>(m_depsStorage.size() *
                                               sizeof(std::int32_t)));
+
+    // A dependency record's output and every one of its inputs must reference a
+    // path that an earlier record already declared.
+    if (outIndex < 0 || outIndex >= m_nodeCount) {
+      throw std::runtime_error{
+          "Dependency record references an unknown output path"};
+    }
+    for (const std::int32_t dep : m_depsStorage) {
+      if (dep < 0 || dep >= m_nodeCount) {
+        throw std::runtime_error{
+            "Dependency record references an unknown input path"};
+      }
+    }
+
     *output = DepsRecordView{outIndex, mtime, m_depsStorage};
   }
 

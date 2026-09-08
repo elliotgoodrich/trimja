@@ -52,6 +52,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                                 std::ios_base::in | std::ios_base::binary};
     std::ostringstream outStream{std::ios_base::out | std::ios_base::binary};
     trimja::DepsWriter writer{outStream};
+
+    // Round-trip every record back through `DepsWriter`, whose assertions catch
+    // any record index the reader failed to reject.
     for (const std::variant<trimja::PathRecordView, trimja::DepsRecordView>&
              record : trimja::DepsReader{inStream}) {
       std::visit(

@@ -62,6 +62,7 @@ class DepsReader {
   std::ios_base::iostate m_previousExceptionBits;
   std::string m_storage;
   std::vector<std::int32_t> m_depsStorage;
+  std::int32_t m_nodeCount = 0;
 
  public:
   /**

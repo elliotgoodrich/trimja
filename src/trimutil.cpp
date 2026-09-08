@@ -851,11 +851,13 @@ class BuildContext {
             [&](auto&& view) {
               using T = std::decay_t<decltype(view)>;
               if constexpr (std::is_same<T, PathRecordView>()) {
+                assert(view.index >= 0);
                 paths.resize(std::max(
                     paths.size(), static_cast<std::size_t>(view.index) + 1));
                 // Entries in `.ninja_deps` are already normalized when written
                 paths[view.index] = view.path;
               } else {
+                assert(view.outIndex >= 0);
                 deps.resize(std::max(
                     deps.size(), static_cast<std::size_t>(view.outIndex) + 1));
                 deps[view.outIndex].assign(view.deps.begin(), view.deps.end());
@@ -887,6 +889,8 @@ class BuildContext {
         continue;
       }
       for (const std::int32_t inIndex : deps[outIndex]) {
+        assert(inIndex >= 0 &&
+               static_cast<std::size_t>(inIndex) < lookup.size());
         graph.addEdge(lookup[inIndex], outNode);
       }
     }

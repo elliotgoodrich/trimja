@@ -52,6 +52,8 @@ struct DepsWriter {
    * @param nodeID The associated node ID.  Note that if this is not provided
    * then an incrementing node ID will be used.
    * @return The node ID associated with the recorded path.
+   * @pre nodeId is an already-recorded node id or the next new one, i.e.
+   * `0 <= nodeId <= numUniqueNodes()`.
    */
   std::int32_t recordPath(std::string_view path);
   std::int32_t recordPath(std::string_view path, std::int32_t nodeId);
@@ -62,10 +64,19 @@ struct DepsWriter {
    * @param out The node ID of the output.
    * @param mtime The modification time of the output.
    * @param dependencies A span of node IDs representing the dependencies.
+   * @pre `out` and every entry of `dependencies` is an already-recorded node
+   * id, i.e. in `[0, numUniqueNodes())`.
    */
   void recordDependencies(std::int32_t out,
                           ninja_clock::time_point mtime,
                           std::span<const std::int32_t> dependencies);
+
+  /**
+   * @brief Return the number of distinct nodes recorded so far.
+   *
+   * @return The number of distinct nodes recorded so far.
+   */
+  std::int32_t numUniqueNodes() const;
 
  private:
   std::ostream* m_out;
