@@ -23,6 +23,7 @@
 #include "allocationprofiler.h"
 #include "builddirutil.h"
 #include "cpuprofiler.h"
+#include "fileutil.h"
 #include "trimutil.h"
 
 #ifdef WIN32
@@ -298,7 +299,7 @@ bool instrumentMemory = false;
   const std::string ninjaFileContents = [&] {
     const Timer ninjaRead = CPUProfiler::start(".ninja read");
     std::stringstream ninjaCopy;
-    const std::ifstream ninja{ninjaFile};
+    const std::ifstream ninja = FileUtil::openFile(ninjaFile);
     ninjaCopy << ninja.rdbuf();
     return std::move(ninjaCopy).str();
   }();

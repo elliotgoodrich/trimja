@@ -24,6 +24,7 @@
 
 #include "basicscope.h"
 #include "cpuprofiler.h"
+#include "fileutil.h"
 #include "manifestparser.h"
 
 #include <fstream>
@@ -61,15 +62,8 @@ class BuildDirContext {
         std::filesystem::path{r.parent()}.remove_filename() /
         evaluate(r.path(), fileScope);
 
-    if (!std::filesystem::exists(file)) {
-      std::string msg;
-      msg += "Unable to find ";
-      msg += file.string();
-      msg += "!";
-      throw std::runtime_error(msg);
-    }
+    const std::ifstream ninja = FileUtil::openFile(file);
     std::stringstream ninjaCopy;
-    const std::ifstream ninja{file};
     ninjaCopy << ninja.rdbuf();
     parse(file, std::move(ninjaCopy).str());
   }
