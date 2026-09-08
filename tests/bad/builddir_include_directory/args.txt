@@ -1,0 +1,3 @@
+-f
+build.ninja
+--builddir

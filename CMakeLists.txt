@@ -45,6 +45,7 @@ add_library(
     src/depswriter.cpp
     src/edgescope.cpp
     src/evalstring.cpp
+    src/fileutil.cpp
     src/graph.cpp
     src/fixed_string.cpp
     src/logreader.cpp
@@ -185,21 +186,24 @@ foreach(FUZZ_TARGET ${TRIMJA_FUZZING_TARGETS})
 endforeach()
 
 # Generate test files for the absolute/relative unit test
-get_filename_component(ABSOLUTE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/relative" ABSOLUTE)
+get_filename_component(ABSOLUTE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tests/good/absolute/relative" ABSOLUTE)
 string(REPLACE ":" "$:" ABSOLUTE_PATH_ESCAPED "${ABSOLUTE_PATH}")
-file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/changed.txt" "${ABSOLUTE_PATH}\nabsolute")
+file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/tests/good/absolute/changed.txt" "${ABSOLUTE_PATH}\nabsolute")
 string(APPEND NINJA_CONTENTS "rule copy\n")
 string(APPEND NINJA_CONTENTS "  command = ninja --version \$in -> \$out\n")
 string(APPEND NINJA_CONTENTS "build out_relative: copy absolute\n")
 string(APPEND NINJA_CONTENTS "build out_absolute: copy ${ABSOLUTE_PATH_ESCAPED}\n")
-file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/build.ninja" "${NINJA_CONTENTS}")
-file(COPY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/build.ninja" "${CMAKE_CURRENT_SOURCE_DIR}/tests/absolute/expected.ninja")
+file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/tests/good/absolute/build.ninja" "${NINJA_CONTENTS}")
+file(COPY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/tests/good/absolute/build.ninja" "${CMAKE_CURRENT_SOURCE_DIR}/tests/good/absolute/expected.ninja")
 
+# Positive tests: each directory under `tests/good/` is a self-contained ninja
+# project that is run through `ninja` and then trimmed, comparing trimja's
+# output against its `expected.ninja`.
 file(
     GLOB TRIMJA_TESTS
     LIST_DIRECTORIES true
-    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/tests/
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/*
+    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/*
 )
 
 # Sometimes test execution on MSVC leaves behind `_err1_.txt` and `_out1_.txt`
@@ -217,7 +221,7 @@ foreach(TEST ${TRIMJA_TESTS})
     add_test(
         NAME trimja.snapshot.${TEST}.ninja
         COMMAND ninja -d keepdepfile -d keeprsp -f bootstrap.ninja
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/${TEST}/
     )
     set_tests_properties(
         trimja.snapshot.${TEST}.ninja
@@ -260,7 +264,7 @@ set_property(TEST trimja.--affected_and_dash PROPERTY WILL_FAIL true)
 # Check we can avoid passing `-f`
 add_test(
     NAME trimja.snapshot.no-f
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/passthrough/
     COMMAND trimja
     --expected expected.ninja
     --affected changed.txt
@@ -273,7 +277,7 @@ set_tests_properties(
 # Check we can write to the same file we read
 add_test(
     NAME trimja.big-in-out
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/bigpassthrough/
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/bigpassthrough/
     COMMAND trimja --write --affected changed.txt
 )
 set_tests_properties(
@@ -284,7 +288,7 @@ set_tests_properties(
 # Check we can write to a different file
 add_test(
     NAME trimja.--write
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/passthrough/
     COMMAND trimja --output ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja --affected changed.txt
 )
 set_tests_properties(
@@ -293,7 +297,7 @@ set_tests_properties(
 )
 add_test(
     NAME trimja.--write.cmp
-    COMMAND ${CMAKE_COMMAND} -E compare_files --ignore-eol ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/expected.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
+    COMMAND ${CMAKE_COMMAND} -E compare_files --ignore-eol ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/passthrough/expected.ninja ${CMAKE_CURRENT_BINARY_DIR}/trimja.ninja
 )
 set_tests_properties(
     trimja.--write
@@ -308,12 +312,12 @@ set_tests_properties(
 if (WIN32)
     add_test(
         NAME trimja.stdin
-        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ $ENV{ComSpec} /c $<TARGET_FILE:trimja> - < changed.txt
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/simple/ $ENV{ComSpec} /c $<TARGET_FILE:trimja> - < changed.txt
     )
 else()
     add_test(
         NAME trimja.stdin
-        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/simple/ sh -c "$<TARGET_FILE:trimja> - < changed.txt"
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/simple/ sh -c "$<TARGET_FILE:trimja> - < changed.txt"
     )
 endif()
 set_property(TEST trimja.stdin PROPERTY PASS_REGULAR_EXPRESSION "build out1")
@@ -326,7 +330,7 @@ set_tests_properties(
 if(WIN32)
     add_test(
         NAME trimja.--memory-stats
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/passthrough/
         COMMAND trimja
         --memory-stats=3
         --affected changed.txt
@@ -338,7 +342,7 @@ if(WIN32)
 
     add_test(
         NAME trimja.--memory-stats2
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/builddir/
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/builddir/
         COMMAND trimja
         --memory-stats=3
         --builddir
@@ -352,7 +356,7 @@ endif()
 # --cpu-stats
 add_test(
     NAME trimja.--cpu-stats
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/passthrough/
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/passthrough/
     COMMAND trimja
     --cpu-stats
     --affected changed.txt
@@ -366,7 +370,7 @@ set_tests_properties(
 add_test(
     NAME trimja.--builddir
     COMMAND trimja -f builddir/build.ninja --builddir
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good
 )
 set_property(TEST trimja.--builddir PROPERTY PASS_REGULAR_EXPRESSION "builddir\/x64\/build")
 
@@ -378,14 +382,14 @@ foreach(TEST ${TRIMJA_TESTS})
     # This lets a fixture exercise flags like `--target`/`--target-default`
     # without needing a bespoke `add_test` of its own.
     set(ADDITIONAL_ARGS "")
-    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/additional_arguments.txt)
-        file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/tests/${TEST}/additional_arguments.txt ADDITIONAL_ARGS)
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/${TEST}/additional_arguments.txt)
+        file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/tests/good/${TEST}/additional_arguments.txt ADDITIONAL_ARGS)
     endif()
 
     add_test(
         NAME trimja.snapshot.${TEST}
         COMMAND trimja -f ${TEST}/build.ninja --expected ${TEST}/expected.ninja --affected ${TEST}/changed.txt --explain ${ADDITIONAL_ARGS}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good
     )
     set_tests_properties(
         trimja.snapshot.${TEST}
@@ -396,8 +400,35 @@ foreach(TEST ${TRIMJA_TESTS})
     add_test(
         NAME trimja.smoke.builddir.${TEST}
         COMMAND trimja -f ${TEST}/build.ninja --builddir
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/good
     )
+endforeach()
+
+# Negative tests: each directory under `tests/bad/` describes a trimja
+# invocation that must fail.  It contains an `args.txt` (one trimja argument per
+# line, mirroring `changed.txt`), an `expected.txt` holding the error message
+# trimja must print, and whatever input files the arguments reference.  Unlike
+# the positive tests these are not run through `ninja` first: the failure
+# happens while parsing the build file, so no fixture is needed.  `expected.txt`
+# is used as the test's `PASS_REGULAR_EXPRESSION` (matched against trimja's
+# output), the same mechanism used by e.g. `trimja.stdin` above.
+file(
+    GLOB TRIMJA_BAD_TESTS
+    LIST_DIRECTORIES true
+    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/tests/bad/
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/bad/*
+)
+
+foreach(TEST ${TRIMJA_BAD_TESTS})
+    file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/tests/bad/${TEST}/args.txt BAD_ARGS)
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/tests/bad/${TEST}/expected.txt BAD_EXPECTED)
+    string(STRIP "${BAD_EXPECTED}" BAD_EXPECTED)
+    add_test(
+        NAME trimja.bad.${TEST}
+        COMMAND trimja ${BAD_ARGS}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests/bad/${TEST}
+    )
+    set_property(TEST trimja.bad.${TEST} PROPERTY PASS_REGULAR_EXPRESSION "${BAD_EXPECTED}")
 endforeach()
 
 # CMake's built-in `test` target has no dependencies on the binaries it

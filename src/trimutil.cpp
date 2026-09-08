@@ -27,6 +27,7 @@
 #include "depsreader.h"
 #include "edgescope.h"
 #include "evalstring.h"
+#include "fileutil.h"
 #include "fixed_string.h"
 #include "graph.h"
 #include "indexinto.h"
@@ -784,17 +785,12 @@ class BuildContext {
         std::filesystem::path{r.parent()}.remove_filename() /
         evaluate(r.path(), fileScope);
 
-    if (!std::filesystem::exists(file)) {
-      std::string msg;
-      msg += "Unable to find ";
-      msg += file.string();
-      msg += "!";
-      throw std::runtime_error(msg);
-    }
-
+    const std::ifstream ninja = FileUtil::openFile(file);
     auto& stream = storage.createManagedSStream();
-    const std::ifstream ninja{file};
     stream << ninja.rdbuf();
+    // An empty (but readable) file inserts no characters, which sets `failbit`
+    // on `stream`; clear it so the null terminator below is still written.
+    stream.clear();
     stream << '\0';  // ensure our `string_view` is null-terminated
     parse(file, stream.view());
   }
@@ -804,20 +800,16 @@ class BuildContext {
         std::filesystem::path{r.parent()}.remove_filename() /
         evaluate(r.path(), fileScope);
 
-    if (!std::filesystem::exists(file)) {
-      std::string msg;
-      msg += "Unable to find ";
-      msg += file.string();
-      msg += "!";
-      throw std::runtime_error{msg};
-    }
+    const std::ifstream ninja = FileUtil::openFile(file);
 
     fileScope.push();
     shadowedRules.emplace_back();
 
     auto& stream = storage.createManagedSStream();
-    const std::ifstream ninja{file};
     stream << ninja.rdbuf();
+    // An empty (but readable) file inserts no characters, which sets `failbit`
+    // on `stream`; clear it so the null terminator below is still written.
+    stream.clear();
     stream << '\0';  // ensure our `string_view` is null-terminated
 
     fileIds.push_back(nextFileId++);
@@ -843,7 +835,8 @@ class BuildContext {
     // we have parsed the whole file
     std::vector<std::string> paths;  // NOLINTLINE(misc-const-correctness)
     std::vector<std::vector<std::int32_t>> deps;
-    std::ifstream depStream{ninjaDeps, std::ios_base::binary};
+    std::ifstream depStream =
+        FileUtil::openFile(ninjaDeps, std::ios_base::binary);
     try {
       for (const std::variant<PathRecordView, DepsRecordView>& record :
            DepsReader{depStream}) {
@@ -901,7 +894,7 @@ class BuildContext {
                     F&& getBuildCommand,
                     const std::vector<bool>& inScope,
                     bool explain) {
-    std::ifstream deps(ninjaLog);
+    std::ifstream deps = FileUtil::openFile(ninjaLog);
 
     // As there can be duplicate entries and subsequent entries take precedence
     // first record everything we care about and then update the graph

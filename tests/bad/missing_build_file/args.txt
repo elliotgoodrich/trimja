@@ -1,0 +1,4 @@
+-f
+no_such.ninja
+--affected
+changed.txt
