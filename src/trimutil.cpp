@@ -1262,13 +1262,17 @@ void TrimUtil::trim(std::ostream& output,
       }
     }
 
-    // If that does not indicate a path, try the absolute path
+    // Both remaining attempts are based on the absolute path, so compute it
+    // once here (`std::filesystem::absolute` is a no-op for paths that are
+    // already absolute).
     const std::filesystem::path p{line};
-    if (!p.is_absolute()) {
-      std::error_code error;
-      const std::filesystem::path& absolute =
-          attempted.emplace_back(std::filesystem::absolute(p, error));
-      if (!error) {
+    std::error_code error;
+    const std::filesystem::path absolute = std::filesystem::absolute(p, error);
+    if (!error) {
+      // If the raw input did not indicate a path, try the absolute path.  This
+      // catches ninja files that refer to their inputs by absolute path.
+      if (p.is_relative()) {
+        attempted.push_back(absolute);
         const std::optional<Graph::Node> node =
             graph.findPath(absolute.string());
         if (node.has_value()) {
@@ -1281,14 +1285,15 @@ void TrimUtil::trim(std::ostream& output,
           continue;
         }
       }
-    }
 
-    // If neither indicates a path, then try the path relative to the ninja
-    // file
-    if (!p.is_relative()) {
-      std::error_code error;
-      const std::filesystem::path& relative =
-          attempted.emplace_back(std::filesystem::relative(p, error));
+      // The graph stores paths relative to the directory containing the ninja
+      // file, but the paths supplied by the user are typically relative to the
+      // current working directory (e.g. the output of `git diff --name-only`)
+      // or absolute.  Try the path relative to the ninja file's directory so
+      // that affected paths resolve correctly regardless of the directory
+      // `trimja` is invoked from.
+      const std::filesystem::path& relative = attempted.emplace_back(
+          std::filesystem::relative(absolute, ninjaFileDir, error));
       if (!error) {
         const std::optional<Graph::Node> node =
             graph.findPath(relative.string());
