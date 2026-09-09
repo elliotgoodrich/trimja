@@ -22,6 +22,21 @@ For a ready-to-use Github Action see
 repository is using `trimja` itself on pull requests via `trimja-action` to
 avoid unnecessary work.
 
+## Install
+
+  1. Download the package for your platform from the
+     [releases page](https://github.com/elliotgoodrich/trimja/releases) and
+     install it.  On Windows run the `.exe` installer or unzip the `.zip`; on
+     Linux and macOS extract the `.tar.gz`.
+  2. Make sure the `trimja` executable is on your `PATH`.  The Windows installer
+     can do this for you; otherwise add the extracted `bin` directory to your
+     `PATH`.  Check it works by running `trimja --version`.
+  3. (Optional) Verify the download's build provenance with the
+     [GitHub CLI](https://cli.github.com/):
+     ```
+     gh attestation verify <downloaded-file> --repo elliotgoodrich/trimja
+     ```
+
 ## Help
 
 The following instruction on how to use trimja can be found by running

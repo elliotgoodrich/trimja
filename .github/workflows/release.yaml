@@ -66,6 +66,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Required by actions/attest-build-provenance.
+      id-token: write
+      attestations: write
     steps:
     - name: Download packages
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -73,6 +76,14 @@ jobs:
         pattern: package-*
         path: output
         merge-multiple: true
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: |
+          output/trimja-*-Linux.tar.gz
+          output/trimja-*-Darwin.tar.gz
+          output/trimja-*-win64.exe
+          output/trimja-*.zip
     # Attach the built packages to the release that triggered this workflow.
     # The release notes are whatever was entered in the GitHub UI on publish;
     # this step only uploads assets and leaves the body untouched.
