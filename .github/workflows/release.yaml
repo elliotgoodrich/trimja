@@ -1,8 +1,7 @@
 name: Release
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  release:
+    types: [published]
 permissions:
   contents: read
 jobs:
@@ -27,12 +26,16 @@ jobs:
         persist-credentials: false
     # NOTE: the Configure CMake/Build/Test steps below are duplicated in
     # ci.yaml (for the full environment/build_type matrix, plus trimja).
-    # Keep the two in sync when editing either one.
+    # Keep the two in sync when editing either one.  The extra
+    # -DTRIMJA_VERSION_OVERRIDE flag is release-only: it pins the built version
+    # to the release tag rather than deriving it from `git describe` (the
+    # checkout here is shallow and has no tags).
     - name: Configure CMake
       run: >
         cmake -B output
         -DCMAKE_CXX_COMPILER=${{ matrix.environment.cpp }}
         -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
+        -DTRIMJA_VERSION_OVERRIDE=${{ github.event.release.tag_name }}
         ${{ matrix.environment.name == 'Windows' && '-DCMAKE_CONFIGURATION_TYPES=Release' || '-DCMAKE_BUILD_TYPE=Release' }}
         ${{ matrix.environment.generator != '' && format('-G {0}', matrix.environment.generator) || ''}}
         ${{ matrix.environment.clang-tidy && '-DENABLE_CLANG_TIDY=ON' || ''}}
@@ -62,22 +65,20 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
     - name: Download packages
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         pattern: package-*
         path: output
         merge-multiple: true
-    - name: Generate Changelog
-      run: git show -s --format='%b' > output/CHANGELOG.txt
-    - name: Release
+    # Attach the built packages to the release that triggered this workflow.
+    # The release notes are whatever was entered in the GitHub UI on publish;
+    # this step only uploads assets and leaves the body untouched.
+    - name: Upload release assets
       uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
       with:
+        tag_name: ${{ github.event.release.tag_name }}
         fail_on_unmatched_files: true
-        body_path: output/CHANGELOG.txt
         files: |
           output/trimja-*-Linux.tar.gz
           output/trimja-*-Darwin.tar.gz
