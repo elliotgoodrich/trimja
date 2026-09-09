@@ -1,5 +1,54 @@
 cmake_minimum_required(VERSION 3.26.3)
-project(trimja VERSION 1.3.1)
+
+# Derive the version with the following precedence:
+#   1. -DTRIMJA_VERSION_OVERRIDE=<version>  (set by CI from the release tag)
+#   2. `git describe` against the most recent `vX.Y.Z` tag
+#   3. the fallback "0.0.0" when neither is available
+# TRIMJA_VERSION_FULL is the full descriptive version for display, which may
+# carry a commit/-dirty suffix such as `1.3.1-5-g1234abcd-dirty`.
+# TRIMJA_VERSION_NUMERIC is the plain `X.Y.Z` fed to `project()` (and hence
+# CPack).  This runs before `project()` so the result can set the version, and
+# is computed at configure time, so a new commit is only reflected after CMake
+# re-configures.
+if(DEFINED TRIMJA_VERSION_OVERRIDE)
+    set(TRIMJA_VERSION_FULL "${TRIMJA_VERSION_OVERRIDE}")
+else()
+    set(TRIMJA_VERSION_FULL "")
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} describe
+                    --tags --match "v[0-9]*.[0-9]*.[0-9]*" --abbrev=8 --dirty
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            RESULT_VARIABLE TRIMJA_GIT_DESCRIBE_STATUS
+            OUTPUT_VARIABLE TRIMJA_VERSION_FULL
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(NOT TRIMJA_GIT_DESCRIBE_STATUS EQUAL 0)
+            set(TRIMJA_VERSION_FULL "")
+        endif()
+    endif()
+endif()
+
+if(TRIMJA_VERSION_FULL STREQUAL "")
+    set(TRIMJA_VERSION_FULL "0.0.0")
+endif()
+
+# Drop a leading `v` so `v1.3.1` becomes `1.3.1`.
+string(REGEX REPLACE "^v" "" TRIMJA_VERSION_FULL "${TRIMJA_VERSION_FULL}")
+
+# `project(VERSION ...)` only accepts numeric components, so pull the leading
+# `X.Y.Z` out of the (possibly suffixed) descriptive version.
+if(TRIMJA_VERSION_FULL MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)")
+    set(TRIMJA_VERSION_NUMERIC "${CMAKE_MATCH_1}")
+else()
+    set(TRIMJA_VERSION_NUMERIC "0.0.0")
+endif()
+
+message(STATUS "trimja version: ${TRIMJA_VERSION_FULL}")
+
+project(trimja VERSION ${TRIMJA_VERSION_NUMERIC})
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -120,7 +169,7 @@ add_executable(
     trimja
     src/trimja.m.cpp
 )
-target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${CMAKE_PROJECT_VERSION}")
+target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${TRIMJA_VERSION_FULL}")
 set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
 target_link_libraries(trimja core)
 
@@ -231,7 +280,7 @@ endforeach()
 
 # --version
 add_test(NAME trimja.--version COMMAND trimja --version)
-string(REPLACE "." "\." TRIMJA_VERSION_REGEX ${CMAKE_PROJECT_VERSION})
+string(REPLACE "." "\." TRIMJA_VERSION_REGEX "${TRIMJA_VERSION_FULL}")
 set_property(
     TEST trimja.--version
     PROPERTY PASS_REGULAR_EXPRESSION "^${TRIMJA_VERSION_REGEX}\n$"
