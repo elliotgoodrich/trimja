@@ -29,13 +29,15 @@ jobs:
     # Keep the two in sync when editing either one.  The extra
     # -DTRIMJA_VERSION_OVERRIDE flag is release-only: it pins the built version
     # to the release tag rather than deriving it from `git describe` (the
-    # checkout here is shallow and has no tags).
+    # checkout here is shallow and has no tags).  The flag is quoted because
+    # Windows PowerShell otherwise splits a value like `v1.4.0` at the first
+    # `.`, passing only `v1` to CMake; the quotes are harmless under bash.
     - name: Configure CMake
       run: >
         cmake -B output
         -DCMAKE_CXX_COMPILER=${{ matrix.environment.cpp }}
         -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
-        -DTRIMJA_VERSION_OVERRIDE=${{ github.event.release.tag_name }}
+        "-DTRIMJA_VERSION_OVERRIDE=${{ github.event.release.tag_name }}"
         ${{ matrix.environment.name == 'Windows' && '-DCMAKE_CONFIGURATION_TYPES=Release' || '-DCMAKE_BUILD_TYPE=Release' }}
         ${{ matrix.environment.generator != '' && format('-G {0}', matrix.environment.generator) || ''}}
         ${{ matrix.environment.clang-tidy && '-DENABLE_CLANG_TIDY=ON' || ''}}
