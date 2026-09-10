@@ -73,6 +73,7 @@ Options:
   -o OUT, --output=OUT      output file path [default=stdout]
   -w, --write               overwrite input ninja build file
   --explain                 print why each part of the build file was kept
+  --no-summary              do not print out a summary
   --builddir                print the $builddir variable relative to the cwd
   --memory-stats=N          print memory stats and top N allocating functions
   --cpu-stats               print timing stats
@@ -81,14 +82,17 @@ Options:
 
 Examples:
 
-Build only those commands that relate to fibonacci.cpp,
+Build only those commands that relate to fibonacci.cpp.  trimja prints to stderr
+roughly how much build time it saved (pass --no-summary to silence this),
   $ echo "fibonacci.cpp" > changed.txt
   $ trimja --file build.ninja --affected changed.txt --output small.ninja
+  trimja removed roughly 10m 30s of build items from build.ninja (~42%)
   $ ninja -f small.ninja
 
 Build only those commands that relate to files that differ from the 'main' git
 branch, note the lone '-' argument to specify we are reading from stdin,
   $ git diff main --name-only | trimja - --write
+  trimja removed roughly 6m 41s of build items from build.ninja (~20%)
   $ ninja
 
 For more information visit the homepage https://github.com/elliotgoodrich/trimja

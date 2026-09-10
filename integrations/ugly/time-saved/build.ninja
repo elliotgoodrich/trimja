@@ -1,0 +1,4 @@
+rule cc
+  command = ninja --version $in -> $out
+build kept.o: cc kept.c
+build slow.o: cc slow.c

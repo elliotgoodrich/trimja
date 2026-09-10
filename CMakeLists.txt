@@ -480,6 +480,29 @@ foreach(TEST ${TRIMJA_BAD_TESTS})
     set_property(TEST trimja.bad.${TEST} PROPERTY PASS_REGULAR_EXPRESSION "${BAD_EXPECTED}")
 endforeach()
 
+# Integration ("ugly") tests: each directory under `integrations/ugly/` is a
+# self-contained scenario carrying its own `CMakeLists.txt` that registers
+# whatever bespoke tests it needs.
+file(
+    GLOB TRIMJA_UGLY_TESTS
+    LIST_DIRECTORIES true
+    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/integrations/ugly/
+    ${CMAKE_CURRENT_SOURCE_DIR}/integrations/ugly/*
+)
+
+# Some tests may be Windows-specific due to e.g. their use of backslashes as a
+# path separator, mirroring the `win32` convention used by `tests/good`.
+if(NOT(WIN32))
+    list(FILTER TRIMJA_UGLY_TESTS EXCLUDE REGEX "win32")
+endif()
+
+foreach(TEST ${TRIMJA_UGLY_TESTS})
+    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/integrations/ugly/${TEST} AND
+       EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/integrations/ugly/${TEST}/CMakeLists.txt)
+        add_subdirectory(integrations/ugly/${TEST})
+    endif()
+endforeach()
+
 # CMake's built-in `test` target has no dependencies on the binaries it
 # exercises (it is not a real target, so `add_dependencies(test ...)` is
 # rejected), which means a ninja build graph built from this project never
