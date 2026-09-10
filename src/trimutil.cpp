@@ -43,6 +43,7 @@
 #include <boost/boost_unordered.hpp>
 
 #include <cassert>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <list>
@@ -53,6 +54,35 @@
 namespace trimja {
 
 // NOLINTBEGIN(performance-avoid-endl)
+
+namespace {
+
+// Format a build duration into a compact human-readable string such as
+// "1h 20m", "45m 3s" or "12s".
+std::string formatDuration(std::chrono::milliseconds ms) {
+  const auto h = std::chrono::duration_cast<std::chrono::hours>(ms);
+  ms -= h;
+  const auto m = std::chrono::duration_cast<std::chrono::minutes>(ms);
+  ms -= m;
+  const auto s = std::chrono::duration_cast<std::chrono::seconds>(ms);
+
+  if (h.count() > 0) {
+    return std::to_string(h.count()) + "h " + std::to_string(m.count()) + 'm';
+  }
+  if (m.count() > 0) {
+    return std::to_string(m.count()) + "m " + std::to_string(s.count()) + 's';
+  }
+  return std::to_string(s.count()) + 's';
+}
+
+// Return `part` as a whole-number percentage of `whole`, rounded to the nearest
+// integer (adding `whole / 2` before dividing turns integer truncation into
+// round-to-nearest).  Both must be non-negative and `whole` must be non-zero.
+std::int64_t roundedPercentage(std::int64_t part, std::int64_t whole) {
+  return (part * 100 + whole / 2) / whole;
+}
+
+}  // namespace
 
 namespace detail {
 
@@ -412,6 +442,10 @@ class BuildContext {
   // e.g. This is useful when processing `include` and `subninja` and we need to
   // extend the lifetime of the file contents until all parsing has finished.
   ManagedResources& storage;
+
+  // The elapsed build time for each node as recorded in `.ninja_log`, indexed
+  // by node. Nodes with no log entry (or before the log is parsed) are zero.
+  std::vector<std::chrono::milliseconds> elapsed;
 
   // A place to hold numbers as strings that can be put into `parts` if we have
   // duplicate rules and need a suffix.
@@ -893,7 +927,8 @@ class BuildContext {
   void parseLogFile(const std::filesystem::path& ninjaLog,
                     F&& getBuildCommand,
                     const std::vector<bool>& inScope,
-                    bool explain) {
+                    bool explain,
+                    bool collectStats) {
     std::ifstream deps = FileUtil::openFile(ninjaLog);
 
     // As there can be duplicate entries and subsequent entries take precedence
@@ -901,8 +936,15 @@ class BuildContext {
     std::vector<bool> seen(graph.size());
     std::vector<bool> hashMismatch(graph.size());
     std::vector<std::optional<std::uint64_t>> cachedHashes(graph.size());
-    for (const LogEntry& entry :
-         LogReader{deps, LogEntry::Fields::out | LogEntry::Fields::hash}) {
+
+    // Only read the timing columns (and size `elapsed`) when we are actually
+    // going to print the summary of how much build time was trimmed away.
+    int fields = LogEntry::Fields::out | LogEntry::Fields::hash;
+    if (collectStats) {
+      fields |= LogEntry::Fields::startTime | LogEntry::Fields::endTime;
+      elapsed.assign(graph.size(), std::chrono::milliseconds::zero());
+    }
+    for (const LogEntry& entry : LogReader{deps, fields}) {
       // Entries in `.ninja_log` are already normalized when written
       const std::optional<Graph::Node> node =
           graph.findNormalizedPath(entry.out);
@@ -912,16 +954,25 @@ class BuildContext {
         continue;
       }
 
-      if (!inScope[*node]) {
-        // Out of scope of any `--target`, so its build command will be
-        // removed entirely regardless of what `.ninja_log` says
-        continue;
-      }
-
       if (!nodeToCommand[*node].has_value()) {
         // This entry is stale: `entry.out` used to be a build command's
         // output when `.ninja_log` was written, but is no longer produced by
         // any command in the current build file.
+        continue;
+      }
+
+      // Record how long this output took to build so that we can later report
+      // how much build time was trimmed away.  Later entries take precedence,
+      // matching the hash handling below.  This is recorded even for
+      // out-of-scope outputs since removing them still saves that time.
+      if (collectStats) {
+        elapsed[*node] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            entry.endTime - entry.startTime);
+      }
+
+      if (!inScope[*node]) {
+        // Out of scope of any `--target`, so its build command will be
+        // removed entirely regardless of what `.ninja_log` says
         continue;
       }
 
@@ -1128,8 +1179,11 @@ void TrimUtil::trim(std::ostream& output,
                     const std::string& ninjaFileContents,
                     std::istream& affected,
                     std::span<const std::string> targets,
-                    bool explain) {
+                    TrimOptions options) {
   using namespace detail;
+
+  const bool explain = (options & TrimOptions::Explain) != TrimOptions::None;
+  const bool stats = (options & TrimOptions::Stats) != TrimOptions::None;
 
   // Keep our state inside `m_imp` so that we defer cleanup until the destructor
   // of `TrimUtil`. This allows the calling code to skip all destructors when
@@ -1229,7 +1283,7 @@ void TrimUtil::trim(std::ostream& output,
         [&](const BuildContext::Node& node) -> std::string_view {
           return ctx.commands[*ctx.nodeToCommand[node]].hashTarget;
         },
-        inScope, explain);
+        inScope, explain, stats);
   }
 
   // Mark all files in `affected` as required
@@ -1453,6 +1507,41 @@ void TrimUtil::trim(std::ostream& output,
       ctx.output.parts.begin(), ctx.output.parts.end(),
       std::ostream_iterator<std::string_view>{output},
       [](const auto& parts) { return std::get<std::string_view>(parts); });
+
+  // Report how much build time we trimmed away, using the durations recorded
+  // in `.ninja_log`.
+  if (stats && !ctx.elapsed.empty()) {
+    std::vector<std::chrono::milliseconds> commandElapsed(
+        ctx.commands.size(), std::chrono::milliseconds::zero());
+    for (const BuildContext::Node& node : ctx.nodes()) {
+      if (ctx.elapsed[node] <= std::chrono::milliseconds::zero()) {
+        continue;
+      }
+      if (const std::optional commandIndex = ctx.nodeToCommand[node]) {
+        commandElapsed[*commandIndex] = ctx.elapsed[node];
+      }
+    }
+
+    std::chrono::milliseconds total = std::chrono::milliseconds::zero();
+    std::chrono::milliseconds removed = std::chrono::milliseconds::zero();
+    for (std::size_t i = 0; i < ctx.commands.size(); ++i) {
+      total += commandElapsed[i];
+      if (ctx.commands[i].resolution != BuildContext::BuildCommand::Print) {
+        removed += commandElapsed[i];
+      }
+    }
+
+    if (removed > std::chrono::milliseconds::zero()) {
+      const std::int64_t percent =
+          roundedPercentage(removed.count(), total.count());
+      std::cerr << "trimja removed roughly " << formatDuration(removed)
+                << " of build items from " << ninjaFile.string() << " (~"
+                << percent << "%)" << std::endl;
+    } else {
+      std::cerr << "trimja could not remove any build items from "
+                << ninjaFile.string() << std::endl;
+    }
+  }
 }
 
 // NOLINTEND(performance-avoid-endl)

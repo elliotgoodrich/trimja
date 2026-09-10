@@ -23,17 +23,60 @@
 #ifndef TRIMJA_TRIMUTIL
 #define TRIMJA_TRIMUTIL
 
+#include <cstdint>
 #include <filesystem>
 #include <iosfwd>
 #include <memory>
 #include <span>
 #include <string>
+#include <type_traits>
 
 namespace trimja {
 
 namespace detail {
 class Imp;
 }  // namespace detail
+
+/**
+ * @enum TrimOptions
+ * @brief Bit flags controlling trimja's optional diagnostic output.
+ *
+ * The flags are independent and combined with bitwise OR, so any of the four
+ * combinations can be requested, e.g.
+ * `TrimOptions::Explain | TrimOptions::Stats`.
+ */
+enum class TrimOptions : std::uint8_t {
+  None = 0,
+  Explain = 1 << 0,  ///< Print to stderr why each part of the build file was
+                     ///< kept.
+  Stats = 1 << 1,    ///< Print to stderr a summary of how much build time was
+                     ///< trimmed away.
+};
+
+constexpr TrimOptions& operator|=(TrimOptions& lhs, TrimOptions rhs) {
+  using U = std::underlying_type_t<TrimOptions>;
+  lhs = static_cast<TrimOptions>(static_cast<U>(lhs) | static_cast<U>(rhs));
+  return lhs;
+}
+
+constexpr TrimOptions operator|(TrimOptions lhs, TrimOptions rhs) {
+  return lhs |= rhs;
+}
+
+constexpr TrimOptions& operator&=(TrimOptions& lhs, TrimOptions rhs) {
+  using U = std::underlying_type_t<TrimOptions>;
+  lhs = static_cast<TrimOptions>(static_cast<U>(lhs) & static_cast<U>(rhs));
+  return lhs;
+}
+
+constexpr TrimOptions operator&(TrimOptions lhs, TrimOptions rhs) {
+  return lhs &= rhs;
+}
+
+constexpr TrimOptions operator~(TrimOptions value) {
+  using U = std::underlying_type_t<TrimOptions>;
+  return static_cast<TrimOptions>(~static_cast<U>(value));
+}
 
 /**
  * @class TrimUtil
@@ -70,14 +113,19 @@ class TrimUtil {
    * statement then, just as plain `ninja` builds everything when there is
    * no `default` statement, the sentinel resolves to "everything" rather
    * than being an error.
-   * @param explain If true, prints to stderr why each build command was kept.
+   * @param options A combination of `TrimOptions` flags controlling the
+   * optional diagnostic output printed to stderr (whether to `--explain` why
+   * each build command was kept and whether to print the summary of how much
+   * build time was trimmed).  Neither affects the trimmed build file written
+   * to @p output.  Warnings about affected paths that could not be found are
+   * always printed regardless of these flags.
    */
   void trim(std::ostream& output,
             const std::filesystem::path& ninjaFile,
             const std::string& ninjaFileContents,
             std::istream& affected,
             std::span<const std::string> targets,
-            bool explain);
+            TrimOptions options);
 };
 
 }  // namespace trimja

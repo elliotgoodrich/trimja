@@ -80,6 +80,7 @@ Options:
   -o OUT, --output=OUT      output file path [default=stdout]
   -w, --write               overwrite input ninja build file
   --explain                 print why each part of the build file was kept
+  --no-summary              do not print out a summary
   --builddir                print the $builddir variable relative to the cwd)HELP"
 #if WIN32
     R"HELP(
@@ -93,14 +94,17 @@ Options:
 
 Examples:
 
-Build only those commands that relate to fibonacci.cpp,
+Build only those commands that relate to fibonacci.cpp.  trimja prints to stderr
+roughly how much build time it saved (pass --no-summary to silence this),
   $ echo "fibonacci.cpp" > changed.txt
   $ trimja --file build.ninja --affected changed.txt --output small.ninja
+  trimja removed roughly 10m 30s of build items from build.ninja (~42%)
   $ ninja -f small.ninja
 
 Build only those commands that relate to files that differ from the 'main' git
 branch, note the lone '-' argument to specify we are reading from stdin,
   $ git diff main --name-only | trimja - --write
+  trimja removed roughly 6m 41s of build items from build.ninja (~20%)
   $ ninja
 
 Build only those commands that relate to files that differ from the 'main' git
@@ -122,6 +126,7 @@ const option g_longOptions[] = {
     {"affected", required_argument, nullptr, 'a'},
     {"target", required_argument, nullptr, 't'},
     {"target-default", no_argument, nullptr, 'd'},
+    {"no-summary", no_argument, nullptr, 'n'},
     {"version", no_argument, nullptr, 'v'},
     {"write", no_argument, nullptr, 'w'},
     {"memory-stats", required_argument, nullptr, 'm'},
@@ -181,8 +186,11 @@ bool instrumentMemory = false;
   std::optional<std::string> expectedFile;
   std::filesystem::path ninjaFile = "build.ninja";
   std::vector<std::string> targets;
-  bool explain = false;
   bool builddir = false;
+
+  // Stats are printed by default; `--explain` adds the per-command reasons and
+  // `--no-summary` turns the summary off.
+  TrimOptions options = TrimOptions::Stats;
 
   int ch = -1;
   while ((ch = getopt_long(argc, argv, "a:f:ho:t:vw", g_longOptions,
@@ -206,7 +214,7 @@ bool instrumentMemory = false;
         targets.emplace_back();
         break;
       case 'e':
-        explain = true;
+        options |= TrimOptions::Explain;
         break;
       case 'f':
         ninjaFile = optarg;
@@ -279,6 +287,9 @@ bool instrumentMemory = false;
           leave(EXIT_FAILURE);
         }
         break;
+      case 'n':
+        options &= ~TrimOptions::Stats;
+        break;
       case 't':
         targets.emplace_back(optarg);
         break;
@@ -347,7 +358,7 @@ bool instrumentMemory = false;
       outputFile);
 
   TrimUtil util;
-  util.trim(output, ninjaFile, ninjaFileContents, affected, targets, explain);
+  util.trim(output, ninjaFile, ninjaFileContents, affected, targets, options);
   output.flush();
 
   if (!expectedFile.has_value()) {
