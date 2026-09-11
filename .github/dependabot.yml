@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Bundle all action bumps into a single PR to keep the noise down.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
