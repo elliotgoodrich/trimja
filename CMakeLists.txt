@@ -150,7 +150,16 @@ else()
     set(ENABLE_LTO ON)
 endif()
 
+# MSVC's Debug flags include /RTC1 (runtime checks), which is incompatible
+# with /GL (the flag CMake's IPO property adds).
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(ENABLE_LTO_DEBUG OFF)
+else()
+    set(ENABLE_LTO_DEBUG ${ENABLE_LTO})
+endif()
+
 set_property(TARGET core PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
+set_property(TARGET core PROPERTY INTERPROCEDURAL_OPTIMIZATION_DEBUG ${ENABLE_LTO_DEBUG})
 
 target_compile_options(
     core PUBLIC
@@ -171,6 +180,7 @@ add_executable(
 )
 target_compile_definitions(trimja PRIVATE TRIMJA_VERSION="${TRIMJA_VERSION_FULL}")
 set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
+set_property(TARGET trimja PROPERTY INTERPROCEDURAL_OPTIMIZATION_DEBUG ${ENABLE_LTO_DEBUG})
 target_link_libraries(trimja core)
 
 install(TARGETS trimja RUNTIME DESTINATION bin)
@@ -200,6 +210,7 @@ foreach(FUZZ_TARGET ${TRIMJA_FUZZING_TARGETS})
             $<$<NOT:${ENABLE_FUZZING}>:src/nofuzzing.m.cpp>
         )
         set_property(TARGET ${FUZZ_TARGET_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
+        set_property(TARGET ${FUZZ_TARGET_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION_DEBUG ${ENABLE_LTO_DEBUG})
         target_link_options(${FUZZ_TARGET_NAME} PRIVATE $<${ENABLE_FUZZING}:-fsanitize=fuzzer>)
         target_link_libraries(${FUZZ_TARGET_NAME} core)
 
