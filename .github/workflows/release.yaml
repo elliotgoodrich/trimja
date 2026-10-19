@@ -15,7 +15,7 @@ jobs:
           # possible.  This means that all binaries created will be compatible
           # with all GitHub Action runners.
           {name: Linux (clang), image: ubuntu-22.04, cpp: clang++-13, c: clang-13, generator: Ninja, clang-tidy: true},
-          {name: MacOS, image: macos-14, cpp: clang++, c: clang, generator: Ninja},
+          {name: MacOS, image: macos-15, cpp: clang++, c: clang, generator: Ninja},
           {name: Windows, image: windows-latest, cpp: cl, c: cl},
         ]
     name: ${{ matrix.environment.name }}
