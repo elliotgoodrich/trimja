@@ -14,8 +14,8 @@ jobs:
           # since we want to compile against the oldest libc version
           # possible.  This means that all binaries created will be compatible
           # with all GitHub Action runners.
-          {name: Linux (clang), image: ubuntu-22.04, cpp: clang++-13, c: clang-13, generator: Ninja, clang-tidy: true},
-          {name: MacOS, image: macos-15, cpp: clang++, c: clang, generator: Ninja},
+          {name: Linux (clang), image: ubuntu-22.04, cpp: clang++-13, c: clang-13, clang-tidy: true},
+          {name: MacOS, image: macos-15, cpp: clang++, c: clang},
           {name: Windows, image: windows-latest, cpp: cl, c: cl},
         ]
     name: ${{ matrix.environment.name }}
@@ -32,14 +32,29 @@ jobs:
     # checkout here is shallow and has no tags).  The flag is quoted because
     # Windows PowerShell otherwise splits a value like `v1.4.0` at the first
     # `.`, passing only `v1` to CMake; the quotes are harmless under bash.
+    # Ninja, unlike the Visual Studio generator, needs the environment a
+    # Developer Command Prompt sets up (cl, INCLUDE, LIB, and Visual Studio's
+    # bundled ninja on PATH), so export what vcvars64.bat changes to the steps
+    # below.
+    - name: Set up MSVC environment
+      if: matrix.environment.name == 'Windows'
+      shell: powershell
+      run: |
+        $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+        $before = @{}
+        Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+        cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+          $name, $value = $_ -split '=', 2
+          if ($before[$name] -ne $value) { "$name=$value" }
+        } | Add-Content $env:GITHUB_ENV
     - name: Configure CMake
       run: >
         cmake -B output
         -DCMAKE_CXX_COMPILER=${{ matrix.environment.cpp }}
         -DCMAKE_C_COMPILER=${{ matrix.environment.c }}
         "-DTRIMJA_VERSION_OVERRIDE=${{ github.event.release.tag_name }}"
-        ${{ matrix.environment.name == 'Windows' && '-DCMAKE_CONFIGURATION_TYPES=Release' || '-DCMAKE_BUILD_TYPE=Release' }}
-        ${{ matrix.environment.generator != '' && format('-G {0}', matrix.environment.generator) || ''}}
+        -DCMAKE_BUILD_TYPE=Release
+        -G Ninja
         ${{ matrix.environment.clang-tidy && '-DENABLE_CLANG_TIDY=ON' || ''}}
     - name: Build
       run: cmake --build output --config Release
