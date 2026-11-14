@@ -167,7 +167,7 @@ bool DepsReader::read(std::variant<PathRecordView, DepsRecordView>* output) {
 
     *output = PathRecordView{id, path};
   } else {
-    if (recordSize < sizeof(std::int32_t) + 2 * sizeof(std::uint32_t)) {
+    if (recordSize < sizeof(std::int32_t) + (2 * sizeof(std::uint32_t))) {
       throw std::runtime_error{"Dependency record too small"};
     }
     if (recordSize % sizeof(std::int32_t) != 0) {

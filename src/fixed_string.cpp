@@ -31,7 +31,7 @@ namespace {
 std::string_view cloneStringView(std::string_view str) {
   const std::size_t length = str.size();
   char* data = new char[length];
-  std::copy_n(str.data(), length, data);
+  std::copy(str.begin(), str.end(), data);
   return std::string_view{data, length};
 }
 

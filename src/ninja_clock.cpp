@@ -26,7 +26,7 @@ namespace trimja {
 
 namespace {
 
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
 // The `file_clock::time_point` in Visual Studio is the same as the `FILETIME`
 // struct.
 // https://learn.microsoft.com/en-us/cpp/standard-library/file-clock-class
