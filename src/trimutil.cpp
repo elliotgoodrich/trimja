@@ -304,6 +304,8 @@ class RuleTextParts {
   OutputText::iterator end() const { return std::next(m_rest); }
 };
 
+namespace {
+
 /**
  * @brief Parse a RuleReader into its text parts and variables.
  * @param r The RuleReader to parse.
@@ -341,6 +343,8 @@ std::pair<RuleTextParts, RuleVariables> parseRule(RuleReader& r,
       std::piecewise_construct, std::forward_as_tuple(startIt, nameIt, restIt),
       std::forward_as_tuple(std::move(variables))};
 }
+
+}  // namespace
 
 /**
  * @class Rule

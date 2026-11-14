@@ -149,8 +149,6 @@ bool instrumentMemory = false;
   std::_Exit(rc);
 };
 
-}  // namespace
-
 // NOLINTNEXTLINE(modernize-avoid-c-arrays)
 [[noreturn]] int mainImp(int argc, char* argv[]) try {
   // NOLINTBEGIN(performance-avoid-endl)
@@ -373,7 +371,7 @@ bool instrumentMemory = false;
   actual.erase(std::remove(actual.begin(), actual.end(), '\r'), actual.end());
 #endif
 
-  std::ifstream expectedStream(*expectedFile);
+  const std::ifstream expectedStream(*expectedFile);
   std::stringstream expectedBuffer;
   expectedBuffer << expectedStream.rdbuf();
   const std::string expected = expectedBuffer.str();
@@ -401,6 +399,8 @@ bool instrumentMemory = false;
   leave(EXIT_FAILURE);
   // NOLINTEND(performance-avoid-endl)
 }
+
+}  // namespace
 
 int main(int argc, char* argv[]) {
   // We cannot decorate `main` with `[[noreturn]]` in gcc since it warns on the
